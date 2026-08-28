@@ -1,0 +1,50 @@
+# 세션 산출물 — 로컬에만 두고 추적하지 않는다
+docs/discussions/
+
+# ── Node / Expo ───────────────────────────────────────────
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# ── 네이티브 (CNG로 생성되므로 추적하지 않는다) ───────────
+/app/ios/
+/app/android/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# ── 환경변수 · 시크릿 ─────────────────────────────────────
+.env
+.env.*
+!.env.example
+google-services.json
+GoogleService-Info.plist
+!google-services.json.example
+!GoogleService-Info.plist.example
+
+# ── Java / Spring ─────────────────────────────────────────
+server/target/
+server/build/
+server/out/
+server/.gradle/
+*.class
+*.war
+*.ear
+hs_err_pid*
+!gradle/wrapper/gradle-wrapper.jar
+
+# ── IDE · OS ──────────────────────────────────────────────
+.idea/
+*.iml
+*.iws
+.DS_Store
+Thumbs.db
