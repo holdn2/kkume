@@ -3,7 +3,6 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "@/*": ["./*"],
       "@app/*": ["./app/*"],
       "@assets/*": ["./assets/*"],
       "@theme/*": ["./src/theme/*"],

@@ -19,11 +19,17 @@ import는 상대 경로 대신 별칭을 쓴다. `tsconfig.json`의 `paths`만�
 `babel-plugin-module-resolver`는 필요 없다 (SDK 57의 Metro가 tsconfig를 읽는다).
 
 ```
-@theme/token   @shared/ui/AppText   @components/Button   @features/record   @assets/...
+@theme/token   @shared/ui/AppText   @components/Button   @features/record
+@assets/...    @app/...
 ```
+
+별칭은 위 여섯 개가 전부다. `@/*`(루트 전체)는 만들지 않는다 —
+`@/theme`처럼 한 겹 더 들어가는 형태를 쓰지 않기로 했다.
 
 계획 문서는 `docs/discussions/`에 HTML로 남기고 git에 올리지 않는다.
 번호는 그 폴더 안에서 가장 큰 번호 + 1을 쓰고, 한 번 매기면 바꾸지 않는다.
+**다른 워크트리에서 세션이 함께 돌고 있으면 파일을 만들기 직전에 폴더를 다시 본다** —
+두 세션이 각자 번호를 매겨 같은 번호가 두 개 생긴 적이 있다(012). 나중에 만든 쪽이 양보한다.
 
 | 문서 | 내용 |
 |---|---|
