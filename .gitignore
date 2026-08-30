@@ -13,8 +13,8 @@ yarn-debug.*
 yarn-error.*
 
 # ── 네이티브 (CNG로 생성되므로 추적하지 않는다) ───────────
-/app/ios/
-/app/android/
+/mobile/ios/
+/mobile/android/
 *.jks
 *.p8
 *.p12

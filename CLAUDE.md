@@ -7,7 +7,7 @@
 
 ```
 kkume/
-├── app/                  React Native (Expo SDK 57)
+├── mobile/               React Native (Expo SDK 57)
 │   ├── app/              expo-router 라우트 — 여기가 라우팅의 뿌리다
 │   ├── src/              theme · components · features · shared
 │   └── assets/           폰트 · 이미지
