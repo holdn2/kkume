@@ -11,7 +11,10 @@
     "ios": {
       "bundleIdentifier": "com.holdn2.kkume",
       "supportsTablet": false,
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.holdn2.kkume",
@@ -37,6 +40,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "15c9a3a6-60ae-4a44-9dfd-801be469857e"
+      }
     }
   }
 }
