@@ -1,7 +1,7 @@
 import { View, StyleSheet } from 'react-native';
 
-import { AppText } from '@/shared/ui/AppText';
-import { c, sp } from '@/theme/token';
+import { AppText } from '@shared/ui/AppText';
+import { c, sp } from '@theme/token';
 
 // 골격 확인용 임시 화면. 2주차 기록 코어 이슈에서 실제 화면으로 대체한다.
 export default function Home() {

@@ -1,6 +1,6 @@
 import { Text, type TextProps, type TextStyle } from 'react-native';
 
-import { c, font, type, type Weight, type TypeScale } from '@/theme/token';
+import { c, font, type, type Weight, type TypeScale } from '@theme/token';
 
 type Props = TextProps & {
   size?: TypeScale;

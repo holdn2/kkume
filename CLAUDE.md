@@ -8,8 +8,18 @@
 ```
 kkume/
 ├── app/                  React Native (Expo SDK 57)
+│   ├── app/              expo-router 라우트 — 여기가 라우팅의 뿌리다
+│   ├── src/              theme · components · features · shared
+│   └── assets/           폰트 · 이미지
 ├── server/               Spring Boot 3.x (Java 21)
 └── docs/discussions/     계획·설계 문서 — git 미추적, 로컬 전용
+```
+
+import는 상대 경로 대신 별칭을 쓴다. `tsconfig.json`의 `paths`만으로 동작하며
+`babel-plugin-module-resolver`는 필요 없다 (SDK 57의 Metro가 tsconfig를 읽는다).
+
+```
+@theme/token   @shared/ui/AppText   @components/Button   @features/record   @assets/...
 ```
 
 계획 문서는 `docs/discussions/`에 HTML로 남기고 git에 올리지 않는다.
@@ -54,7 +64,11 @@ PR과 이슈 본문은 `.github/`의 템플릿 구조를 그대로 따른다.
    새벽에는 네트워크가 없을 수 있고, 기록 유실은 이 앱에서 유일하게 용납되지 않는 실패다.
 2. **원본 오디오를 반드시 함께 보관한다.** STT가 틀려도 복원할 수 있어야 한다.
 3. **`record-modal`은 `(tabs)` 바깥에 둔다.** 탭바가 보이면 새벽에 결정을 유발한다.
-4. **hex는 `theme/token.ts`에만 쓴다.** 다른 파일에서 `#`이 보이면 잘못된 것이다.
+4. **hex는 `src/theme/token.ts`에만 쓴다.** 다른 파일에서 `#`이 보이면 잘못된 것이다.
+   **예외는 `app.json` 하나다** — 스플래시 배경과 Android 아이콘 배경은 네이티브 설정이라
+   TS를 import할 수 없다. `app.config.ts`로 바꾸면 토큰을 쓸 수 있지만,
+   **EAS가 위젯·컨트롤 익스텐션의 `appExtensions` 블록을 `.ts` 설정에는 써 넣지 못한다.**
+   그 자동 삽입이 익스텐션 크레덴셜을 성립시키므로 `app.json`을 유지한다.
 5. **청록(`c.running`)은 "진행 중"에만 쓴다.** 녹음 중 · 생성 중 · 미확인 기록.
    그 밖에 쓰면 새벽에 색으로 상태를 판단할 수 없게 된다.
 6. **AI 호출은 반드시 서버를 거친다.** 앱에 API 키를 넣지 않는다.
