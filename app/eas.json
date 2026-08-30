@@ -13,6 +13,9 @@
     "preview": {
       "developmentClient": false,
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_STORYBOOK_ENABLED": "false"
+      },
       "ios": { "resourceClass": "m-medium" },
       "android": { "buildType": "apk" }
     }
