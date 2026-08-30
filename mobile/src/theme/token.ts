@@ -39,6 +39,28 @@ export const c = {
   danger: palette.rose[400], // 삭제 · 신고 · 계정 삭제
 } as const;
 
+// ─── 반투명 틴트 ────────────────────────────────────────────────
+// 배지 배경 · 선택 상태 · 미세 경계선처럼 "역할색을 옅게 깐" 자리에 쓴다.
+// 컴포넌트 파일에 rgba를 직접 적으면 규칙 4번이 무너지므로 여기서만 만든다.
+// 값은 위 palette와 같은 색을 알파만 낮춘 것이다.
+export const tint = {
+  action: 'rgba(139,124,246,0.10)', // violet 400 — 선택된 카드
+  actionWeak: 'rgba(139,124,246,0.07)', // 강조된 목록 행
+  running: 'rgba(94,234,212,0.13)', // teal 300 — 진행 중 배지
+  warning: 'rgba(251,191,36,0.13)', // amber 400
+  danger: 'rgba(251,113,133,0.13)', // rose 400
+  hairline: 'rgba(255,255,255,0.05)', // 카드 테두리. line보다 약하다
+} as const;
+
+// 닉네임 해시로 배경색을 고정한다. 같은 사람은 항상 같은 색이 된다.
+export const avatarBg = [
+  palette.violet[400],
+  palette.teal[300],
+  palette.amber[400],
+  palette.rose[400],
+  palette.violet[300],
+] as const;
+
 // ─── 간격 · 형태 ────────────────────────────────────────────────
 export const sp = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 8: 32, 10: 40 } as const;
 export const r = { sm: 8, md: 12, lg: 16, xl: 24, full: 999 } as const;
