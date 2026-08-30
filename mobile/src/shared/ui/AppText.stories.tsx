@@ -2,11 +2,23 @@ import type { Meta, StoryObj } from '@storybook/react-native';
 import { View } from 'react-native';
 
 import { AppText } from './AppText';
-import { c, sp, type } from '@theme/token';
+import { c, font, sp, type } from '@theme/token';
 
 const meta = {
   title: 'shared/AppText',
   component: AppText,
+  // Controls는 TypeScript를 거치지 않는다. 자유 입력으로 두면
+  // 없는 스케일 이름이 들어와 type[size]가 undefined가 되고 그대로 크래시한다.
+  // 고를 수 있는 값만 주는 것이 맞다.
+  argTypes: {
+    size: { control: 'select', options: Object.keys(type) },
+    weight: { control: 'select', options: Object.keys(font) },
+    color: {
+      control: 'select',
+      options: [c.fg, c.fgMuted, c.fgFaint, c.fgDisabled, c.running, c.warning, c.danger],
+    },
+    tight: { control: 'boolean' },
+  },
   args: {
     children: '바다 위를 걷는 꿈을 꿨다',
     size: 'body',
@@ -19,7 +31,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Playground: Story = {};
 
-/** 여섯 단계가 서로 구분되는지 본다. 붙여 놓고 봐야 알 수 있다. */
+/** 여섯 단계가 서로 구분되는지 본다. label(15)과 body(16)는 붙여 놔야 구분된다. */
 export const Scale: Story = {
   render: () => (
     <View style={{ gap: sp[3] }}>
@@ -47,7 +59,7 @@ export const Weights: Story = {
   ),
 };
 
-/** 최소 밝기에서 fgFaint까지 읽히는지 확인하는 용도다. */
+/** 최소 밝기에서 fgFaint까지 읽히는지, fgDisabled가 확실히 꺼져 보이는지 확인한다. */
 export const Colors: Story = {
   render: () => (
     <View style={{ gap: sp[3] }}>

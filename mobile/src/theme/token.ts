@@ -8,7 +8,7 @@ const palette = {
   teal: { 300: '#5EEAD4' },
   amber: { 400: '#FBBF24' },
   rose: { 400: '#FB7185' },
-  fg: { 100: '#E8E4F0', 200: '#A9A3BF', 300: '#8079A0', 400: '#6E6889' },
+  fg: { 100: '#E8E4F0', 200: '#A9A3BF', 300: '#8079A0', 400: '#565064' },
 } as const;
 
 // ─── 2층: 역할. 화면에서는 이것만 쓴다 ──────────────────────────
@@ -25,7 +25,10 @@ export const c = {
   fg: palette.fg[100], // 본문
   fgMuted: palette.fg[200], // 보조 · 캡션
   fgFaint: palette.fg[300], // 메타 정보
-  fgDisabled: palette.fg[400], // 비활성 전용 (대비 요구 면제)
+  // 비활성 전용. WCAG 대비 요구가 면제되므로 배경 대비(2.55:1)보다
+  // fgFaint와의 구분(1.89:1)을 우선한다 — 처음 값 #6E6889는 fgFaint와
+  // 1.29:1이라 실기기에서 둘이 같아 보였다.
+  fgDisabled: palette.fg[400],
 
   // 역할색
   action: palette.violet[400], // 주요 액션 · 선택 상태 · 브랜드
