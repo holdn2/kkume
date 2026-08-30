@@ -7,9 +7,19 @@
 
 ```
 kkume/
-├── app/                  React Native (Expo SDK 57)
+├── mobile/               React Native (Expo SDK 57)
+│   ├── app/              expo-router 라우트 — 여기가 라우팅의 뿌리다
+│   ├── src/              theme · components · features · shared
+│   └── assets/           폰트 · 이미지
 ├── server/               Spring Boot 3.x (Java 21)
 └── docs/discussions/     계획·설계 문서 — git 미추적, 로컬 전용
+```
+
+import는 상대 경로 대신 별칭을 쓴다. `tsconfig.json`의 `paths`만으로 동작하며
+`babel-plugin-module-resolver`는 필요 없다 (SDK 57의 Metro가 tsconfig를 읽는다).
+
+```
+@theme/token   @shared/ui/AppText   @components/Button   @features/record   @assets/...
 ```
 
 계획 문서는 `docs/discussions/`에 HTML로 남기고 git에 올리지 않는다.
@@ -54,7 +64,11 @@ PR과 이슈 본문은 `.github/`의 템플릿 구조를 그대로 따른다.
    새벽에는 네트워크가 없을 수 있고, 기록 유실은 이 앱에서 유일하게 용납되지 않는 실패다.
 2. **원본 오디오를 반드시 함께 보관한다.** STT가 틀려도 복원할 수 있어야 한다.
 3. **`record-modal`은 `(tabs)` 바깥에 둔다.** 탭바가 보이면 새벽에 결정을 유발한다.
-4. **hex는 `theme/token.ts`에만 쓴다.** 다른 파일에서 `#`이 보이면 잘못된 것이다.
+4. **hex는 `src/theme/token.ts`에만 쓴다.** 다른 파일에서 `#`이 보이면 잘못된 것이다.
+   **예외는 `app.json` 하나다** — 스플래시 배경과 Android 아이콘 배경은 네이티브 설정이라
+   TS를 import할 수 없다. `app.config.ts`로 바꾸면 토큰을 쓸 수 있지만,
+   **EAS가 위젯·컨트롤 익스텐션의 `appExtensions` 블록을 `.ts` 설정에는 써 넣지 못한다.**
+   그 자동 삽입이 익스텐션 크레덴셜을 성립시키므로 `app.json`을 유지한다.
 5. **청록(`c.running`)은 "진행 중"에만 쓴다.** 녹음 중 · 생성 중 · 미확인 기록.
    그 밖에 쓰면 새벽에 색으로 상태를 판단할 수 없게 된다.
 6. **AI 호출은 반드시 서버를 거친다.** 앱에 API 키를 넣지 않는다.
@@ -89,6 +103,45 @@ lucide-react-native · @shopify/flash-list · @gorhom/bottom-sheet ·
 단, **진입점(위젯 · 알림) 검증은 release 빌드로 한다.** dev client 빌드는
 JS 번들을 Metro에서 받아오는데 **잠금 상태에서는 네트워크가 제한돼 앱이 그대로 죽는다.**
 새벽 진입은 대부분 콜드 스타트라 이 차이가 결과를 뒤집는다.
+
+## 빌드 예산 — 함부로 돌리지 않는다
+
+EAS 무료 플랜을 쓴다. **iOS · Android 각각 월 15회**가 전부다.
+12주 동안 진입점 검증 · 네이티브 모듈 추가 · 발표 시연용 빌드까지
+이 안에서 해결해야 하므로, **빌드를 지르기 전에 멈춘다.**
+
+### 재빌드가 필요한 경우는 이것뿐이다
+
+- `app.json`의 플러그인 · 권한 · 번들 ID · entitlements 변경
+- 새 네이티브 모듈 설치 (`expo install`로 들어오는 것 대부분)
+- 위젯 · 컨트롤 등 네이티브 타겟 추가
+- SDK 업그레이드
+
+**그 밖은 전부 재빌드가 필요 없다.** 화면 · 컴포넌트 · 스타일 · 로직 ·
+토큰 · 스토리북 스토리는 dev client + Metro로 즉시 반영된다.
+"혹시 몰라서" 다시 빌드하지 않는다.
+
+### 빌드 전에 반드시 돌리는 것
+
+둘 다 로컬에서 몇 십 초면 끝나고, **실제로 빌드 실패를 잡아낸 적이 있다.**
+
+```
+npx expo config --type introspect    # 플러그인 · entitlements · Info.plist 결과물
+npx expo export --platform ios       # JS 번들링 · 모듈 해석 오류
+```
+
+`storybook.requires.ts`가 EAS에서만 없어 빌드가 깨지는 것을
+`expo export`로 미리 잡았다. 그걸 몰랐으면 빌드 한 번을 날렸다.
+
+### 모아서 한 번에
+
+네이티브 변경이 여러 개 예상되면 **다 모은 뒤에 한 번 빌드한다.**
+하나 넣고 빌드, 또 하나 넣고 빌드를 반복하면 월 할당이 금방 사라진다.
+
+### 프로필 선택
+
+- **`development`** — 평소 개발용. 한 번 깔면 JS 변경을 계속 받는다
+- **`preview`** — 진입점 검증 전용. 잠금 상태 콜드 스타트는 이것으로만 판정된다
 
 UI 라이브러리는 쓰지 않는다. 공용 컴포넌트 12개를 직접 만든다.
 디자인이 강하게 커스텀이라 키트의 기본값을 거의 다 덮어쓰게 되기 때문이다.
