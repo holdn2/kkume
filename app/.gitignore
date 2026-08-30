@@ -41,3 +41,6 @@ example
 # generated native folders
 /ios
 /android
+
+# Storybook — metro 기동 시 생성된다
+.rnstorybook/storybook.requires.ts
