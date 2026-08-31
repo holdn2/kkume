@@ -1,3 +1,5 @@
+import { requireOptionalNativeModule } from 'expo-modules-core';
+
 import { LATEST_VERSION, MIGRATIONS } from './migrations';
 import {
   newId,
@@ -75,10 +77,20 @@ type Db = {
 };
 
 /**
- * `expo-sqlite`가 없으면 `null`을 돌려준다. 지연 require라 **여기서만 실패한다** —
- * 모듈 스코프에서 import하면 네이티브 모듈이 빠진 빌드에서 앱이 통째로 죽는다.
+ * 네이티브 모듈이 **이 빌드에** 들어 있는가.
+ *
+ * 처음에는 `require`를 try/catch로 감쌌는데 그걸로는 부족했다 —
+ * `expo-sqlite`는 모듈을 읽는 순간 `requireNativeModule('ExpoSQLite')`로 던지고,
+ * 그 예외가 콘솔에 빨간 ERROR로 남는다. 잡히든 안 잡히든 **검수하는 사람에게는
+ * 앱이 깨진 것처럼 보인다.** 아예 부르지 않는 편이 낫다.
+ *
+ * `requireOptionalNativeModule`은 없으면 null을 주므로 던지지 않고 물어볼 수 있다.
+ * 오디오 어댑터와 같은 방식이다.
  */
+export const HAS_NATIVE_SQLITE = requireOptionalNativeModule('ExpoSQLite') != null;
+
 export async function openSqlite(): Promise<Db | null> {
+  if (!HAS_NATIVE_SQLITE) return null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const SQLite = require('expo-sqlite');

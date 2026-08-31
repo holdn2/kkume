@@ -1,8 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { X } from 'lucide-react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 
-import { Input, Screen } from '@components';
+import { Input, Row, Screen } from '@components';
 import { Waveform } from '@features/record/Waveform';
 import { useRecorder } from '@shared/audio';
 import { getDreamRepo } from '@shared/db';
@@ -74,6 +75,13 @@ export default function RecordModal() {
     return () => clearTimeout(t);
   }, [text, resolved, dreamId]);
 
+  /**
+   * 끝내면 **꿈로그로 보낸다.** `back()`은 들어온 곳으로 돌려보내는데,
+   * 위젯으로 들어왔으면 돌아갈 곳이 없고 탭에서 들어왔으면 빠른기록으로 되돌아간다 —
+   * 방금 남긴 것이 어디 갔는지 알 수 없는 자리다. 목록은 저장됐다는 증거이기도 하다.
+   */
+  const leave = useCallback(() => router.replace('/log'), [router]);
+
   const finish = () => {
     void (async () => {
       try {
@@ -81,7 +89,7 @@ export default function RecordModal() {
         const repo = await getDreamRepo();
         await repo.create({ audioPath: out.uri, recordedAt: new Date().toISOString() });
         savedFeedback();
-        router.back();
+        leave();
       } catch (e) {
         // 다른 실패는 삼켜도 이건 아니다. 기록 유실은 이 앱에서 유일하게
         // 용납되지 않는 실패라(절대 규칙 1) 화면에 남긴다.
@@ -91,18 +99,55 @@ export default function RecordModal() {
     })();
   };
 
+  /** 적던 것을 그 자리에서 마저 저장하고 나간다. 기다리는 1.2초를 건너뛴다 */
+  const finishText = () => {
+    void (async () => {
+      try {
+        if (text.trim()) {
+          const repo = await getDreamRepo();
+          if (dreamId) await repo.update(dreamId, { text });
+          else await repo.create({ text });
+          savedFeedback();
+        }
+        leave();
+      } catch (e) {
+        setError(String(e));
+      }
+    })();
+  };
+
   if (resolved === 'text') {
     return (
       <Screen night>
-        <View style={s.textBody}>
-          <AppText size="title" weight="bold">
-            어떤 꿈이었나요
-          </AppText>
-          <Input multiline autoFocus value={text} onChangeText={setText} placeholder="기억나는 것부터" />
-          <AppText size="caption" color={error ? c.danger : c.fgFaint}>
-            {error ?? (saved ? '저장됨' : '나가면 저장됩니다')}
-          </AppText>
-        </View>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={s.textBody}>
+            <Row>
+              <AppText size="title" weight="bold" style={{ flex: 1 }}>
+                어떤 꿈이었나요
+              </AppText>
+              {/* 나갈 길이 하나는 있어야 한다. 전체화면 모달이라 쓸어내려 닫을 수도 없고,
+                  이건 "취소"가 아니라 "다 적었다"이므로 절대 규칙 7에 걸리지 않는다 */}
+              <Pressable
+                onPress={finishText}
+                hitSlop={16}
+                accessibilityRole="button"
+                accessibilityLabel="다 적었습니다">
+                <X size={26} strokeWidth={1.75} color={c.fgMuted} />
+              </Pressable>
+            </Row>
+
+            <Input multiline autoFocus value={text} onChangeText={setText} placeholder="기억나는 것부터" />
+
+            <AppText size="caption" color={error ? c.danger : c.fgFaint}>
+              {error ?? (saved ? '저장됨' : '나가면 저장됩니다')}
+            </AppText>
+
+            {/* 빈 자리를 누르면 키보드가 내려간다. 여러 줄 입력이라 엔터로는 못 내린다 */}
+            <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss} accessible={false} />
+          </View>
+        </KeyboardAvoidingView>
       </Screen>
     );
   }

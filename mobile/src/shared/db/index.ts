@@ -18,18 +18,28 @@ export function getDreamRepo(): Promise<DreamRepo> {
   if (repoPromise) return repoPromise;
 
   repoPromise = (async () => {
-    const db = await openSqlite();
-    if (db) {
-      const repo = createSqliteRepo(db);
-      await repo.init();
-      backend = 'sqlite';
-      return repo;
+    try {
+      const db = await openSqlite();
+      if (db) {
+        const repo = createSqliteRepo(db);
+        await repo.init();
+        backend = 'sqlite';
+        return repo;
+      }
+    } catch {
+      // SQLite를 열다 실패해도 기록을 못 받는 상태로 두지 않는다.
+      // 메모리라도 받아 두면 적어도 화면에는 남고, 사용자는 적은 것이 사라지지 않는다
     }
     const repo = createMemoryRepo();
     await repo.init();
     backend = 'memory';
     return repo;
-  })();
+  })().catch((e) => {
+    // **실패한 약속을 캐시에 남기면 앱이 살아 있는 동안 다시는 저장할 수 없다.**
+    // 한 번의 실패가 그 세션 전체의 기록을 막는다 — 새벽에는 그게 전부다
+    repoPromise = null;
+    throw e;
+  });
 
   return repoPromise;
 }
