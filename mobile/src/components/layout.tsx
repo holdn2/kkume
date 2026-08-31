@@ -1,11 +1,12 @@
 import { ScrollView, View, type ViewProps } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppText } from '@shared/ui/AppText';
 import { c, sp } from '@theme/token';
 
 /**
  * 화면 루트. StyleSheet의 유일한 약점이 화면마다 create 블록이 반복되는 것인데
- * 이 셋으로 대부분 없어진다.
+ * 이 넷으로 대부분 없어진다.
  *
  * `night`는 RM-1(새벽 기록 모달) 전용이다. 앱에서 가장 어두운 배경이고
  * 다른 화면에서 쓰면 깊이 단계가 무너진다.
@@ -18,7 +19,7 @@ export function Screen({
   ...rest
 }: ViewProps & { night?: boolean; scroll?: boolean }) {
   const inner = (
-    <View style={[{ flex: 1, paddingHorizontal: sp[5], gap: sp[3] }, style]} {...rest}>
+    <View style={[{ flex: 1, paddingHorizontal: sp[5], gap: sp[4] }, style]} {...rest}>
       {children}
     </View>
   );
@@ -29,6 +30,25 @@ export function Screen({
     </SafeAreaView>
   );
 }
+
+/**
+ * 화면 맨 위의 큰 제목. 두 줄까지 쓴다.
+ *
+ * 모든 화면이 같은 자리에서 같은 크기로 시작하는 것이 통일성의 대부분이다.
+ * 제목이 곧 그 화면의 질문이므로 문장으로 쓴다 — "제목" 말고 "어떤 꿈이었나요".
+ */
+export const Title = ({ children, sub }: { children: string; sub?: string }) => (
+  <View style={{ gap: sp[2], paddingTop: sp[4], paddingBottom: sp[2] }}>
+    <AppText size="title" weight="bold">
+      {children}
+    </AppText>
+    {!!sub && (
+      <AppText color={c.fgMuted}>
+        {sub}
+      </AppText>
+    )}
+  </View>
+);
 
 /** 가로 배치. 세로 가운데 정렬이 기본이다 */
 export const Row = ({ gap = sp[2], style, ...rest }: ViewProps & { gap?: number }) => (

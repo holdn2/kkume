@@ -2,9 +2,9 @@ import { ActivityIndicator, Pressable, StyleSheet, type ViewStyle } from 'react-
 
 import { tapFeedback } from '@shared/haptics';
 import { AppText } from '@shared/ui/AppText';
-import { c, hit, r, sp } from '@theme/token';
+import { c, hit, press, r, sp } from '@theme/token';
 
-type Variant = 'primary' | 'outline' | 'ghost' | 'danger';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'base' | 'sm';
 
 type Props = {
@@ -19,10 +19,16 @@ type Props = {
   style?: ViewStyle;
 };
 
-// danger는 채우지 않고 테두리로 그린다 — 새벽에 실수로 누르기 어렵게 하려는 의도다.
+/**
+ * 주 버튼은 흰 채움이고 알약이 아니다.
+ *
+ * 알약 버튼은 지금 어느 앱에나 있어서 그 자체로는 아무것도 말하지 않는다.
+ * 화면 폭을 채우는 사각 버튼은 "이 화면에서 할 일은 이것 하나"라고 말한다 —
+ * 새벽 결정 0개(절대 규칙 7)와 같은 방향이다.
+ */
 const FG: Record<Variant, string> = {
-  primary: c.actionFg, // 어두운 라벨. 흰색은 보라 위에서 3.33:1로 AA 미달이다
-  outline: c.fg,
+  primary: c.actionFg,
+  secondary: c.fg,
   ghost: c.fgMuted,
   danger: c.danger,
 };
@@ -54,8 +60,8 @@ export function Button({
         s.base,
         size === 'sm' && s.sm,
         s[variant],
-        pressed && !off && { opacity: 0.75 },
-        off && s.disabled,
+        off && s.off,
+        pressed && !off && { opacity: press },
         style,
       ]}>
       {loading ? (
@@ -70,18 +76,23 @@ export function Button({
 }
 
 const s = StyleSheet.create({
-  // 기본 높이가 48이 아니라 56인 이유는 새벽에 손이 정확하지 않기 때문이다
   base: {
     height: hit.base,
-    borderRadius: r.full,
+    borderRadius: r.control,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: sp[5],
   },
   sm: { height: hit.min, paddingHorizontal: sp[4] },
+
   primary: { backgroundColor: c.action },
-  outline: { borderWidth: 1, borderColor: c.line },
+  // 보조 버튼도 채운다. 테두리로 그리면 주/보조가 아니라 다른 종류로 읽힌다
+  secondary: { backgroundColor: c.surface },
   ghost: { backgroundColor: 'transparent' },
+  // danger만 테두리다. 새벽에 실수로 누르기 어렵게 하려는 의도이고,
+  // "채우지 않는다"가 여기서만 예외라서 오히려 눈에 걸린다
   danger: { borderWidth: 1, borderColor: c.danger },
-  disabled: { backgroundColor: c.field, borderColor: c.field },
+
+  // 비활성은 흐린 것이 아니라 꺼진 것이다. 채운 회색으로 확실히 죽인다
+  off: { backgroundColor: c.surface, borderWidth: 0 },
 });

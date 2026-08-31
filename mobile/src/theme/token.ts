@@ -1,86 +1,102 @@
-// 꾸메 디자인 토큰 · 다크 전용 · 팔레트 A(보라 + 청록)
-// 명세는 docs/discussions/005. 대비율은 WCAG 2.1 상대 휘도 공식으로 실측했다.
+/**
+ * 꾸메 디자인 토큰.
+ *
+ * 원칙 하나로 요약된다 — **UI는 무채색이고, 색이 보이면 그것은 상태다.**
+ * 근거와 레퍼런스 매핑은 docs/discussions/014.
+ */
 
-// ─── 1층: 원시값. hex는 여기에만 존재한다 ───────────────────────
-const palette = {
-  ink: { 950: '#07060E', 900: '#0B0A14', 800: '#14121F', 700: '#1E1B2E', 600: '#2A2640', 500: '#2B2740' },
-  violet: { 400: '#8B7CF6', 300: '#A48BFF' },
-  teal: { 300: '#5EEAD4' },
-  amber: { 400: '#FBBF24' },
-  rose: { 400: '#FB7185' },
-  fg: { 100: '#E8E4F0', 200: '#A9A3BF', 300: '#8079A0', 400: '#565064' },
+// ── 원색 ──────────────────────────────────────────────────────────
+// 깊이는 불투명 회색 단계로만 만든다. 반투명 tint를 겹치는 방식은 쓰지 않는다.
+// 최소 밝기에서 10~13% 알파는 배경과 구분되지 않는다.
+const gray = {
+  0: '#000000',
+  950: '#0B0B0E',
+  900: '#16161A',
+  800: '#212127',
+  700: '#2E2E36',
+  400: '#46464E',
+  300: '#6B6B75',
+  200: '#9A9AA3',
+  50: '#FAFAFA',
 } as const;
 
-// ─── 2층: 역할. 화면에서는 이것만 쓴다 ──────────────────────────
+// 상태색은 전경/배경이 짝으로 다닌다. 배경도 불투명이다.
+// 대비는 전부 bg(#0B0B0E) 위에서 잰 값이고 짝 배경 위에서도 AA를 넘는다.
+const state = {
+  running: '#4FD6C1', // 10.97:1
+  runningBg: '#0E3B36', // 그 위에서 6.90:1
+  warning: '#E8A33D', // 9.11:1
+  warningBg: '#3B2C10', // 6.27:1
+  danger: '#F0687A', // 6.52:1
+  dangerBg: '#3D1219', // 5.37:1
+} as const;
+
+// ── 역할색 ────────────────────────────────────────────────────────
 export const c = {
-  // 배경 (아래로 갈수록 위에 올라온다)
-  night: palette.ink[950], // RM-1 전용. 앱에서 가장 어두운 화면
-  bg: palette.ink[900], // 모든 탭 화면
-  surface: palette.ink[800], // 시트 · 보조 카드
-  card: palette.ink[700], // 꿈 카드 · 게시글 카드
-  field: palette.ink[600], // 입력창 · 비활성 버튼
-  line: palette.ink[500], // 경계선
+  // 배경
+  night: gray[0], // RM-1(새벽 기록) 전용. 순수 검정
+  bg: gray[950], // 앱 기본
+  surface: gray[900], // 카드 · 입력 · 시트
+  raised: gray[800], // surface 위에 올라가는 것 (세그먼트 선택 등)
+  line: gray[700], // 경계가 정말 필요한 곳에만
 
   // 전경
-  fg: palette.fg[100], // 본문
-  fgMuted: palette.fg[200], // 보조 · 캡션
-  fgFaint: palette.fg[300], // 메타 정보
-  // 비활성 전용. WCAG 대비 요구가 면제되므로 배경 대비(2.55:1)보다
-  // fgFaint와의 구분(1.89:1)을 우선한다 — 처음 값 #6E6889는 fgFaint와
-  // 1.29:1이라 실기기에서 둘이 같아 보였다.
-  fgDisabled: palette.fg[400],
+  fg: gray[50],
+  fgMuted: gray[200], // 7.04:1 — 보조 설명
+  fgFaint: gray[300], // 3.73:1 — 시각 · 메타
+  fgDisabled: gray[400], // 2.10:1 — 꺼진 것
 
-  // 역할색
-  action: palette.violet[400], // 주요 액션 · 선택 상태 · 브랜드
-  actionFg: palette.ink[900], // action 배경 위의 전경색 — 흰색은 3.33:1로 부족하다
-  running: palette.teal[300], // "진행 중"에만 — 녹음 · 생성 · 미확인
-  runningFg: palette.ink[950],
-  warning: palette.amber[400], // 오프라인 · 동기화 대기 · 확인 필요
-  danger: palette.rose[400], // 삭제 · 신고 · 계정 삭제
+  // 주 액션은 흰색이다.
+  // 새벽 최소 밝기에서 채도 높은 색은 눈을 때리고, 흰색은 대비가 가장 높으면서 그러지 않는다.
+  action: gray[50],
+  actionFg: gray[950],
+
+  running: state.running,
+  runningBg: state.runningBg,
+  warning: state.warning,
+  warningBg: state.warningBg,
+  danger: state.danger,
+  dangerBg: state.dangerBg,
 } as const;
 
-// ─── 반투명 틴트 ────────────────────────────────────────────────
-// 배지 배경 · 선택 상태 · 미세 경계선처럼 "역할색을 옅게 깐" 자리에 쓴다.
-// 컴포넌트 파일에 rgba를 직접 적으면 규칙 4번이 무너지므로 여기서만 만든다.
-// 값은 위 palette와 같은 색을 알파만 낮춘 것이다.
-export const tint = {
-  action: 'rgba(139,124,246,0.10)', // violet 400 — 선택된 카드
-  actionWeak: 'rgba(139,124,246,0.07)', // 강조된 목록 행
-  running: 'rgba(94,234,212,0.13)', // teal 300 — 진행 중 배지
-  warning: 'rgba(251,191,36,0.13)', // amber 400
-  danger: 'rgba(251,113,133,0.13)', // rose 400
-  hairline: 'rgba(255,255,255,0.05)', // 카드 테두리. line보다 약하다
-} as const;
+/** 아바타 배경. UI가 무채색이라 색이 사람을 구분하는 유일한 자리다 */
+export const avatarBg = ['#39496B', '#4A3A6B', '#2F5A52', '#6B4738', '#5A3A55'] as const;
 
-// 닉네임 해시로 배경색을 고정한다. 같은 사람은 항상 같은 색이 된다.
-export const avatarBg = [
-  palette.violet[400],
-  palette.teal[300],
-  palette.amber[400],
-  palette.rose[400],
-  palette.violet[300],
-] as const;
-
-// ─── 간격 · 형태 ────────────────────────────────────────────────
+// ── 치수 ──────────────────────────────────────────────────────────
 export const sp = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 8: 32, 10: 40 } as const;
-export const r = { sm: 8, md: 12, lg: 16, xl: 24, full: 999 } as const;
 
-// 터치 타깃 — 새벽에는 손이 정확하지 않다
+/**
+ * 반경은 크기가 아니라 **역할**로 고른다. 이름에 sm/md/lg를 쓰면
+ * 같은 화면에서 서로 관계없는 값이 섞여 언어가 무너진다.
+ *
+ * 알약(chip)은 작은 것에만 쓴다. 큰 버튼을 알약으로 만들면 그 순간 흔한 화면이 된다.
+ */
+export const r = {
+  chip: 999, // 뱃지 · 태그 · 세그먼트
+  control: 12, // 버튼 · 입력
+  surface: 16, // 카드
+  sheet: 20, // 바텀시트 상단
+} as const;
+
+/** 새벽에 손이 정확하지 않다. 그래서 48이 아니라 56이 기본이다 */
 export const hit = { min: 48, base: 56, stop: 80 } as const;
 
-// ─── 타이포: 크기와 행간을 짝으로 ───────────────────────────────
+/** 눌림 표현은 하나뿐이다. 컴포넌트마다 다른 값을 쓰면 그게 티가 난다 */
+export const press = 0.6;
+
+// ── 타이포 ────────────────────────────────────────────────────────
+// 큰 글자일수록 자간을 좁힌다. 제목이 화면을 이끄는 구조라 여기가 인상을 정한다.
 export const type = {
-  display: { fontSize: 32, lineHeight: 40 }, // 녹음 타이머
-  title: { fontSize: 24, lineHeight: 32 }, // 화면 제목
-  heading: { fontSize: 20, lineHeight: 28 }, // 섹션 · 꿈 제목
-  body: { fontSize: 16, lineHeight: 26 }, // 본문 — 꿈 텍스트는 행간을 넉넉히
-  label: { fontSize: 15, lineHeight: 22 }, // 버튼 · 탭
-  caption: { fontSize: 13, lineHeight: 18 }, // 날짜 · 메타
+  display: { fontSize: 32, lineHeight: 42, letterSpacing: -0.8 },
+  title: { fontSize: 24, lineHeight: 34, letterSpacing: -0.5 },
+  heading: { fontSize: 20, lineHeight: 28, letterSpacing: -0.3 },
+  body: { fontSize: 16, lineHeight: 26, letterSpacing: -0.1 },
+  label: { fontSize: 15, lineHeight: 22, letterSpacing: -0.1 },
+  caption: { fontSize: 13, lineHeight: 18, letterSpacing: 0 },
 } as const;
 
 // Pretendard는 굵기별 파일이 따로 있다. fontWeight로 굵기를 지정하면
-// Android에서 가짜 볼드로 뭉개지므로, fontFamily를 굵기로 매핑하고
-// fontWeight는 'normal'로 고정한다. AppText가 그 규칙을 강제한다.
+// Android가 가짜 볼드를 씌워 자소가 뭉개진다. AppText가 이걸 대신 매핑한다.
 export const font = {
   regular: 'Pretendard_400',
   medium: 'Pretendard_500',
@@ -88,12 +104,7 @@ export const font = {
   bold: 'Pretendard_700',
 } as const;
 
-// ─── 모션 ───────────────────────────────────────────────────────
-export const dur = {
-  none: 0, // RM-1 — 새벽의 대기 시간은 곧 이탈이다
-  fast: 150,
-  base: 200,
-} as const;
+export const dur = { none: 0, fast: 150, base: 200 } as const;
 
 export type Color = keyof typeof c;
 export type TypeScale = keyof typeof type;

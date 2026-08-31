@@ -47,7 +47,7 @@ const s = StyleSheet.create({
   gap: { height: sp[4] },
   link: {
     backgroundColor: c.action,
-    borderRadius: r.full,
+    borderRadius: r.control,
     paddingVertical: sp[4],
     paddingHorizontal: sp[5],
     textAlign: 'center',
