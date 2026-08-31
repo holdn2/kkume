@@ -12,6 +12,8 @@ const CLOSE_DY = 90;
 /** 짧게 튕겨도 닫히도록 — 거리를 못 채워도 속도가 빠르면 닫을 뜻이다 */
 const CLOSE_VY = 0.8;
 
+const SPRING = { useNativeDriver: false, damping: 32, stiffness: 300, mass: 0.9 } as const;
+
 type Props = {
   visible: boolean;
   onClose: () => void;
@@ -26,56 +28,71 @@ type Props = {
  * 확인할 수 없었고(`expo-haptics`가 같은 함정에 빠졌다), 틀렸을 때 그쪽은 앱이 죽는다.
  * props를 `visible`/`onClose`로만 잡아 나중에 내부만 갈아끼울 수 있게 했다.
  *
- * **마운트는 `Modal`에게 맡긴다.** 직접 들고 있으려다 한 번 크게 틀렸다 —
- * 닫혀 있는 동안 `Animated.Value`에 네이티브 드라이버 애니메이션을 걸어 두면
- * 값이 붙을 뷰가 없는 상태로 네이티브에 등록되고, 나중에 뷰가 생겨도 그 값이
- * 뷰를 움직이지 못한다. 시트가 화면 밖에 멈춘 채 **투명한 오버레이만 화면을 덮어**
- * 그 뒤로는 무엇을 눌러도 반응이 없는 것처럼 보였다.
+ * **닫기는 항상 한 길로 간다.** 오버레이든 손잡이든 시트 안의 버튼이든 전부
+ * 부모의 `visible`을 내리고, 그다음 몸통이 내려가는 애니메이션을 끝낸 뒤 사라진다.
+ * 내부에만 있는 닫기 경로를 따로 두면 시트 안 버튼으로 닫을 때만 애니메이션이 빠진다.
  *
- * 그래서 몸통을 따로 뺐다. `SheetBody`는 열릴 때마다 새로 마운트되고,
- * `Animated.Value`도 그때 처음 만들어진다. 붙을 뷰가 없는 시점이 아예 없다.
+ * **`Animated.Value`는 몸통 안에서 만든다.** 바깥에 두면 닫혀 있는 동안 —
+ * 붙을 뷰가 하나도 없는 상태에서 — 네이티브에 등록돼 버리고, 나중에 뷰가 생겨도
+ * 그 값이 뷰를 움직이지 못한다.
  */
 export function Sheet({ visible, onClose, title, description, children }: Props) {
+  const [showing, setShowing] = useState(visible);
+  const [prevVisible, setPrevVisible] = useState(visible);
+
+  // 여는 것은 렌더 단계에서 결정한다. effect에서 하면 한 프레임 늦게 붙어 깜빡인다.
+  // 닫는 것은 반대로 애니메이션이 끝나야 알 수 있어 몸통이 알려준다.
+  if (prevVisible !== visible) {
+    setPrevVisible(visible);
+    if (visible) setShowing(true);
+  }
+
+  const handleExited = useCallback(() => setShowing(false), []);
+
   return (
     <Modal
-      visible={visible}
+      visible={showing}
       transparent
       animationType="none"
       onRequestClose={onClose}
       statusBarTranslucent>
-      <SheetBody onClose={onClose} title={title} description={description}>
-        {children}
-      </SheetBody>
+      {showing && (
+        <SheetBody
+          closing={!visible}
+          onExited={handleExited}
+          onClose={onClose}
+          title={title}
+          description={description}>
+          {children}
+        </SheetBody>
+      )}
     </Modal>
   );
 }
 
-function SheetBody({ onClose, title, description, children }: Omit<Props, 'visible'>) {
+type BodyProps = Omit<Props, 'visible'> & { closing: boolean; onExited: () => void };
+
+function SheetBody({ closing, onExited, onClose, title, description, children }: BodyProps) {
   const insets = useSafeAreaInsets();
   const [y] = useState(() => new Animated.Value(HIDDEN));
 
   useEffect(() => {
-    Animated.spring(y, {
-      toValue: 0,
-      useNativeDriver: true,
-      damping: 32,
-      stiffness: 300,
-      mass: 0.9,
-    }).start();
-  }, [y]);
-
-  /** 내려가는 것을 보여준 다음에 닫는다. 바로 사라지면 어디로 갔는지 알 수 없다 */
-  const close = useCallback(() => {
-    Animated.timing(y, { toValue: HIDDEN, duration: dur.base, useNativeDriver: true }).start(
-      ({ finished }) => {
-        if (finished) onClose();
-      },
-    );
-  }, [y, onClose]);
+    if (closing) {
+      // 지금 있는 자리에서 이어서 내려간다. 끌다가 놓은 경우에도 끊기지 않는다
+      Animated.timing(y, { toValue: HIDDEN, duration: dur.base, useNativeDriver: false }).start(
+        ({ finished }) => {
+          if (finished) onExited();
+        },
+      );
+      return;
+    }
+    Animated.spring(y, { toValue: 0, ...SPRING }).start();
+  }, [closing, y, onExited]);
 
   const pan = useMemo(
     () =>
       PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: (_, g) => g.dy > 3,
         onPanResponderMove: (_, g) => {
           // 위로는 끌리지 않는다. 확장이 아직 없는데 늘어나면 시트가 찢어져 보인다
@@ -83,19 +100,13 @@ function SheetBody({ onClose, title, description, children }: Omit<Props, 'visib
         },
         onPanResponderRelease: (_, g) => {
           if (g.dy > CLOSE_DY || g.vy > CLOSE_VY) {
-            close();
+            onClose();
             return;
           }
-          Animated.spring(y, {
-            toValue: 0,
-            useNativeDriver: true,
-            damping: 32,
-            stiffness: 300,
-            mass: 0.9,
-          }).start();
+          Animated.spring(y, { toValue: 0, ...SPRING }).start();
         },
       }),
-    [y, close],
+    [y, onClose],
   );
 
   return (
@@ -104,7 +115,7 @@ function SheetBody({ onClose, title, description, children }: Omit<Props, 'visib
           "지금 이건 결정 화면"이라는 것이 먼저 전달된다 */}
       <Pressable
         style={[s.fill, { backgroundColor: c.scrim }]}
-        onPress={close}
+        onPress={onClose}
         accessibilityRole="button"
         accessibilityLabel="닫기"
       />
@@ -142,6 +153,6 @@ const s = StyleSheet.create({
     gap: sp[3],
   },
   // 손잡이 자체는 작지만 잡는 자리는 넓게 준다. 새벽에 4px을 조준할 수는 없다
-  gripArea: { height: 32, alignItems: 'center', justifyContent: 'center', marginHorizontal: -sp[5] },
+  gripArea: { height: 40, alignItems: 'center', justifyContent: 'center', marginHorizontal: -sp[5] },
   grip: { width: 36, height: 4, borderRadius: r.chip, backgroundColor: c.line },
 });
