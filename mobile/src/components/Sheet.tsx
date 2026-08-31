@@ -92,8 +92,13 @@ function SheetBody({ closing, onExited, onClose, title, description, children }:
   const pan = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_, g) => g.dy > 3,
+        // 닫히는 중에는 손잡이를 받지 않는다. 받으면 아래 setValue가 닫기 애니메이션을
+        // 멈추고(AnimatedValue.setValue는 진행 중인 애니메이션을 stop한다),
+        // 완료 콜백이 finished: false로 돌아와 onExited가 불리지 않는다.
+        // 그러면 showing이 true로 남고 closing도 그대로라 effect가 다시 돌지 않아
+        // **시트가 화면에 갇힌다.** 스크림을 눌러도 부모의 visible은 이미 false다.
+        onStartShouldSetPanResponder: () => !closing,
+        onMoveShouldSetPanResponder: (_, g) => !closing && g.dy > 3,
         onPanResponderMove: (_, g) => {
           // 위로는 끌리지 않는다. 확장이 아직 없는데 늘어나면 시트가 찢어져 보인다
           y.setValue(Math.max(0, g.dy));
@@ -106,7 +111,7 @@ function SheetBody({ closing, onExited, onClose, title, description, children }:
           Animated.spring(y, { toValue: 0, ...SPRING }).start();
         },
       }),
-    [y, onClose],
+    [y, onClose, closing],
   );
 
   return (
