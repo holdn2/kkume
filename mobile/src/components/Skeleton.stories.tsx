@@ -10,6 +10,8 @@ import { c, sp } from '@theme/token';
 const meta = {
   title: 'components/Skeleton',
   component: Skeleton,
+  // width는 DimensionValue라 유니온으로 못 묶는다. 자유 입력이 불가피한 자리다
+  argTypes: { circle: { control: 'boolean' }, height: { control: 'number' } },
   args: { width: '100%', height: 16 },
 } satisfies Meta<typeof Skeleton>;
 

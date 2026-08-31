@@ -11,6 +11,8 @@ import { c, sp } from '@theme/token';
 const meta = {
   title: 'components/Sheet',
   component: Sheet,
+  // Controls용이 아니다. 아래 스토리들이 args를 받지 않아 패널은 뜨지 않는다.
+  // `satisfies Meta`가 필수 prop의 기본값을 요구해서 남겨 둔 것이니 지우지 말 것.
   args: { visible: false, onClose: () => {} },
 } satisfies Meta<typeof Sheet>;
 
