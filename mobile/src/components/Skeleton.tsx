@@ -40,7 +40,10 @@ export function Skeleton({ width = '100%', height = 16, circle, radius }: Props)
       importantForAccessibility="no-hide-descendants"
       style={[
         size,
-        { backgroundColor: c.surface, borderRadius: circle ? r.chip : (radius ?? r.control), opacity: o },
+        // surface가 아니라 raised다. 카드(`surface`) 안에 놓이는 일이 많은데
+        // 같은 색이면 아무리 밝기를 흔들어도 보이지 않는다. raised는 bg 위에서도,
+        // surface 위에서도 뜬다.
+        { backgroundColor: c.raised, borderRadius: circle ? r.chip : (radius ?? r.control), opacity: o },
       ]}
     />
   );

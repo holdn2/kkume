@@ -34,8 +34,10 @@ export function Switch({ value, onChange, label, description, disabled }: Props)
     Animated.timing(x, { toValue: value ? 1 : 0, duration: dur.fast, useNativeDriver: true }).start();
   }, [value, x]);
 
-  const track = disabled ? c.surface : value ? c.action : c.raised;
-  const thumb = disabled ? c.fgDisabled : value ? c.bg : c.fgMuted;
+  // 비활성이라고 켜짐·꺼짐을 같은 모양으로 그리면 "지금 켜져 있는지"를 알 수 없다.
+  // **관계는 그대로 두고 대비만 낮춘다** — 켜짐은 여전히 밝은 트랙에 어두운 손잡이다.
+  const track = disabled ? (value ? c.fgFaint : c.surface) : value ? c.action : c.raised;
+  const thumb = disabled ? (value ? c.surface : c.fgDisabled) : value ? c.bg : c.fgMuted;
 
   const knob = (
     <View style={[s.track, { backgroundColor: track }]}>
