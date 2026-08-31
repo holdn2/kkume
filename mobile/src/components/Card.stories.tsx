@@ -5,7 +5,7 @@ import { Badge } from './Badge';
 import { Card } from './Card';
 import { Row, Stack } from './layout';
 import { AppText } from '@shared/ui/AppText';
-import { c, r, sp } from '@theme/token';
+import { avatarBg, c, r, sp } from '@theme/token';
 
 const meta = {
   title: 'components/Card',
@@ -90,7 +90,8 @@ export const 만화카드: Story = {
   render: () => (
     <Card onPress={() => {}} style={{ padding: 0, overflow: 'hidden' }}>
       <View style={{ flexDirection: 'row', height: 120 }}>
-        {['#39496B', '#4A3A6B', '#2F5A52', '#6B4738'].map((bg) => (
+        {/* 만화 자리를 대신하는 색 띠다. hex를 직접 쓰지 않으려고 avatarBg를 빌려 쓴다 */}
+        {avatarBg.slice(0, 4).map((bg) => (
           <View key={bg} style={{ flex: 1, backgroundColor: bg }} />
         ))}
       </View>
