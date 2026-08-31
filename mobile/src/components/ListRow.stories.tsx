@@ -24,13 +24,13 @@ export const Playground: Story = {};
 /** 마이페이지에 실제로 놓일 모양. 최소 높이 48이 지켜지는지 본다. */
 export const 설정목록: Story = {
   render: () => (
-    <View style={{ gap: sp[1] }}>
+    <View style={{ gap: sp[3] }}>
       <ListRow icon={Clock} label="기상 시각" value="07:00" onPress={() => {}} />
       <ListRow icon={Bell} label="알림" value="켜짐" onPress={() => {}} />
       <ListRow icon={UserRound} label="프로필" onPress={() => {}} />
-      <View style={{ height: sp[3] }} />
+      <View style={{ height: sp[5] }} />
       <ListRow icon={LayoutGrid} label="잠금화면 위젯 설치" onPress={() => {}} highlight />
-      <View style={{ height: sp[3] }} />
+      <View style={{ height: sp[5] }} />
       <ListRow icon={Trash2} label="계정 삭제" onPress={() => {}} danger />
     </View>
   ),
@@ -42,7 +42,7 @@ export const 설정목록: Story = {
  */
 export const 꿈목록: Story = {
   render: () => (
-    <View style={{ gap: sp[1] }}>
+    <View style={{ gap: sp[3] }}>
       {[
         ['바다 위를 걷는 꿈', '파도 소리가 계속 들렸고 발이 안 젖었다', '05:12'],
         ['이빨이 빠지는 꿈', '거울을 보는데 앞니가 하나씩', '06:40'],
@@ -59,7 +59,7 @@ export const 꿈목록: Story = {
 
 export const 누를수없는행: Story = {
   render: () => (
-    <View style={{ gap: sp[2] }}>
+    <View style={{ gap: sp[3] }}>
       <ListRow icon={Clock} label="앱 버전" value="1.0.0" />
       <ListRow icon={Bell} label="누를 수 있는 행" value="1.0.0" onPress={() => {}} />
       <AppText size="caption" color={c.fgFaint}>

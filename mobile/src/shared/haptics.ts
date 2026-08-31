@@ -7,7 +7,7 @@
  * 그때까지는 햅틱이 조용히 안 울릴 뿐이고, 그 사이에 앱이 멈추지는 않는다.
  * 재빌드 이후에는 코드를 고치지 않아도 저절로 동작한다.
  */
-let impact: ((style: unknown) => void) | null | undefined;
+let impact: (() => Promise<unknown>) | null | undefined;
 
 export function tapFeedback() {
   if (impact === null) return; // 이미 없다고 확인된 경우
@@ -22,8 +22,13 @@ export function tapFeedback() {
     }
   }
   try {
-    impact?.(undefined);
+    // impactAsync는 Promise를 돌려준다. 네이티브 모듈이 빠진 빌드에서는
+    // 동기 throw가 아니라 **rejection**으로 실패하므로 try/catch로는 못 잡는다.
+    // catch를 안 붙이면 버튼을 누를 때마다 "Uncaught (in promise)"가 뜬다.
+    void impact?.()?.catch(() => {
+      impact = null; // 한 번 실패하면 다시 시도하지 않는다
+    });
   } catch {
-    // 햅틱 실패로 액션을 막지 않는다
+    impact = null;
   }
 }

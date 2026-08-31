@@ -27,6 +27,9 @@ type Props = {
  *
  * 어두운 화면에서 구분선은 두 가지 중 하나가 된다 — 안 보이거나, 줄무늬가 되거나.
  * 목록이 길어질수록 후자가 되고, 그때 화면은 읽는 것이 아니라 훑는 것이 된다.
+ *
+ * 대신 **행 사이 간격은 `sp[3]`(12) 이상**을 준다. 선이 없으니 간격이 곧 경계이고,
+ * 새벽에 옆 행을 잘못 누르는 것을 막는 것도 이 간격이다.
  */
 export function ListRow({
   icon: Icon,
@@ -59,7 +62,7 @@ export function ListRow({
         </AppText>
       )}
       {/* 화살표는 "누를 수 있다"는 유일한 신호다. onPress가 없으면 그리지 않는다 */}
-      {!!onPress && <ChevronRight size={18} strokeWidth={1.75} color={c.fgDisabled} />}
+      {!!onPress && <ChevronRight size={18} strokeWidth={1.75} color={c.fgFaint} />}
     </>
   );
 

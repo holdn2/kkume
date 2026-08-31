@@ -65,7 +65,9 @@ export function Button({
         style,
       ]}>
       {loading ? (
-        <ActivityIndicator color={variant === 'primary' ? c.actionFg : c.fgMuted} />
+        // 로딩은 variant와 무관하게 항상 s.off(어두운 채움) 위에 그려진다.
+        // variant로 색을 고르면 primary일 때 어두운 스피너가 어두운 배경에 묻힌다.
+        <ActivityIndicator color={c.fg} />
       ) : (
         <AppText size="label" weight="semibold" color={off ? c.fgDisabled : FG[variant]}>
           {label}

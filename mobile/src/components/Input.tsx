@@ -62,7 +62,7 @@ export function Input({
         }}
         style={[
           s.base,
-          multiline && s.multiline,
+          multiline ? s.multiline : s.single,
           focused && { borderColor: c.action },
           // 에러가 포커스를 이긴다. 고쳐야 할 것이 우선이다
           !!error && { borderColor: c.danger },
@@ -91,18 +91,28 @@ export function Input({
 
 const s = StyleSheet.create({
   base: {
-    minHeight: hit.base,
     backgroundColor: c.surface,
     borderRadius: r.control,
     // 평소에도 테두리를 두되 투명하게 둔다. 포커스 때 레이아웃이 밀리지 않는다
     borderWidth: 1.5,
     borderColor: 'transparent',
     paddingHorizontal: sp[4],
-    paddingVertical: sp[3],
     color: c.fg,
     fontFamily: font.regular,
     fontSize: ty.body.fontSize,
-    lineHeight: ty.body.lineHeight,
+    letterSpacing: ty.body.letterSpacing,
   },
-  multiline: { minHeight: 140, textAlignVertical: 'top' },
+  /**
+   * 한 줄 입력에는 `lineHeight`를 주지 않는다.
+   * iOS의 TextInput은 lineHeight가 있으면 글자를 상자 아래쪽에 붙여 그린다.
+   * 높이를 고정하고 세로 패딩을 0으로 두면 시스템이 알아서 가운데로 맞춘다.
+   */
+  single: { height: hit.base, paddingVertical: 0 },
+  // 여러 줄에서는 반대로 lineHeight가 있어야 문단이 읽힌다
+  multiline: {
+    minHeight: 140,
+    paddingVertical: sp[3],
+    lineHeight: ty.body.lineHeight,
+    textAlignVertical: 'top',
+  },
 });
