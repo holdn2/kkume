@@ -29,6 +29,7 @@ export function AppText({ style, size = 'body', weight = 'regular', color = c.fg
           fontWeight: 'normal',
           fontSize: scale.fontSize,
           lineHeight: tight ? undefined : scale.lineHeight,
+          letterSpacing: scale.letterSpacing,
           color,
         } as TextStyle,
         style,
