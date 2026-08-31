@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
-import { AppText } from '@shared/ui/AppText';
-import { Row, Spacer } from './layout';
+import { AppText } from '@shared/ui';
 import { c, font, hit, r, sp, type as ty } from '@theme/token';
+
+import { Row, Spacer } from './layout';
 
 type Props = TextInputProps & {
   /** 위에 붙는 작은 라벨. 폼에서는 거의 항상 준다 */

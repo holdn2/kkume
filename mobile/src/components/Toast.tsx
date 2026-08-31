@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText } from '@shared/ui/AppText';
+import { AppText } from '@shared/ui';
 import { c, dur, r, sp } from '@theme/token';
 
 type Tone = 'neutral' | 'running' | 'danger';

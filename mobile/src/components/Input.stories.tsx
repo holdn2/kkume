@@ -2,10 +2,11 @@ import type { Meta, StoryObj } from '@storybook/react-native';
 import { Check } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 
+import { AppText } from '@shared/ui';
+import { c, sp } from '@theme/token';
+
 import { Input } from './Input';
 import { Row, Spacer, Stack, Title } from './layout';
-import { AppText } from '@shared/ui/AppText';
-import { c, sp } from '@theme/token';
 
 const meta = {
   title: 'components/Input',

@@ -1,6 +1,6 @@
 import { Image, StyleSheet, View, type ImageSourcePropType } from 'react-native';
 
-import { AppText } from '@shared/ui/AppText';
+import { AppText } from '@shared/ui';
 import { avatarBg, r } from '@theme/token';
 
 type Size = 'sm' | 'base' | 'lg';

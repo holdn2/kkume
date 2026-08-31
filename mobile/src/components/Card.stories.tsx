@@ -1,11 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-native';
 import { View } from 'react-native';
 
+import { AppText } from '@shared/ui';
+import { avatarBg, c, r, sp } from '@theme/token';
+
 import { Badge } from './Badge';
 import { Card } from './Card';
 import { Row, Stack } from './layout';
-import { AppText } from '@shared/ui/AppText';
-import { avatarBg, c, r, sp } from '@theme/token';
 
 const meta = {
   title: 'components/Card',

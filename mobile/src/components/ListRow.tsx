@@ -2,7 +2,7 @@ import { ChevronRight } from 'lucide-react-native';
 import type { ComponentType } from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { AppText } from '@shared/ui/AppText';
+import { AppText } from '@shared/ui';
 import { c, hit, press, r, sp } from '@theme/token';
 
 type IconProps = { size?: number; strokeWidth?: number; color?: string };

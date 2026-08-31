@@ -1,10 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-native';
 import { useEffect, useState } from 'react';
 
+import { AppText } from '@shared/ui';
+import { c, sp } from '@theme/token';
+
 import { Segmented } from './Segmented';
 import { Stack } from './layout';
-import { AppText } from '@shared/ui/AppText';
-import { c, sp } from '@theme/token';
 
 const meta = {
   title: 'components/Segmented',

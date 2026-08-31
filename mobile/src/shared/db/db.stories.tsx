@@ -2,13 +2,11 @@ import type { Meta, StoryObj } from '@storybook/react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 
-import { getDreamRepo, storageBackend, syncStateOf, type Dream } from './index';
-import { Badge } from '@components/Badge';
-import { Button } from '@components/Button';
-import { Card } from '@components/Card';
-import { Row, Stack } from '@components/layout';
-import { AppText } from '@shared/ui/AppText';
+import { Badge, Button, Card, Row, Stack } from '@components';
+import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
+
+import { getDreamRepo, storageBackend, syncStateOf, type Dream } from './index';
 
 const meta = { title: 'shared/저장소' } satisfies Meta;
 

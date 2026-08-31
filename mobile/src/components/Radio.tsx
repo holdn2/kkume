@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { tapFeedback } from '@shared/haptics';
-import { AppText } from '@shared/ui/AppText';
+import { AppText } from '@shared/ui';
 import { c, hit, press, r, sp } from '@theme/token';
 
 type Props = {

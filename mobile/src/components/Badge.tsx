@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
-import { AppText } from '@shared/ui/AppText';
+import { AppText } from '@shared/ui';
 import { c, r, sp } from '@theme/token';
 
 // running은 "진행 중"에만 쓴다 — 녹음 중 · 생성 중 · 미확인 기록 (절대 규칙 5번).
