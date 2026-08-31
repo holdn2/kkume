@@ -51,6 +51,10 @@ export const c = {
   action: gray[50],
   actionFg: gray[950],
 
+  // 반투명을 쓰는 유일한 자리다. 스크림은 뒤를 **가리는 것**이 목적이라
+  // 불투명 회색으로 대신할 수 없다. 깊이를 만들려고 알파를 겹치던 것과는 다른 용도다.
+  scrim: 'rgba(0, 0, 0, 0.6)',
+
   running: state.running,
   runningBg: state.runningBg,
   warning: state.warning,
