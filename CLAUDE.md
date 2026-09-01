@@ -103,6 +103,21 @@ PR과 이슈 본문은 `.github/`의 템플릿 구조를 그대로 따른다.
    같은 이유로 `reload()`만으로는 안 그려진다 — props가 없는 위젯이어도
    `updateSnapshot({})`을 최초 1회 불러야 한다.
 
+10. **네이티브 모듈은 있는지 먼저 물어보고 쓴다.**
+    `package.json`에 있는 것과 **지금 폰에 깔린 빌드에 들어 있는 것은 다르다.**
+    `expo-haptics`·`expo-sqlite`·`expo-audio`가 전부 이 차이에서 물렸다.
+    ```ts
+    const HAS = requireOptionalNativeModule('ExpoSQLite') != null;
+    ```
+    **`try/catch`로 감싸는 것으로는 부족하다.** 모듈을 읽는 순간 던지고
+    그 예외가 **콘솔에 빨간 ERROR로 남아** 검수하는 쪽에는 앱이 깨진 것처럼 보인다.
+    없으면 **아예 부르지 않는다.**
+    같은 인터페이스의 대체 구현(메모리 저장소 · 가짜 녹음기)을 두면
+    네이티브가 붙기 전에도 화면과 흐름을 검증할 수 있다 — 빌드가 월 15회뿐이라
+    빌드 한 번에 확인할 것을 쌓아 두지 않는 것이 중요하다.
+    **비동기 실패도 잡아야 한다.** `impactAsync`처럼 Promise를 돌려주는 것은
+    동기 `try/catch`에 안 걸리고 `Uncaught (in promise)`로 샌다.
+
 ## 기술 스택
 
 **앱** — Expo SDK 57 · expo-router(NativeTabs) · TypeScript · StyleSheet + 토큰 ·
