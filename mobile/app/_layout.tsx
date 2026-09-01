@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
+import { ensureWidgetSnapshot } from '@features/widget';
 import { c } from '@theme/token';
 
 SplashScreen.preventAutoHideAsync();
@@ -19,6 +20,14 @@ const FONTS = {
 
 export default function RootLayout() {
   const [loaded, error] = useFonts(FONTS);
+
+  // 위젯은 타임라인이 비어 있으면 아무것도 안 그린다. props가 없는 위젯이어도
+  // updateSnapshot을 최초 1회 불러야 하고(절대 규칙 9), 그러지 않으면
+  // 사용자에게는 "위젯을 추가했는데 빈 칸"으로 보인다.
+  // 위젯이 없는 빌드에서는 안에서 그대로 돌아 나온다.
+  useEffect(() => {
+    ensureWidgetSnapshot();
+  }, []);
 
   useEffect(() => {
     // 폰트 로딩이 실패해도 스플래시에 갇히면 안 된다.
