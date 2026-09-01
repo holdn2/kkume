@@ -24,6 +24,8 @@ export default function MyScreen() {
           개발용
         </AppText>
         <ListRow label="스토리북 열기" onPress={() => router.push('/storybook')} />
+        {/* 스토리북은 preview 빌드에서 꺼진다. 정작 판정이 필요한 빌드라 진단은 따로 둔다 */}
+        <ListRow label="빌드 진단" onPress={() => router.push('/diag')} />
       </Stack>
 
       <AppText size="caption" color={c.fgFaint}>

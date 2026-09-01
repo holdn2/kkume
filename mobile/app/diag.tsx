@@ -1,0 +1,152 @@
+import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+
+import { Badge, Button, Card, Row, Screen, Stack, Title } from '@components';
+import { audioBackend, mmss } from '@shared/audio';
+import { getDreamRepo, storageBackend, type Dream } from '@shared/db';
+import { AppText } from '@shared/ui';
+import { c, sp } from '@theme/token';
+import { ensureWidgetSnapshot, widgetBackend } from '@features/widget';
+
+/**
+ * 빌드 진단 화면.
+ *
+ * **스토리북과 내용이 겹치지만 일부러 따로 만든다.** `preview` 프로필은
+ * `EXPO_PUBLIC_STORYBOOK_ENABLED=false`로 스토리북을 통째로 끄기 때문에,
+ * 정작 판정이 필요한 그 빌드에서 검수 스토리를 열 수 없다.
+ *
+ * 스토리북을 `preview`에서도 켜면 되지 않느냐면 — **번들이 2.4MB에서 7.1MB로 불어난다.**
+ * 이 빌드로 재려는 것이 잠금화면 콜드 스타트라, 그 무게가 측정 대상을 오염시킨다.
+ * 이 화면은 몇 KB다.
+ */
+export default function DiagScreen() {
+  const router = useRouter();
+  const [rows, setRows] = useState<Dream[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [storage, setStorage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const repo = await getDreamRepo();
+    return { list: await repo.list({ limit: 10 }), storage: storageBackend() };
+  }, []);
+
+  // 상태를 effect 안에서 곧바로 바꾸지 않고 **약속이 끝난 뒤 콜백에서** 바꾼다.
+  // 곧장 바꾸면 렌더가 연쇄로 돌고, 새 훅 규칙(react-hooks/set-state-in-effect)이 막는다
+  const refresh = useCallback(() => {
+    load()
+      .then(({ list, storage }) => {
+        setRows(list);
+        setStorage(storage);
+        setErr(null);
+      })
+      .catch((e) => setErr(String(e)));
+  }, [load]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  /**
+   * `duration_ms`에 값을 넣어 왕복시킨다. **마이그레이션 v2가 안 돌았으면
+   * 여기서 `no such column: duration_ms`로 실패해 아래 빨간 줄에 그대로 뜬다.**
+   */
+  const probe = () => {
+    void (async () => {
+      setBusy(true);
+      try {
+        const repo = await getDreamRepo();
+        await repo.create({
+          text: '진단용 기록',
+          audioPath: 'file:///진단용-가짜-경로.m4a',
+          durationMs: 12_000,
+        });
+        refresh();
+      } catch (e) {
+        setErr(String(e));
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+
+  return (
+    <Screen scroll>
+      <Title sub="preview 빌드에서 네이티브가 실제로 붙었는지 본다">빌드 진단</Title>
+
+      <Stack gap={sp[3]}>
+        <Row>
+          <AppText size="label" style={{ flex: 1 }}>
+            저장
+          </AppText>
+          {storage === 'sqlite' ? (
+            <Badge label="SQLite" tone="neutral" />
+          ) : (
+            <Badge label="메모리 — 끄면 사라짐" tone="warning" />
+          )}
+        </Row>
+        <Row>
+          <AppText size="label" style={{ flex: 1 }}>
+            녹음
+          </AppText>
+          {audioBackend() === 'expo-audio' ? (
+            <Badge label="expo-audio" tone="neutral" />
+          ) : (
+            <Badge label="가짜 — 마이크 안 씀" tone="warning" />
+          )}
+        </Row>
+        <Row>
+          <AppText size="label" style={{ flex: 1 }}>
+            위젯
+          </AppText>
+          {widgetBackend() === 'expo-widgets' ? (
+            <Badge label="expo-widgets" tone="neutral" />
+          ) : (
+            <Badge label="없음 — 빌드에 안 들어감" tone="warning" />
+          )}
+        </Row>
+      </Stack>
+
+      {!!err && (
+        <Card>
+          <AppText size="caption" color={c.danger}>
+            {err}
+          </AppText>
+        </Card>
+      )}
+
+      <Stack gap={sp[2]}>
+        <Button label="마이그레이션 v2 확인" size="sm" onPress={probe} disabled={busy} />
+        <Button label="위젯 스냅샷 다시 그리기" size="sm" variant="secondary" onPress={ensureWidgetSnapshot} />
+        <Button label="새로고침" size="sm" variant="ghost" onPress={refresh} />
+      </Stack>
+
+      <AppText size="caption" color={c.fgFaint}>
+        기록 {rows.length}건 (최근 10건까지)
+      </AppText>
+
+      <Stack gap={sp[2]}>
+        {rows.map((d) => (
+          <Card key={d.id}>
+            <AppText size="caption" numberOfLines={2}>
+              {d.text ?? '(내용 없음)'}
+            </AppText>
+            <AppText size="caption" color={c.fgFaint}>
+              {d.recordedAt.slice(0, 19).replace('T', ' ')}
+              {d.audioPath ? ` · 오디오 ${mmss(d.durationMs)}` : ' · 오디오 없음'}
+            </AppText>
+          </Card>
+        ))}
+      </Stack>
+
+      {rows.length === 0 && (
+        <AppText size="caption" color={c.fgFaint}>
+          비어 있다. 잠금화면 위젯으로 한 건 남긴 뒤 여기로 돌아와 새로고침한다.
+          그때 남아 있으면 저장까지 한 줄이 이어진 것이다
+        </AppText>
+      )}
+
+      <Button label="닫기" size="sm" variant="ghost" onPress={() => router.back()} />
+    </Screen>
+  );
+}
