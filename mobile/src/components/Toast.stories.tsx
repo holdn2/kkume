@@ -2,11 +2,12 @@ import type { Meta, StoryObj } from '@storybook/react-native';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
+import { AppText } from '@shared/ui';
+import { c, sp } from '@theme/token';
+
 import { Button } from './Button';
 import { Toast } from './Toast';
 import { Stack } from './layout';
-import { AppText } from '@shared/ui/AppText';
-import { c, sp } from '@theme/token';
 
 const meta = {
   title: 'components/Toast',

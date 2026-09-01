@@ -6,6 +6,8 @@
       "@app/*": ["./app/*"],
       "@assets/*": ["./assets/*"],
       "@theme/*": ["./src/theme/*"],
+      "@components": ["./src/components/index.ts"],
+      "@shared/ui": ["./src/shared/ui/index.ts"],
       "@components/*": ["./src/components/*"],
       "@features/*": ["./src/features/*"],
       "@shared/*": ["./src/shared/*"]

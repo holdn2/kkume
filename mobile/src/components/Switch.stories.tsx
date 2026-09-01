@@ -1,10 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-native';
 import { useState } from 'react';
 
+import { AppText } from '@shared/ui';
+import { c, sp } from '@theme/token';
+
 import { Switch } from './Switch';
 import { Stack } from './layout';
-import { AppText } from '@shared/ui/AppText';
-import { c, sp } from '@theme/token';
 
 const meta = {
   title: 'components/Switch',

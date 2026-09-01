@@ -1,8 +1,8 @@
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 
 import { c } from '@theme/token';
 
@@ -36,8 +36,19 @@ export default function RootLayout() {
           headerShown: false,
           contentStyle: { backgroundColor: c.bg },
           animation: 'fade',
-        }}
-      />
+        }}>
+        {/* 새벽 기록은 탭 밖의 전체화면 모달이다. 탭바가 보이면 결정이 생긴다.
+            배경도 여기만 night(순수 검정)이고, 애니메이션은 없다 —
+            새벽의 대기 시간은 곧 이탈이다(계획서 7.6). */}
+        <Stack.Screen
+          name="record"
+          options={{
+            presentation: 'fullScreenModal',
+            animation: 'none',
+            contentStyle: { backgroundColor: c.night },
+          }}
+        />
+      </Stack>
     </>
   );
 }

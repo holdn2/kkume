@@ -1,10 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-native';
 import { View } from 'react-native';
 
+import { AppText } from '@shared/ui';
+import { c, sp } from '@theme/token';
+
 import { Avatar } from './Avatar';
 import { Row, Stack } from './layout';
-import { AppText } from '@shared/ui/AppText';
-import { c, sp } from '@theme/token';
 
 const meta = {
   title: 'components/Avatar',

@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-native';
 import { View } from 'react-native';
 
-import { AppText } from './AppText';
 import { c, font, sp, type } from '@theme/token';
+
+import { AppText } from './AppText';
 
 const meta = {
   title: 'shared/AppText',

@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-native';
 
+import { AppText } from '@shared/ui';
+import { c, sp } from '@theme/token';
+
 import { Progress } from './Progress';
 import { Stack } from './layout';
-import { AppText } from '@shared/ui/AppText';
-import { c, sp } from '@theme/token';
 
 const meta = {
   title: 'components/Progress',

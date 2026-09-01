@@ -2,9 +2,10 @@ import type { Meta, StoryObj } from '@storybook/react-native';
 import { Bell, Clock, LayoutGrid, Trash2, UserRound } from 'lucide-react-native';
 import { View } from 'react-native';
 
-import { ListRow } from './ListRow';
-import { AppText } from '@shared/ui/AppText';
+import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
+
+import { ListRow } from './ListRow';
 
 const meta = {
   title: 'components/ListRow',

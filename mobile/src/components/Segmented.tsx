@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 
 import { tapFeedback } from '@shared/haptics';
-import { AppText } from '@shared/ui/AppText';
+import { AppText } from '@shared/ui';
 import { c, dur, press, r, sp } from '@theme/token';
 
 const PAD = 3;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Animated, Modal, PanResponder, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppText } from '@shared/ui/AppText';
+import { AppText } from '@shared/ui';
 import { c, dur, r, sp } from '@theme/token';
 
 /** 첫 프레임에도 화면 밖에 있도록 넉넉히 잡은 값 */

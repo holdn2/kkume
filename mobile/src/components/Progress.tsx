@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Animated, StyleSheet, View, type DimensionValue } from 'react-native';
 
-import { AppText } from '@shared/ui/AppText';
+import { AppText } from '@shared/ui';
 import { c, r, sp } from '@theme/token';
 
 const H = 6;
