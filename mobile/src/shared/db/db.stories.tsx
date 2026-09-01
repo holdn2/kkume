@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { Badge, Button, Card, Row, Stack } from '@components';
+import { mmss } from '@shared/audio';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 
@@ -26,6 +27,11 @@ const SAMPLES = [
  * 맨 위에 지금 무엇으로 저장하고 있는지가 뜬다. `메모리`라고 떠 있으면
  * 앱을 껐다 켜는 순간 전부 사라지므로, 그 상태에서 "저장이 되네"라고 판정하면
  * 그 판정이 통째로 거짓이 된다. `expo-sqlite`가 들어간 빌드에서만 `SQLite`가 뜬다.
+ *
+ * **`녹음 기록`은 마이그레이션 v2를 판정한다.** `duration_ms`는 v2에서 더한 컬럼이라,
+ * 마이그레이션이 안 돌았으면 그 버튼이 `no such column: duration_ms`로 실패하고
+ * 아래 빨간 줄에 그대로 뜬다. 성공하면 행에 길이가 보인다.
+ * v2 이전에 저장된 기록은 길이를 되찾을 수 없어 `--:--`로 남는 것이 정상이다.
  */
 export const 저장소점검: Story = {
   render: function Render() {
@@ -64,10 +70,22 @@ export const 저장소점검: Story = {
       [refresh],
     );
 
+    const sample = () => SAMPLES[Math.floor(Math.random() * SAMPLES.length)];
+
     const add = () =>
       run(async () => {
         const repo = await getDreamRepo();
-        await repo.create({ text: SAMPLES[Math.floor(Math.random() * SAMPLES.length)] });
+        await repo.create({ text: sample() });
+      });
+
+    const addVoice = () =>
+      run(async () => {
+        const repo = await getDreamRepo();
+        await repo.create({
+          text: sample(),
+          audioPath: 'file:///검수용-가짜-경로.m4a',
+          durationMs: 12_000 + Math.floor(Math.random() * 108_000),
+        });
       });
 
     const touch = (d: Dream) =>
@@ -111,7 +129,10 @@ export const 저장소점검: Story = {
 
         <Row gap={sp[2]}>
           <View style={{ flex: 1 }}>
-            <Button label="기록 추가" size="sm" onPress={add} disabled={busy} />
+            <Button label="글 기록" size="sm" onPress={add} disabled={busy} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button label="녹음 기록" size="sm" onPress={addVoice} disabled={busy} />
           </View>
           <View style={{ flex: 1 }}>
             <Button label="전부 지우기" size="sm" variant="danger" onPress={wipe} disabled={busy} />
@@ -137,6 +158,7 @@ export const 저장소점검: Story = {
               <Row>
                 <AppText size="caption" color={c.fgFaint} style={{ flex: 1 }}>
                   {d.recordedAt.slice(0, 19).replace('T', ' ')}
+                  {d.audioPath ? ` · ${mmss(d.durationMs)}` : ''}
                 </AppText>
                 <Button label="지우기" size="sm" variant="ghost" onPress={() => remove(d)} />
               </Row>

@@ -21,6 +21,7 @@ type Row = {
   title: string | null;
   text: string | null;
   audio_path: string | null;
+  duration_ms: number | null;
   stt_status: string;
   emotion: string | null;
   keywords: string | null;
@@ -39,6 +40,7 @@ function toDream(r: Row): Dream {
     title: r.title,
     text: r.text,
     audioPath: r.audio_path,
+    durationMs: r.duration_ms,
     sttStatus: (r.stt_status === 'done' || r.stt_status === 'failed' ? r.stt_status : 'pending'),
     emotion: r.emotion,
     keywords: r.keywords,
@@ -52,7 +54,7 @@ function toDream(r: Row): Dream {
 
 /** 컬럼 이름은 한 곳에서만 쓴다. 여기가 SQL과 타입이 만나는 유일한 지점이다 */
 const COLS =
-  'id, user_id, recorded_at, title, text, audio_path, stt_status, emotion, keywords, characters, created_at, updated_at, deleted_at, synced_at';
+  'id, user_id, recorded_at, title, text, audio_path, duration_ms, stt_status, emotion, keywords, characters, created_at, updated_at, deleted_at, synced_at';
 
 const FIELD_TO_COL: Record<string, string> = {
   userId: 'user_id',
@@ -60,6 +62,7 @@ const FIELD_TO_COL: Record<string, string> = {
   title: 'title',
   text: 'text',
   audioPath: 'audio_path',
+  durationMs: 'duration_ms',
   sttStatus: 'stt_status',
   emotion: 'emotion',
   keywords: 'keywords',
@@ -127,6 +130,7 @@ export function createSqliteRepo(db: Db): DreamRepo {
         title: draft.title ?? null,
         text: draft.text ?? null,
         audioPath: draft.audioPath ?? null,
+        durationMs: draft.durationMs ?? null,
         sttStatus: draft.sttStatus ?? 'pending',
         emotion: null,
         keywords: null,
@@ -137,9 +141,9 @@ export function createSqliteRepo(db: Db): DreamRepo {
         syncedAt: null,
       };
       await db.runAsync(
-        `INSERT INTO dreams (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO dreams (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          d.id, d.userId, d.recordedAt, d.title, d.text, d.audioPath, d.sttStatus,
+          d.id, d.userId, d.recordedAt, d.title, d.text, d.audioPath, d.durationMs, d.sttStatus,
           d.emotion, d.keywords, d.characters, d.createdAt, d.updatedAt, d.deletedAt, d.syncedAt,
         ],
       );
