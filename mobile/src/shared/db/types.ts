@@ -23,6 +23,13 @@ export type Dream = {
    * 없으면 STT 실패가 곧 기록 소실이 된다 (절대 규칙 2).
    */
   audioPath: string | null;
+  /**
+   * 녹음 길이(ms). 텍스트 기록이거나 v2 이전에 저장된 것은 null이다.
+   *
+   * **0으로 채우지 않는다.** 이미 저장된 기록의 길이는 되찾을 방법이 없어서,
+   * 0을 넣으면 "0초짜리 녹음"이라는 거짓이 남는다. null은 `길이 모름`으로 그린다.
+   */
+  durationMs: number | null;
   sttStatus: SttStatus;
   /** 태깅 기능은 보류다. 컬럼만 확보해 두고 전부 null로 둔다 */
   emotion: string | null;
@@ -41,6 +48,7 @@ export type DreamDraft = {
   title?: string | null;
   text?: string | null;
   audioPath?: string | null;
+  durationMs?: number | null;
   sttStatus?: SttStatus;
 };
 

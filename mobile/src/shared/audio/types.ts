@@ -23,3 +23,15 @@ export function dbToLevel(db?: number) {
   if (db == null || !Number.isFinite(db)) return 0;
   return Math.max(0, Math.min(1, (db + 60) / 60));
 }
+
+/**
+ * 녹음 길이를 `mm:ss`로. 길이를 모르면(v2 이전 기록·텍스트 기록) `--:--`다.
+ *
+ * **0으로 대신 그리지 않는다** — "0초짜리 녹음"과 "길이를 모르는 녹음"은
+ * 사용자에게 전혀 다른 것이고, 앞의 것은 녹음이 실패했다는 뜻으로 읽힌다.
+ */
+export function mmss(ms?: number | null) {
+  if (ms == null || !Number.isFinite(ms)) return '--:--';
+  const s = Math.floor(ms / 1000);
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}

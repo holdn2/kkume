@@ -39,6 +39,20 @@ export const MIGRATIONS: Migration[] = [
         ON dreams (synced_at) WHERE synced_at IS NULL;
     `,
   },
+  {
+    version: 2,
+    up: `
+      -- 녹음 길이. \`stop()\`이 주는 값을 버리고 있었다.
+      -- 목록에서 길이를 보이려면 매번 오디오 파일을 열어야 하는데,
+      -- 그건 목록 한 화면에 파일 수십 개를 여는 일이라 그렇게 쓸 수 없다.
+      --
+      -- **버전 1을 고치지 않고 2로 더한다.** 버전 1을 이미 지난 기기는
+      -- 그 수정을 영영 못 받기 때문이다. 기존 행은 NULL로 남고,
+      -- 화면은 NULL을 \`길이 모름\`으로 그린다 — 되찾을 방법이 없는 값이라
+      -- 0으로 채우면 "0초짜리 녹음"이라는 거짓이 된다.
+      ALTER TABLE dreams ADD COLUMN duration_ms INTEGER;
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

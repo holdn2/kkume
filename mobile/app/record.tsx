@@ -5,7 +5,7 @@ import { Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View }
 
 import { Input, Row, Screen } from '@components';
 import { Waveform } from '@features/record/Waveform';
-import { useRecorder } from '@shared/audio';
+import { mmss, useRecorder } from '@shared/audio';
 import { getDreamRepo } from '@shared/db';
 import { savedFeedback, startFeedback } from '@shared/haptics';
 import { AppText } from '@shared/ui';
@@ -15,11 +15,6 @@ type Mode = 'voice' | 'text';
 
 /** 입력이 이만큼 멈추면 저장한다. 짧으면 타이핑 중에 깜빡이고, 길면 불안해진다 */
 const IDLE_SAVE_MS = 1200;
-
-function mmss(ms: number) {
-  const s = Math.floor(ms / 1000);
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-}
 
 /**
  * RM-1. **새벽에 반쯤 자면서 보는 유일한 화면**이고, 이 앱에서 유일하게
@@ -87,7 +82,13 @@ export default function RecordModal() {
       try {
         const out = await stop();
         const repo = await getDreamRepo();
-        await repo.create({ audioPath: out.uri, recordedAt: new Date().toISOString() });
+        // 길이를 여기서 같이 넣는다. 나중에 파일에서 다시 읽으면 되지 않느냐면,
+        // 목록 한 화면을 그리려고 오디오 파일 수십 개를 여는 일이 된다
+        await repo.create({
+          audioPath: out.uri,
+          durationMs: out.durationMs,
+          recordedAt: new Date().toISOString(),
+        });
         savedFeedback();
         leave();
       } catch (e) {
