@@ -1,11 +1,11 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Mic, PenLine, X } from 'lucide-react-native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { Input, Row, Screen } from '@components';
 import { Waveform } from '@features/record/Waveform';
-import { mmss, useRecorder } from '@shared/audio';
+import { mmss, useRecorder, type RecordingResult } from '@shared/audio';
 import { getDreamRepo } from '@shared/db';
 import { savedFeedback, startFeedback } from '@shared/haptics';
 import { AppText } from '@shared/ui';
@@ -37,15 +37,22 @@ export default function RecordModal() {
 
   // 알 수 없는 값이 와도 음성으로 간다. 새벽에 "무엇으로 기록할까요"를 묻지 않는다
   const [resolved, setResolved] = useState<Mode>(mode === 'text' ? 'text' : 'voice');
-  // 되돌리기는 한 번뿐이다. 아래 switchMode의 주석에 이유가 있다
+  // 되돌리기는 한 번뿐이다. 아래 switchMode의 주석에 이유가 있다.
+  // 화면용 state와 별개로 ref를 두는 이유는, state는 다음 렌더에서야 반영돼
+  // **그 사이에 한 번 더 눌리기 때문**이다. 더블탭이면 전환이 두 번 돈다
   const [swapped, setSwapped] = useState(false);
+  const swapping = useRef(false);
 
   const rec = useRecorder();
   const { start, stop } = rec;
   const [error, setError] = useState<string | null>(null);
 
   const [text, setText] = useState('');
-  const [dreamId, setDreamId] = useState<string | null>(null);
+  // **state가 아니라 ref다.** 저장은 비동기라 두 건이 겹쳐 돌 수 있는데,
+  // state로 들고 있으면 둘 다 아직 null인 값을 읽고 **각각 create를 불러
+  // 기록이 두 건으로 갈라진다.** 적기 자동저장(1.2초)이 발화하는 순간
+  // 되돌리기를 누르면 정확히 그렇게 된다 — 드문 조작이 아니다.
+  const dreamId = useRef<string | null>(null);
   // "저장됨"을 상태로 들고 껐다 켜면 effect 안에서 setState를 하게 된다.
   // 저장된 내용을 기억해 두고 **지금 내용과 같은지로 파생**시키면 그럴 일이 없다
   const [savedText, setSavedText] = useState<string | null>(null);
@@ -60,6 +67,25 @@ export default function RecordModal() {
       .catch((e) => setError(String(e)));
   }, [resolved, start]);
 
+  /** 저장을 한 줄로 세운다. 이유는 바로 아래 persist에 있다 */
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+
+  /**
+   * 멈춘 녹음을 아직 저장하지 못했으면 여기 남는다.
+   *
+   * `stop()`은 성공했는데 저장이 실패하면 **오디오 파일은 디스크에 있고 DB에는 없다.**
+   * 그 상태에서 다시 누르면 이미 멈춘 녹음기에 `stop()`을 또 부르게 되고,
+   * 그러면 파일 경로를 영영 못 꺼낸다 — 기록 유실이다(절대 규칙 1).
+   * 결과를 들고 있다가 **저장만 다시 시도한다.**
+   */
+  const pendingAudio = useRef<RecordingResult | null>(null);
+
+  /** 녹음을 멈춰 결과를 얻는다. 이미 멈춰 있으면 그때 받아 둔 것을 그대로 쓴다 */
+  const takeAudio = useCallback(async () => {
+    if (!pendingAudio.current) pendingAudio.current = await stop();
+    return pendingAudio.current;
+  }, [stop]);
+
   /**
    * 지금까지 남긴 것을 같은 기록 하나에 붙인다. 없으면 만들고, 있으면 고친다.
    *
@@ -67,17 +93,24 @@ export default function RecordModal() {
    * 갈라지면 목록에 반쪽짜리 두 건이 남고, 그건 사용자가 낮에 치워야 할 일이 된다.
    */
   const persist = useCallback(
-    async (patch: { text?: string; audioPath?: string | null; durationMs?: number | null }) => {
-      const repo = await getDreamRepo();
-      if (dreamId) {
-        await repo.update(dreamId, patch);
-        return dreamId;
-      }
-      const created = await repo.create(patch);
-      setDreamId(created.id);
-      return created.id;
+    (patch: { text?: string; audioPath?: string | null; durationMs?: number | null }) => {
+      // 앞의 저장이 끝난 뒤에 시작한다. 겹쳐 돌면 id가 정해지기 전에 둘 다 create를 부른다
+      const run = queue.current.then(async () => {
+        const repo = await getDreamRepo();
+        if (dreamId.current) {
+          await repo.update(dreamId.current, patch);
+          return dreamId.current;
+        }
+        const created = await repo.create(patch);
+        dreamId.current = created.id;
+        return created.id;
+      });
+      // 한 건이 실패해도 줄이 멈추면 그 뒤 저장이 전부 막힌다.
+      // 실패는 부르는 쪽이 받고, 줄은 계속 흐르게 둔다
+      queue.current = run.catch(() => {});
+      return run;
     },
-    [dreamId],
+    [],
   );
 
   /**
@@ -89,13 +122,16 @@ export default function RecordModal() {
    * 실수가 아니라 결정이라, 새벽 화면에 둘 이유도 없다(절대 규칙 7).
    */
   const switchMode = () => {
+    if (swapping.current) return;
+    swapping.current = true;
+    setSwapped(true);
     void (async () => {
       try {
-        setSwapped(true);
         if (resolved === 'voice') {
           // 녹음을 멈추고 붙인 뒤 텍스트로. 정지가 곧 저장이라 따로 확인하지 않는다
-          const out = await stop();
+          const out = await takeAudio();
           await persist({ audioPath: out.uri, durationMs: out.durationMs });
+          pendingAudio.current = null;
           setResolved('text');
         } else {
           if (text.trim()) {
@@ -105,6 +141,10 @@ export default function RecordModal() {
           setResolved('voice');
         }
       } catch (e) {
+        // 넘어가지 못했으면 되돌리기를 다시 열어 준다. 여기서 막아버리면
+        // 잘못 눌러 들어온 화면에 갇힌 채로 나갈 길이 하나뿐이 된다
+        swapping.current = false;
+        setSwapped(false);
         setError(String(e));
       }
     })();
@@ -137,10 +177,11 @@ export default function RecordModal() {
   const finish = () => {
     void (async () => {
       try {
-        const out = await stop();
+        const out = await takeAudio();
         // 길이를 여기서 같이 넣는다. 나중에 파일에서 다시 읽으면 되지 않느냐면,
         // 목록 한 화면을 그리려고 오디오 파일 수십 개를 여는 일이 된다
         await persist({ audioPath: out.uri, durationMs: out.durationMs });
+        pendingAudio.current = null;
         savedFeedback();
         leave();
       } catch (e) {
