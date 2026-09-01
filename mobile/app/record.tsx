@@ -188,7 +188,7 @@ export default function RecordModal() {
 }
 
 const s = StyleSheet.create({
-  textBody: { flex: 1, gap: sp[4], paddingTop: sp[8] },
+  textBody: { flex: 1, gap: sp[4], paddingTop: sp[4] },
   top: { flex: 3, justifyContent: 'center', alignItems: 'center', gap: sp[6] },
   dotRow: { flexDirection: 'row', alignItems: 'center', gap: sp[3] },
   dot: { width: 10, height: 10, borderRadius: r.chip, backgroundColor: c.running },

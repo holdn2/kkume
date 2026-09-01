@@ -1,5 +1,5 @@
 import { ScrollView, View, type ViewProps } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
@@ -18,6 +18,14 @@ export function Screen({
   children,
   ...rest
 }: ViewProps & { night?: boolean; scroll?: boolean }) {
+  const insets = useSafeAreaInsets();
+
+  // `SafeAreaView` 대신 값을 직접 읽는다. 전체화면 모달(`/record`)에서
+  // 상단 여백이 들어가지 않아 제목이 상태바에 물리는 일이 있었다.
+  // **최소값을 깔아 두면 inset이 0으로 와도 글자가 상태바에 닿지 않는다** —
+  // 새벽 화면에서 제목이 시계에 겹치는 것은 그 자리에서 눈치채기 어렵다.
+  const top = Math.max(insets.top, sp[6]);
+
   const inner = (
     <View style={[{ flex: 1, paddingHorizontal: sp[5], gap: sp[4] }, style]} {...rest}>
       {children}
@@ -25,9 +33,9 @@ export function Screen({
   );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: night ? c.night : c.bg }} edges={['top']}>
+    <View style={{ flex: 1, paddingTop: top, backgroundColor: night ? c.night : c.bg }}>
       {scroll ? <ScrollView contentContainerStyle={{ flexGrow: 1 }}>{inner}</ScrollView> : inner}
-    </SafeAreaView>
+    </View>
   );
 }
 
