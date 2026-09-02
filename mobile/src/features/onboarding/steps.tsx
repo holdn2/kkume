@@ -47,7 +47,7 @@ export function Value() {
               지금
             </AppText>
             <AppText size="label" color={c.fgMuted} style={{ flex: 1 }} lineBreakStrategyIOS="hangul-word">
-              {'폰\u00A0집기 · 잠금\u00A0해제 · 앱\u00A0찾기 · 열기 · 새\u00A0메모 · 쓰기'}
+              {'폰\u00A0집기 · 앱\u00A0찾기 · 열기 · 새\u00A0메모 · 말하거나\u00A0쓰기'}
             </AppText>
           </Row>
           <Row gap={sp[3]} style={s.compare}>
@@ -57,6 +57,7 @@ export function Value() {
             <AppText size="label" style={{ flex: 1 }} lineBreakStrategyIOS="hangul-word">
               {'폰\u00A0집기 · '}
               <AppText weight="semibold">{'잠금화면에서\u00A0바로\u00A0누르기'}</AppText>
+              {' · 말하거나\u00A0쓰기'}
             </AppText>
           </Row>
         </Stack>
