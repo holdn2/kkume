@@ -63,7 +63,9 @@ export default function LogScreen() {
       <FlatList
         data={rows ?? []}
         keyExtractor={(d) => d.id}
-        renderItem={({ item }) => <DreamCard dream={item} />}
+        renderItem={({ item }) => (
+          <DreamCard dream={item} onPress={() => router.push(`/dream/${item.id}`)} />
+        )}
         // 행 사이 간격이 곧 경계다. 구분선을 긋지 않는 것은 ListRow와 같은 이유다
         ItemSeparatorComponent={() => <View style={{ height: sp[3] }} />}
         contentContainerStyle={{ paddingBottom: sp[6] }}

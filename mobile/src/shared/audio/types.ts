@@ -4,6 +4,22 @@ export type RecordingResult = {
   durationMs: number;
 };
 
+/**
+ * 재생기. 녹음기와 같은 이유로 인터페이스를 먼저 두고 구현을 갈아끼운다 —
+ * `expo-audio`가 없는 빌드에서도 화면과 흐름을 검증할 수 있어야 한다.
+ */
+export type Player = {
+  playing: boolean;
+  /** 0~1. 막대가 이것만 본다 */
+  progress: number;
+  positionMs: number;
+  /** 파일에서 읽은 길이. 못 읽으면 기록에 저장된 값으로 물러선다 */
+  durationMs: number;
+  toggle: () => void;
+  /** 0~1 */
+  seek: (ratio: number) => void;
+};
+
 export type Recorder = {
   isRecording: boolean;
   durationMs: number;

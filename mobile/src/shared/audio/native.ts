@@ -2,11 +2,13 @@ import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
   useAudioRecorder,
 } from 'expo-audio';
 import { useCallback, useEffect, useState } from 'react';
 
-import { dbToLevel, type Recorder, type RecordingResult } from './types';
+import { dbToLevel, type Player, type Recorder, type RecordingResult } from './types';
 
 /**
  * **이 파일은 네이티브 모듈이 있을 때만 require된다.** `expo-audio`는 import되는
@@ -63,4 +65,47 @@ export function useNativeRecorder(): Recorder {
   }, [rec, durationMs]);
 
   return { isRecording, durationMs, level, start, stop };
+}
+
+/**
+ * 실제 재생기.
+ *
+ * 길이는 파일에서 읽는 것을 우선한다. 아직 안 읽혔거나(로딩 중) 못 읽는 형식이면
+ * **기록에 저장해 둔 값으로 물러선다** — 목록에서 이미 보여준 길이와 상세에서 보이는 길이가
+ * 다르면 사용자는 둘 중 무엇을 믿을지 판단하게 된다.
+ */
+export function useNativePlayer(uri: string | null, fallbackMs?: number | null): Player {
+  const player = useAudioPlayer(uri ? { uri } : null, { updateInterval: 100 });
+  const status = useAudioPlayerStatus(player);
+
+  const fromFile = Math.round((status.duration ?? 0) * 1000);
+  const durationMs = fromFile > 0 ? fromFile : (fallbackMs ?? 0);
+  const positionMs = Math.round((status.currentTime ?? 0) * 1000);
+
+  const toggle = useCallback(() => {
+    if (status.playing) {
+      player.pause();
+      return;
+    }
+    // 끝까지 간 뒤 다시 누르면 처음부터. seekTo를 안 부르면 그 자리에 멈춰 아무 일도 안 일어난다
+    if (durationMs > 0 && positionMs >= durationMs - 200) void player.seekTo(0);
+    player.play();
+  }, [player, status.playing, positionMs, durationMs]);
+
+  const seek = useCallback(
+    (ratio: number) => {
+      if (durationMs <= 0) return;
+      void player.seekTo((durationMs * ratio) / 1000);
+    },
+    [player, durationMs],
+  );
+
+  return {
+    playing: status.playing,
+    progress: durationMs ? Math.min(1, positionMs / durationMs) : 0,
+    positionMs,
+    durationMs,
+    toggle,
+    seek,
+  };
 }
