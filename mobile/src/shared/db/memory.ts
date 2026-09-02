@@ -20,6 +20,7 @@ import {
  */
 export function createMemoryRepo(): DreamRepo {
   let rows: Dream[] = [];
+  let settings: Record<string, string> = {};
 
   return {
     async init() {},
@@ -74,6 +75,15 @@ export function createMemoryRepo(): DreamRepo {
 
     async clear() {
       rows = [];
+      settings = {};
+    },
+
+    async getSetting(key: string) {
+      return settings[key] ?? null;
+    },
+
+    async setSetting(key: string, value: string) {
+      settings = { ...settings, [key]: value };
     },
   };
 }

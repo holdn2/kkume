@@ -88,7 +88,22 @@ export interface DreamRepo {
   softDelete(id: string): Promise<void>;
   /** 검수용. 화면에서 부르지 않는다 */
   clear(): Promise<void>;
+
+  /**
+   * 한 줄짜리 설정. 없으면 null.
+   *
+   * 꿈 기록과 같은 저장소에 두는 이유는 하나다 — **네이티브 모듈을 늘리지 않으려고.**
+   * 값 하나 때문에 AsyncStorage를 들이면 빌드를 한 번 먹는다.
+   */
+  getSetting(key: string): Promise<string | null>;
+  setSetting(key: string, value: string): Promise<void>;
 }
+
+/** 설정 키는 여기서만 만든다. 문자열을 화면에 흩뿌리면 오타가 조용히 새 키가 된다 */
+export const SETTINGS = {
+  /** 온보딩을 끝냈는가. 값이 있으면 끝낸 것이고, 담긴 것은 끝낸 시각이다 */
+  onboardedAt: 'onboarded_at',
+} as const;
 
 /**
  * 시간순으로 정렬되는 id. 앞이 시각이라 정렬 키로 그대로 쓸 수 있고,

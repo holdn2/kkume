@@ -14,7 +14,14 @@ export default function MyScreen() {
       <Title>마이</Title>
 
       <Stack gap={sp[3]}>
-        <ListRow icon={LayoutGrid} label="잠금화면 위젯 설치" onPress={() => {}} highlight />
+        {/* 온보딩에서 건너뛴 사람이 돌아오는 자리다. ON-7은 최대 이탈 지점이라
+            다시 열 길이 없으면 위젯 없이 쓰는 사용자가 그대로 남는다 */}
+        <ListRow
+          icon={LayoutGrid}
+          label="잠금화면 위젯 설치"
+          onPress={() => router.push('/onboarding')}
+          highlight
+        />
         <ListRow icon={Clock} label="기상 시각" value="07:00" onPress={() => {}} />
         <ListRow icon={Bell} label="기상 알림" value="꺼짐" onPress={() => {}} />
       </Stack>
