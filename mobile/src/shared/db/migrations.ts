@@ -53,6 +53,21 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE dreams ADD COLUMN duration_ms INTEGER;
     `,
   },
+  {
+    version: 3,
+    up: `
+      -- 앱이 기억해야 하는 한 줄짜리 값들. 온보딩을 끝냈는지가 첫 손님이다.
+      --
+      -- **새 네이티브 모듈을 들이지 않으려고 여기에 둔다.** AsyncStorage를 쓰면
+      -- 값 하나 때문에 빌드를 한 번 먹는데, EAS 무료는 플랫폼당 월 15회다.
+      -- 이미 붙어 있는 SQLite로 되는 일에 모듈을 늘리지 않는다.
+      CREATE TABLE IF NOT EXISTS settings (
+        key        TEXT PRIMARY KEY NOT NULL,
+        value      TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

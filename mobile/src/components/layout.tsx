@@ -26,6 +26,11 @@ export function Screen({
   // 새벽 화면에서 제목이 시계에 겹치는 것은 그 자리에서 눈치채기 어렵다.
   const top = Math.max(insets.top, sp[6]);
 
+  // 아래도 같다. **홈 인디케이터가 있는 기기에서는 화면 맨 아래 버튼이 그 막대에 물린다** —
+  // 눌리기는 하는데 손가락이 제스처로 먹혀서 "가끔 안 눌리는 버튼"이 된다.
+  // inset이 0인 기기(홈 버튼)에서도 바닥에 딱 붙지 않게 최소값을 깐다.
+  const bottom = Math.max(insets.bottom, sp[4]);
+
   const inner = (
     <View style={[{ flex: 1, paddingHorizontal: sp[5], gap: sp[4] }, style]} {...rest}>
       {children}
@@ -33,7 +38,8 @@ export function Screen({
   );
 
   return (
-    <View style={{ flex: 1, paddingTop: top, backgroundColor: night ? c.night : c.bg }}>
+    <View
+      style={{ flex: 1, paddingTop: top, paddingBottom: bottom, backgroundColor: night ? c.night : c.bg }}>
       {scroll ? <ScrollView contentContainerStyle={{ flexGrow: 1 }}>{inner}</ScrollView> : inner}
     </View>
   );

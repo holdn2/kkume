@@ -186,5 +186,21 @@ export function createSqliteRepo(db: Db): DreamRepo {
     async clear() {
       await db.runAsync('DELETE FROM dreams');
     },
+
+    async getSetting(key: string) {
+      const row = await db.getFirstAsync<{ value: string }>(
+        'SELECT value FROM settings WHERE key = ?',
+        [key],
+      );
+      return row?.value ?? null;
+    },
+
+    async setSetting(key: string, value: string) {
+      await db.runAsync(
+        'INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ' +
+          'ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at',
+        [key, value, nowIso()],
+      );
+    },
   };
 }

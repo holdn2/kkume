@@ -51,11 +51,15 @@ export function useNativeRecorder(): Recorder {
   }, [rec]);
 
   const stop = useCallback(async (): Promise<RecordingResult> => {
+    // **길이는 멈추기 전에 읽는다.** `stop()` 뒤의 녹음기는 `durationMillis`를
+    // `0`으로 돌려주는데, 0은 nullish가 아니라 `??`가 안 걸린다 —
+    // 폴링해 둔 값이 대체로 있는데도 0이 그대로 저장돼 실제로 `00:00`으로 남았다.
+    // 그래서 `||`다. 진짜 0ms짜리 녹음은 없고, 있어도 폴링값 역시 0이라 손해가 없다.
+    const measured = rec.getStatus().durationMillis;
     await rec.stop();
     setIsRecording(false);
     setLevel(0);
-    const s = rec.getStatus();
-    return { uri: rec.uri, durationMs: s.durationMillis ?? durationMs };
+    return { uri: rec.uri, durationMs: measured || durationMs };
   }, [rec, durationMs]);
 
   return { isRecording, durationMs, level, start, stop };
