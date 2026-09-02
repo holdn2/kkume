@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Check, Trash2 } from 'lucide-react-native';
+import { Trash2 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet } from 'react-native';
 
@@ -161,12 +161,9 @@ export default function DreamDetail() {
             이 기록을 지울까요
           </AppText>
           <Card>
-            <Row gap={sp[2]}>
-              <Check size={16} strokeWidth={1.75} color={c.fgMuted} />
-              <AppText size="caption" color={c.fgMuted} style={{ flex: 1 }}>
-                목록에서만 사라지고 서버에는 남습니다. 나중에 되살릴 수 있습니다.
-              </AppText>
-            </Row>
+            <AppText size="caption" color={c.fgMuted}>
+              목록에서만 사라지고 서버에는 남습니다. 나중에 되살릴 수 있습니다.
+            </AppText>
           </Card>
           <Button label="지우기" variant="danger" onPress={remove} />
           <Button label="그만두기" variant="ghost" onPress={() => setAskDelete(false)} />

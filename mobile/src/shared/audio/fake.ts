@@ -10,9 +10,17 @@ import { type Player, type Recorder, type RecordingResult } from './types';
  * 진짜 마이크를 기다리면 그 모양을 빌드 뒤에나 보게 된다.
  * 빌드가 플랫폼당 월 15회뿐이라 그 대기가 비싸다.
  *
- * 파일을 만들지 않으므로 `uri`는 null이다. **저장 경로가 이걸 그대로 받아
- * 오디오 없는 기록으로 남긴다** — 그것도 실제로 일어나는 경우다(텍스트만 적을 때).
+ * 파일은 만들지 않지만 **경로는 준다.** null을 돌려주면 저장된 기록에 `audioPath`가
+ * 비고, 그러면 목록 카드도 상세의 재생 줄도 "오디오 없음" 쪽으로 떨어져서
+ * **음성 기록의 화면을 dev 빌드에서 영영 못 보게 된다.** 검증 수단이 막히는 것이라
+ * 텍스트 전용 기록과 구분되는 가짜 경로를 준다.
+ *
+ * 스킴을 `fake:`로 둔 것은 **실제 파일과 헷갈리지 않게** 하려는 것이다.
+ * 이 값이 만들어지는 것은 네이티브 오디오가 없는 빌드뿐이고, 그런 빌드에서는
+ * 저장소도 메모리라 앱을 끄면 같이 사라진다.
  */
+const FAKE_URI = 'fake://녹음-파일-없음';
+
 export function useFakeRecorder(): Recorder {
   const [isRecording, setIsRecording] = useState(false);
   const [durationMs, setDurationMs] = useState(0);
@@ -39,7 +47,7 @@ export function useFakeRecorder(): Recorder {
   const stop = useCallback(async (): Promise<RecordingResult> => {
     setIsRecording(false);
     setLevel(0);
-    return { uri: null, durationMs };
+    return { uri: FAKE_URI, durationMs };
   }, [durationMs]);
 
   return { isRecording, durationMs, level, start, stop };
