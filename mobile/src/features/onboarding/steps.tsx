@@ -16,7 +16,19 @@ import { Waveform } from '../record/Waveform';
  * 뒤로 가기가 스택에 쌓여 **새벽 흐름과 섞인다** — 온보딩은 낮에 한 번 지나가는 길이다.
  */
 
-/** ON-2. 이 앱이 무엇을 해결하는지 한 장으로 */
+/**
+ * ON-2. 이 앱이 무엇을 해결하는지 한 장으로.
+ *
+ * **단계 비교는 점(·)에서만 줄이 바뀌어야 한다.** 그냥 두면 두 가지가 겹쳐 일어난다 —
+ * 한글은 기본 줄바꿈에서 **글자 사이 아무 데서나** 끊기고("잠금
+해제"가 아니라 "잠
+금해제"),
+ * 띄어쓰기에서도 끊겨 한 단계가 두 줄에 걸린다. 그러면 단계를 세는 것 자체가 어려워지는데,
+ * 이 화면은 **단계 수를 비교하는 것이 전부**다.
+ *
+ * 그래서 둘을 같이 쓴다 — 단계 안의 띄어쓰기는 줄바꿈 없는 공백(`\u00A0`)으로 묶고,
+ * `lineBreakStrategyIOS="hangul-word"`로 낱자 사이가 끊기는 것을 막는다.
+ */
 export function Value() {
   return (
     <Stack gap={sp[5]}>
@@ -34,16 +46,17 @@ export function Value() {
             <AppText size="caption" color={c.fgFaint} style={s.num}>
               지금
             </AppText>
-            <AppText size="label" color={c.fgMuted} style={{ flex: 1 }}>
-              폰 집기 · 잠금 해제 · 앱 찾기 · 열기 · 새 메모 · 쓰기
+            <AppText size="label" color={c.fgMuted} style={{ flex: 1 }} lineBreakStrategyIOS="hangul-word">
+              {'폰\u00A0집기 · 잠금\u00A0해제 · 앱\u00A0찾기 · 열기 · 새\u00A0메모 · 쓰기'}
             </AppText>
           </Row>
           <Row gap={sp[3]} style={s.compare}>
             <AppText size="caption" color={c.running} style={s.num}>
               꾸메
             </AppText>
-            <AppText size="label" style={{ flex: 1 }}>
-              폰 집기 · <AppText weight="semibold">잠금화면에서 바로 누르기</AppText>
+            <AppText size="label" style={{ flex: 1 }} lineBreakStrategyIOS="hangul-word">
+              {'폰\u00A0집기 · '}
+              <AppText weight="semibold">{'잠금화면에서\u00A0바로\u00A0누르기'}</AppText>
             </AppText>
           </Row>
         </Stack>
@@ -183,7 +196,7 @@ export function InstallWidget() {
 
       <Card>
         <AppText size="caption" color={c.fgMuted}>
-          위젯을 누르면 <AppText size="caption" weight="semibold">잠금 해제가 필요합니다.</AppText>{' '}
+          위젯을 누르면 <AppText size="caption" weight="semibold">잠금 해제가 필요합니다.</AppText>{'\n'}
           얼굴 인식이라 보통은 그냥 열리지만, 새벽에 눈이 덜 떠져 실패하면 암호를 묻습니다.
           그때는 당황하지 말고 그대로 누르세요.
         </AppText>
