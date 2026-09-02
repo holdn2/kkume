@@ -68,6 +68,21 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 4,
+    up: `
+      -- 낮에 확인을 마친 시각. NULL이면 아직 안 본 기록이고 목록에 배지가 붙는다.
+      --
+      -- **제목이 비었는지로 대신하지 않는다.** 제목을 지우면 확인했던 기록이
+      -- 다시 미확인으로 돌아가고, 그러면 배지가 사용자가 모르는 사이에 살아난다.
+      -- LOG-3의 "확인 완료"와 짝이 되는 값이라 따로 둔다.
+      ALTER TABLE dreams ADD COLUMN reviewed_at TEXT;
+
+      -- 목록은 "안 지워진 것을 최근순으로" 보면서 미확인을 먼저 세므로 같이 걸린다
+      CREATE INDEX IF NOT EXISTS idx_dreams_unreviewed
+        ON dreams (reviewed_at) WHERE reviewed_at IS NULL;
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

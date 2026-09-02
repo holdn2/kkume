@@ -31,6 +31,13 @@ export type Dream = {
    */
   durationMs: number | null;
   sttStatus: SttStatus;
+  /**
+   * 낮에 확인을 마친 시각. null이면 아직 안 본 기록이다.
+   *
+   * 새벽에는 교정을 시키지 않는다(절대 규칙 7). 받아만 두고 낮에 LOG-3에서 다듬게
+   * 미루는데, **무엇이 아직 안 다듬어졌는지**를 알려면 이 값이 필요하다.
+   */
+  reviewedAt: string | null;
   /** 태깅 기능은 보류다. 컬럼만 확보해 두고 전부 null로 둔다 */
   emotion: string | null;
   keywords: string | null;
