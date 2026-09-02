@@ -114,7 +114,9 @@ export default function DreamDetail() {
   return (
     <Screen scroll>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Stack gap={sp[4]}>
+        {/* 덩어리 사이를 넉넉히 띄운다. 읽는 것 · 듣는 것 · 결정하는 것이
+            같은 간격으로 붙어 있으면 화면이 목록처럼 읽힌다 */}
+        <Stack gap={sp[6]}>
           <Row>
             <AppText size="caption" color={c.fgFaint} style={{ flex: 1 }}>
               {dream.recordedAt.slice(0, 16).replace('T', ' ')}
@@ -122,51 +124,57 @@ export default function DreamDetail() {
             {unread ? <Badge label="미확인" tone="running" /> : <Badge label="확인함" tone="neutral" />}
           </Row>
 
-          <Input placeholder="제목을 붙여 보세요" value={title} onChangeText={setTitle} />
-          <Input
-            multiline
-            placeholder="기억나는 것을 적어 두세요"
-            value={text}
-            onChangeText={setText}
-          />
-
-          <AppText size="caption" color={error ? c.danger : c.fgFaint}>
-            {error ?? (dirty ? '나가면 저장됩니다' : '저장됨')}
-          </AppText>
+          <Stack gap={sp[3]}>
+            <Input placeholder="제목을 붙여 보세요" value={title} onChangeText={setTitle} />
+            <Input
+              multiline
+              placeholder="기억나는 것을 적어 두세요"
+              value={text}
+              onChangeText={setText}
+            />
+            <AppText size="caption" color={error ? c.danger : c.fgFaint}>
+              {error ?? (dirty ? '나가면 저장됩니다' : '저장됨')}
+            </AppText>
+          </Stack>
 
           {/* 읽어 보고 → 이상하면 들어 보고 → 확인함. 그 순서대로 놓는다.
               STT가 붙는 6주차에는 이 자리가 더 맞는다 — 틀린 텍스트를 고치려고
               원본을 찾는 흐름이 곧 "확인"이기 때문이다 (절대 규칙 2) */}
           {!!dream.audioPath && <PlayerBar uri={dream.audioPath} durationMs={dream.durationMs} />}
 
-          {unread && (
-            <Button label="확인함으로 표시" onPress={review} />
-          )}
-
-          <Pressable
-            onPress={() => setAskDelete(true)}
-            accessibilityRole="button"
-            style={({ pressed }) => [s.delete, pressed && { opacity: 0.7 }]}>
-            <Trash2 size={16} strokeWidth={1.75} color={c.fgFaint} />
-            <AppText size="caption" color={c.fgFaint}>
-              이 기록 지우기
-            </AppText>
-          </Pressable>
+          <Stack gap={sp[2]}>
+            {unread && <Button label="확인함으로 표시" onPress={review} />}
+            <Pressable
+              onPress={() => setAskDelete(true)}
+              accessibilityRole="button"
+              style={({ pressed }) => [s.delete, pressed && { opacity: 0.7 }]}>
+              <Trash2 size={16} strokeWidth={1.75} color={c.fgFaint} />
+              <AppText size="caption" color={c.fgFaint}>
+                이 기록 지우기
+              </AppText>
+            </Pressable>
+          </Stack>
         </Stack>
       </KeyboardAvoidingView>
 
       {/* 지우는 것은 되돌리기 어렵다. 기록 유실이 이 앱에서 유일하게 용납되지 않는 실패라
           여기만 확인을 한 번 받는다 — 새벽 화면이 아니라 낮 화면이므로 규칙 7에 걸리지 않는다 */}
       <Sheet visible={askDelete} onClose={() => setAskDelete(false)}>
-        <Stack gap={sp[4]}>
-          <AppText size="heading" weight="bold">
-            이 기록을 지울까요
-          </AppText>
-          <AppText size="caption" color={c.fgMuted}>
-            목록에서만 사라지고 서버에는 남습니다. 나중에 되살릴 수 있습니다.
-          </AppText>
-          <Button label="지우기" variant="danger" onPress={remove} />
-          <Button label="그만두기" variant="ghost" onPress={() => setAskDelete(false)} />
+        {/* 묻는 말과 그 설명은 붙이고, 답하는 버튼은 떼어 놓는다.
+            같은 간격으로 늘어놓으면 설명을 읽기 전에 손이 먼저 간다 */}
+        <Stack gap={sp[6]}>
+          <Stack gap={sp[2]}>
+            <AppText size="heading" weight="bold">
+              이 기록을 지울까요
+            </AppText>
+            <AppText size="caption" color={c.fgMuted}>
+              목록에서만 사라지고 서버에는 남습니다. 나중에 되살릴 수 있습니다.
+            </AppText>
+          </Stack>
+          <Stack gap={sp[2]}>
+            <Button label="지우기" variant="danger" onPress={remove} />
+            <Button label="그만두기" variant="ghost" onPress={() => setAskDelete(false)} />
+          </Stack>
         </Stack>
       </Sheet>
     </Screen>
