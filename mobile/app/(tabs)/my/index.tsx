@@ -19,7 +19,7 @@ export default function MyScreen() {
         <ListRow
           icon={LayoutGrid}
           label="잠금화면 위젯 설치"
-          onPress={() => router.push('/onboarding')}
+          onPress={() => router.push('/onboarding?step=widget')}
           highlight
         />
         <ListRow icon={Clock} label="기상 시각" value="07:00" onPress={() => {}} />

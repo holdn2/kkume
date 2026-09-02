@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 
 import { Button, Progress, Screen, Stack } from '@components';
@@ -27,7 +27,16 @@ const STEPS = ['value', 'rehearsal', 'widget'] as const;
 
 export default function Onboarding() {
   const router = useRouter();
-  const [step, setStep] = useState(0);
+  /**
+   * 마이페이지에서 `?step=widget`으로 들어오면 **위젯 설치 장만** 연다.
+   *
+   * 온보딩을 처음부터 다시 보여주면, 위젯 설치법 하나 보러 온 사람에게
+   * 가치 소개와 리허설을 다시 시킨다. 그건 안내가 아니라 통행세다.
+   */
+  const { step: entry } = useLocalSearchParams<{ step?: string }>();
+  const guideOnly = entry === 'widget';
+
+  const [step, setStep] = useState(guideOnly ? STEPS.indexOf('widget') : 0);
   const [error, setError] = useState<string | null>(null);
 
   const last = step === STEPS.length - 1;
@@ -48,13 +57,15 @@ export default function Onboarding() {
     })();
   };
 
-  const next = () => (last ? finish() : setStep((n) => n + 1));
+  // 안내만 보러 온 것이면 완료 표시를 건드리지 않고 왔던 곳으로 돌아간다
+  const next = () => (guideOnly ? router.back() : last ? finish() : setStep((n) => n + 1));
 
   return (
     <Screen>
       <Stack gap={sp[5]} style={{ flex: 1 }}>
-        {/* 몇 장 남았는지만 보이면 된다. 숫자는 쓰지 않는다 — Progress가 안 쓰는 것과 같은 이유다 */}
-        <Progress value={(step + 1) / STEPS.length} />
+        {/* 몇 장 남았는지만 보이면 된다. 숫자는 쓰지 않는다 — Progress가 안 쓰는 것과 같은 이유다.
+            안내만 보러 온 화면에는 진행 막대가 없다. 갈 길이 없으니 남은 길도 없다 */}
+        {!guideOnly && <Progress value={(step + 1) / STEPS.length} />}
 
         <Stack gap={sp[5]} style={{ flex: 1 }}>
           {STEPS[step] === 'value' && <Value />}
@@ -70,12 +81,12 @@ export default function Onboarding() {
         )}
 
         {STEPS[step] !== 'rehearsal' && (
-          <Button label={last ? '위젯을 올렸습니다' : '다음'} onPress={next} />
+          <Button label={guideOnly ? '닫기' : last ? '위젯을 올렸습니다' : '다음'} onPress={next} />
         )}
 
-        {/* 건너뛰기는 마지막 장에만 둔다. 위젯을 지금 못 올리는 상황이 실제로 있고,
+        {/* 건너뛰기는 온보딩의 마지막 장에만 둔다. 위젯을 지금 못 올리는 상황이 실제로 있고,
             막으면 앱을 아예 못 쓴다. 마이페이지에서 다시 열 수 있다 */}
-        {last && (
+        {last && !guideOnly && (
           <Button label="나중에 하기" variant="ghost" onPress={finish} />
         )}
       </Stack>

@@ -30,7 +30,7 @@ export function Value() {
 
       <Card>
         <Stack gap={sp[3]}>
-          <Row gap={sp[3]}>
+          <Row gap={sp[3]} style={s.compare}>
             <AppText size="caption" color={c.fgFaint} style={s.num}>
               지금
             </AppText>
@@ -38,7 +38,7 @@ export function Value() {
               폰 집기 · 잠금 해제 · 앱 찾기 · 열기 · 새 메모 · 쓰기
             </AppText>
           </Row>
-          <Row gap={sp[3]}>
+          <Row gap={sp[3]} style={s.compare}>
             <AppText size="caption" color={c.running} style={s.num}>
               꾸메
             </AppText>
@@ -169,7 +169,7 @@ export function InstallWidget() {
             '목록에서 꾸메를 찾습니다',
             '꿈 기록을 넣고 완료를 누릅니다',
           ].map((line, i) => (
-            <Row key={line} gap={sp[3]}>
+            <Row key={line} gap={sp[3]} style={s.compare}>
               <AppText size="caption" color={c.running} style={s.num}>
                 {i + 1}
               </AppText>
@@ -183,9 +183,9 @@ export function InstallWidget() {
 
       <Card>
         <AppText size="caption" color={c.fgMuted}>
-          위젯을 누르면 <AppText size="caption" weight="semibold">잠금 해제가 한 번 필요합니다.</AppText>{' '}
+          위젯을 누르면 <AppText size="caption" weight="semibold">잠금 해제가 필요합니다.</AppText>{' '}
           얼굴 인식이라 보통은 그냥 열리지만, 새벽에 눈이 덜 떠져 실패하면 암호를 묻습니다.
-          그때는 당황하지 말고 그대로 누르세요 — 기록 화면은 잠금이 풀리는 즉시 열립니다.
+          그때는 당황하지 말고 그대로 누르세요.
         </AppText>
       </Card>
     </Stack>
@@ -194,5 +194,8 @@ export function InstallWidget() {
 
 const s = StyleSheet.create({
   num: { minWidth: 28, textAlign: 'center', lineHeight: 22 },
+  // 옆 글이 두 줄로 넘어가면 Row의 기본 세로 가운데 정렬 때문에 라벨이 가운데로 내려간다.
+  // 라벨은 문단의 머리라서 첫 줄에 붙어 있어야 한다
+  compare: { alignItems: 'flex-start' },
   stage: { minHeight: 96, justifyContent: 'center', borderRadius: r.surface },
 });
