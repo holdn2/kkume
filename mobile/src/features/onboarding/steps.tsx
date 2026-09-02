@@ -47,7 +47,7 @@ export function Value() {
               지금
             </AppText>
             <AppText size="label" color={c.fgMuted} style={{ flex: 1 }} lineBreakStrategyIOS="hangul-word">
-              {'폰\u00A0집기 · 앱\u00A0찾기 · 열기 · 새\u00A0메모'}
+              {'폰\u00A0집기 → 앱\u00A0찾기 → 앱\u00A0열기 → 새\u00A0메모'}
             </AppText>
           </Row>
           <Row gap={sp[3]} style={s.compare}>
@@ -55,12 +55,19 @@ export function Value() {
               꾸메
             </AppText>
             <AppText size="label" style={{ flex: 1 }} lineBreakStrategyIOS="hangul-word">
-              {'폰\u00A0집기 · '}
-              <AppText weight="semibold">{'잠금화면에서\u00A0바로\u00A0누르기'}</AppText>
+              {'폰\u00A0집기 → '}
+              <AppText weight="semibold">{'위젯\u00A0누르기'}</AppText>
             </AppText>
           </Row>
         </Stack>
       </Card>
+
+      {/* 짧아진 줄이 곧 주장이라 설명을 카드 안에 넣지 않는다.
+          카드는 눈으로 길이를 재는 자리고, 이 줄은 그 차이가 무엇인지 말하는 자리다 */}
+      <AppText size="caption" color={c.fgFaint}>
+        잠금화면에 올려 둔 위젯을 그대로 누릅니다.{'\n'}
+        앱을 찾지도, 열지도 않습니다.
+      </AppText>
     </Stack>
   );
 }
