@@ -36,6 +36,7 @@ export function createMemoryRepo(): DreamRepo {
         audioPath: draft.audioPath ?? null,
         durationMs: draft.durationMs ?? null,
         sttStatus: draft.sttStatus ?? 'pending',
+        reviewedAt: null,
         emotion: null,
         keywords: null,
         characters: null,
