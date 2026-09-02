@@ -3,7 +3,7 @@ import { Trash2 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet } from 'react-native';
 
-import { Badge, Button, Card, Input, Row, Screen, Sheet, Stack } from '@components';
+import { Badge, Button, Input, Row, Screen, Sheet, Stack } from '@components';
 import { PlayerBar } from '@features/log/PlayerBar';
 import { getDreamRepo, nowIso, type Dream } from '@shared/db';
 import { AppText } from '@shared/ui';
@@ -122,9 +122,6 @@ export default function DreamDetail() {
             {unread ? <Badge label="미확인" tone="running" /> : <Badge label="확인함" tone="neutral" />}
           </Row>
 
-          {/* 원본 오디오가 텍스트보다 위에 있다. STT가 틀려도 이것이 있으면 복원된다 */}
-          {!!dream.audioPath && <PlayerBar uri={dream.audioPath} durationMs={dream.durationMs} />}
-
           <Input placeholder="제목을 붙여 보세요" value={title} onChangeText={setTitle} />
           <Input
             multiline
@@ -136,6 +133,11 @@ export default function DreamDetail() {
           <AppText size="caption" color={error ? c.danger : c.fgFaint}>
             {error ?? (dirty ? '나가면 저장됩니다' : '저장됨')}
           </AppText>
+
+          {/* 읽어 보고 → 이상하면 들어 보고 → 확인함. 그 순서대로 놓는다.
+              STT가 붙는 6주차에는 이 자리가 더 맞는다 — 틀린 텍스트를 고치려고
+              원본을 찾는 흐름이 곧 "확인"이기 때문이다 (절대 규칙 2) */}
+          {!!dream.audioPath && <PlayerBar uri={dream.audioPath} durationMs={dream.durationMs} />}
 
           {unread && (
             <Button label="확인함으로 표시" onPress={review} />
@@ -160,11 +162,9 @@ export default function DreamDetail() {
           <AppText size="heading" weight="bold">
             이 기록을 지울까요
           </AppText>
-          <Card>
-            <AppText size="caption" color={c.fgMuted}>
-              목록에서만 사라지고 서버에는 남습니다. 나중에 되살릴 수 있습니다.
-            </AppText>
-          </Card>
+          <AppText size="caption" color={c.fgMuted}>
+            목록에서만 사라지고 서버에는 남습니다. 나중에 되살릴 수 있습니다.
+          </AppText>
           <Button label="지우기" variant="danger" onPress={remove} />
           <Button label="그만두기" variant="ghost" onPress={() => setAskDelete(false)} />
         </Stack>
