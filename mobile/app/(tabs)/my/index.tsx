@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { LayoutGrid, Clock, Bell } from 'lucide-react-native';
+import { LayoutGrid } from 'lucide-react-native';
 
 import { ListRow, Screen, Stack, Title } from '@components';
 import { AppText } from '@shared/ui';
@@ -22,9 +22,14 @@ export default function MyScreen() {
           onPress={() => router.push('/onboarding?step=widget')}
           highlight
         />
-        <ListRow icon={Clock} label="기상 시각" value="07:00" onPress={() => {}} />
-        <ListRow icon={Bell} label="기상 알림" value="꺼짐" onPress={() => {}} />
       </Stack>
+
+      {/* "기상 시각"과 "기상 알림"이 여기 있었다. 만들다 만 것이 아니라
+          **안 하기로 한 것**이라 지운다.
+          진입점을 위젯 하나로 좁히면서(2026-09-01) 고정 알림을 뺐고,
+          기상 시각은 그 알림을 언제 다시 올릴지 알기 위한 값이었다(문서 009).
+          알림 자체가 없어지자 근거가 같이 사라졌다.
+          LOG-3 유도 알림을 붙이는 4주차 이후에 그 문맥으로 다시 들어온다. */}
 
       <Stack gap={sp[3]}>
         <AppText size="caption" color={c.fgFaint}>
@@ -36,7 +41,7 @@ export default function MyScreen() {
       </Stack>
 
       <AppText size="caption" color={c.fgFaint}>
-        위 항목은 아직 눌러도 아무 일이 없습니다
+        프로필과 알림 설정은 뒤에 들어옵니다
       </AppText>
     </Screen>
   );
