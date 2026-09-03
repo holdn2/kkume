@@ -21,9 +21,14 @@ echo "== 기존 컨테이너 교체"
 # 없을 때도 실패하지 않게 한다. 첫 배포가 여기서 걸리면 안 된다.
 sudo docker rm -f "${NAME}" 2>/dev/null || true
 
+# t3.micro는 메모리가 1GiB뿐이다. 컨테이너에 상한을 주지 않으면 JVM이
+# 호스트 전체를 기준으로 힙을 잡아 OS 몫까지 먹는다. 상한을 주고
+# 그 안에서 비율로 힙을 잡게 한다.
 sudo docker run -d \
   --name "${NAME}" \
   --restart unless-stopped \
+  --memory 768m \
+  -e JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70" \
   -p "${HOST_PORT}":8080 \
   "${REGISTRY}/${REPO}:latest"
 

@@ -3,7 +3,21 @@
 `/health`가 EC2에서 200을 주는 것까지의 절차. RDS·S3·인증·HTTPS는 아직 포함하지 않는다.
 
 이미지는 **로컬에서 빌드해 ECR로 올리고 EC2는 pull만 한다.** EC2에서 Gradle 빌드를 돌리면
-t3.small(2GB)의 메모리를 거의 다 쓴다.
+t3.micro(1GiB)의 메모리로는 아예 되지 않는다.
+
+## 인스턴스는 t3.micro를 쓴다
+
+계획서 10장은 t3.small을 권했지만 **프리 티어가 t2.micro/t3.micro까지만 무료**다.
+`/health`만 도는 지금 단계는 1GiB로 충분하고, 무거워지면 그때 올린다.
+
+1GiB에 맞춰 두 가지를 해 두었다.
+
+- **스왑 2GB** (`user-data.sh`) — 메모리가 순간적으로 몰릴 때 죽는 대신 느려지게 한다
+- **컨테이너 메모리 상한 768m + `MaxRAMPercentage=70`** (`ec2-run.sh`) —
+  상한을 주지 않으면 JVM이 호스트 전체를 기준으로 힙을 잡아 OS 몫까지 먹는다
+
+**프리 티어는 계정 개설 후 첫해까지다.** 12개월이 지나면 같은 구성이 그대로 과금된다.
+퍼블릭 IPv4 주소도 첫해에는 월 750시간이 무료지만 그 뒤로는 시간당 요금이 붙는다.
 
 ## 파일
 
@@ -13,10 +27,12 @@ t3.small(2GB)의 메모리를 거의 다 쓴다.
 | `ecr-push.sh` | 로컬에서 이미지를 빌드해 ECR로 push |
 | `deploy.sh` | ssh로 EC2에 배포하고 바깥에서 `/health` 확인 |
 | `ec2-run.sh` | EC2 안에서 도는 부분. `deploy.sh`가 stdin으로 밀어넣는다 |
+| `user-data.sh` | 인스턴스 최초 부팅 때 한 번. Docker 설치와 스왑 |
 
 ## 최초 1회 — 자원 만들기
 
-아래 명령은 **비용이 발생하는 자원을 만든다.** EC2 t3.small은 프리티어가 아니다.
+프리 티어 안에서 도는 구성이지만 **한도를 넘으면 과금된다.**
+인스턴스를 하나만 띄우고, 자원을 만들기 전에 예산 알림을 걸어 두는 것이 안전하다.
 
 ### 0. 자격증명
 
@@ -82,7 +98,7 @@ AMI=$(aws ssm get-parameters \
   --query 'Parameters[0].Value' --output text)
 
 aws ec2 run-instances \
-  --image-id "$AMI" --instance-type t3.small \
+  --image-id "$AMI" --instance-type t3.micro \
   --key-name kkume-deploy --security-group-ids sg-xxxx \
   --iam-instance-profile Name=kkume-ec2-ecr \
   --user-data file://user-data.sh \

@@ -11,7 +11,7 @@ kkume/
 │   ├── app/              expo-router 라우트 — 여기가 라우팅의 뿌리다
 │   ├── src/              theme · components · features · shared
 │   └── assets/           폰트 · 이미지
-├── server/               Spring Boot 3.x (Java 21)
+├── server/               Spring Boot 4.1.x (Java 21)
 └── docs/discussions/     계획·설계 문서 — git 미추적, 로컬 전용
 ```
 
@@ -131,10 +131,21 @@ expo-sqlite · TanStack Query · Zustand · expo-widgets · expo-notifications �
 lucide-react-native · @shopify/flash-list · @gorhom/bottom-sheet ·
 @storybook/react-native(온디바이스)
 
-**서버** — Spring Boot 3.x · JPA · PostgreSQL · Flyway · S3 · Docker ·
+**서버** — Spring Boot 4.1.x (Java 21) · JPA · PostgreSQL · Flyway · S3 · Docker ·
 소셜 로그인 토큰 검증만 (Spring Security 최소화)
 
-**인프라** — AWS EC2 + RDS + S3 · EAS Build
+계획서 10장은 3.x였지만 **start.spring.io가 더 이상 3.x를 주지 않는다.**
+3.x의 마지막 3.5.16이 2026-06-25 이후 신규 릴리스가 없고, 4.0·4.1이 함께 패치되고 있어
+현행 라인인 4.1을 쓴다. **Boot 4는 이름이 바뀐 것이 있다** —
+`spring-boot-starter-web` → `spring-boot-starter-webmvc`,
+`@WebMvcTest`는 `org.springframework.boot.webmvc.test.autoconfigure`.
+3.x 예제를 그대로 붙여넣으면 컴파일되지 않으므로 **jar 안을 열어 확인한다.**
+
+**인프라** — AWS EC2(t3.micro) + RDS + S3 · EAS Build
+
+**EC2는 t3.micro다.** 계획서는 t3.small을 권했지만 프리 티어가 micro까지만 무료다.
+1GiB뿐이라 스왑 2GB와 컨테이너 메모리 상한을 걸어 두었다 — `server/deploy/README.md` 참조.
+**프리 티어는 계정 개설 후 첫해까지다.**
 
 단, **진입점(위젯 · 알림) 검증은 release 빌드로 한다.** dev client 빌드는
 JS 번들을 Metro에서 받아오는데 **잠금 상태에서는 네트워크가 제한돼 앱이 그대로 죽는다.**
