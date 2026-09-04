@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # EC2 안에서 도는 스크립트. deploy.sh 가 ssh로 밀어넣어 실행한다.
-# 인자: <레지스트리> <리포지터리> <호스트포트> <리전>
+# 인자: <레지스트리> <리포지터리> <호스트포트> <리전> <DB URL> <DB 사용자> <DB 비밀번호>
+#
+# DB 비밀번호는 인자로 받아 컨테이너 환경변수로만 넘긴다. EC2 디스크에
+# 파일로 남기지 않는다 — 남기면 지우는 것을 잊는다.
 set -euo pipefail
 
 REGISTRY="$1"
 REPO="$2"
 HOST_PORT="$3"
 REGION="$4"
+DB_URL="$5"
+DB_USER="$6"
+DB_PASSWORD="$7"
 NAME=kkume-server
 
 echo "== ECR 로그인"
@@ -29,13 +35,19 @@ sudo docker run -d \
   --restart unless-stopped \
   --memory 768m \
   -e JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70" \
+  -e SPRING_DATASOURCE_URL="${DB_URL}" \
+  -e SPRING_DATASOURCE_USERNAME="${DB_USER}" \
+  -e SPRING_DATASOURCE_PASSWORD="${DB_PASSWORD}" \
   -p "${HOST_PORT}":8080 \
   "${REGISTRY}/${REPO}:latest"
 
 echo "== 기동 대기"
-for i in $(seq 1 60); do
-  if curl -fsS "http://localhost:${HOST_PORT}/health" >/dev/null 2>&1; then
-    echo "== /health 응답 확인 (${i}초)"
+# /health 가 아니라 /health/ready 를 본다. DB 가 붙은 뒤로는 프로세스가 떴다는 것만으로
+# 배포가 성공한 것이 아니다 — RDS 에 못 닿으면 Flyway 가 죽어 컨테이너가 재시작만 반복한다.
+for i in $(seq 1 90); do
+  if curl -fsS "http://localhost:${HOST_PORT}/health/ready" >/dev/null 2>&1; then
+    echo "== /health/ready 응답 확인 (${i}초)"
+    curl -s "http://localhost:${HOST_PORT}/health/ready"; echo
     curl -s "http://localhost:${HOST_PORT}/health"; echo
     exit 0
   fi

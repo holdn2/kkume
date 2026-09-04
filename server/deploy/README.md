@@ -1,14 +1,11 @@
 # 서버 배포
 
-> **지금은 배포하지 않는다.**
->
-> DB가 붙은 뒤로 **이 이미지는 PostgreSQL 없이는 뜨지 않는다.** Flyway가 시작할 때
-> 연결을 요구하기 때문이다. RDS를 만들어 `SPRING_DATASOURCE_*` 를 넣기 전에
-> `deploy.sh` 를 돌리면 **지금 떠 있는 시연 서버가 죽고 그대로 올라오지 않는다.**
->
-> RDS 연결까지 끝난 뒤에 이 문단을 지운다.
+EC2 + RDS 로 `/health` 와 `/health/ready` 가 200 을 주는 것까지의 절차.
+S3 · 인증 · HTTPS 는 아직 포함하지 않는다.
 
-`/health`가 EC2에서 200을 주는 것까지의 절차. S3·인증·HTTPS는 아직 포함하지 않는다.
+**이 이미지는 PostgreSQL 없이는 뜨지 않는다.** Flyway 가 시작할 때 연결을 요구한다.
+`.env` 의 `DB_*` 가 비어 있으면 `deploy.sh` 가 시작 전에 멈추므로,
+DB 없이 배포가 나가 서버가 죽는 일은 없다.
 
 이미지는 **로컬에서 빌드해 ECR로 올리고 EC2는 pull만 한다.** EC2에서 Gradle 빌드를 돌리면
 t3.micro(1GiB)의 메모리로는 아예 되지 않는다.
@@ -161,6 +158,59 @@ aws ec2 describe-instances --filters Name=tag:Name,Values=kkume-server \
   --query 'Reservations[].Instances[].PublicIpAddress' --output text
 ```
 
+### 5-1. RDS PostgreSQL
+
+DB 는 인터넷에 열지 않는다. **EC2 의 보안그룹에서만 5432 를 허용한다.**
+
+```bash
+# DB 전용 보안그룹 — 출발지를 CIDR 이 아니라 EC2 보안그룹으로 준다
+RDS_SG=$(aws ec2 create-security-group --group-name kkume-db-sg \
+  --description "kkume RDS - EC2 only" --query GroupId --output text)
+aws ec2 authorize-security-group-ingress --group-id "$RDS_SG" \
+  --protocol tcp --port 5432 --source-group <EC2 보안그룹 id>
+
+aws rds create-db-subnet-group --db-subnet-group-name kkume-db-subnets \
+  --db-subnet-group-description "kkume default vpc subnets" \
+  --subnet-ids <기본 VPC 서브넷 3개>
+
+aws rds create-db-instance \
+  --db-instance-identifier kkume-db --db-instance-class db.t3.micro \
+  --engine postgres --engine-version 17.11 \
+  --master-username kkume --master-user-password "$(openssl rand -hex 24)" \
+  --db-name kkume \
+  --allocated-storage 20 --storage-type gp3 --storage-encrypted \
+  --db-subnet-group-name kkume-db-subnets --vpc-security-group-ids "$RDS_SG" \
+  --no-publicly-accessible --no-multi-az --backup-retention-period 1
+```
+
+**엔진 버전을 17.11 로 박는다.** RDS 의 기본값은 18.x 인데 로컬(`compose.yaml`)과
+테스트(Testcontainers)가 17 이라, 그대로 두면 배포에서만 다른 버전을 쓰게 된다.
+
+> **백업 보존은 1일이 상한이다.** 무료 플랜에서 7일을 주면
+> `FreeTierRestrictionError` 로 거부된다. **하루 안에 발견하지 못한 데이터 손상은
+> 되돌릴 수 없다는 뜻이다** — 발표 전에는 스냅샷을 손으로 한 번 떠 둔다.
+>
+> ```bash
+> aws rds create-db-snapshot --db-instance-identifier kkume-db \
+>   --db-snapshot-identifier kkume-db-before-demo
+> ```
+
+엔드포인트를 `.env` 의 `DB_HOST` 에 넣는다.
+
+```bash
+aws rds describe-db-instances --db-instance-identifier kkume-db \
+  --query 'DBInstances[0].Endpoint.Address' --output text
+```
+
+**비밀번호는 `.env` 에만 있다.** 저장소에도, EC2 디스크에도 두지 않는다 —
+`deploy.sh` 가 ssh 인자로 넘기고 `ec2-run.sh` 가 컨테이너 환경변수로만 쓴다.
+잃어버리면 다시 만든다.
+
+```bash
+aws rds modify-db-instance --db-instance-identifier kkume-db \
+  --master-user-password "$(openssl rand -hex 24)" --apply-immediately
+```
+
 ### 6. 준비 확인
 
 `user-data.sh`가 도는 데 1~2분 걸린다. 접속해서 세 가지를 확인한다.
@@ -197,6 +247,8 @@ cd server/deploy
 | EC2에서 pull이 403 | 인스턴스 프로파일이 붙었는지 확인 (4번). 붙인 직후면 잠시 기다린다 |
 | 컨테이너는 떴는데 바깥에서 안 됨 | 보안그룹 인바운드 80 (3번). SSH가 안 되면 내 공인 IP가 바뀐 것이다 |
 | `/health`가 502·연결 거부 | `sudo docker logs kkume-server` |
+| **`/health` 는 200 인데 `/health/ready` 가 아님** | **RDS 쪽이다.** `kkume-db-sg` 가 EC2 보안그룹에서 5432 를 열어 주는지, `.env` 의 `DB_*` 가 맞는지 본다 |
+| 컨테이너가 재시작만 반복 | Flyway 가 DB 에 못 닿는 것이다. 로그의 `Database: jdbc:postgresql://...` 줄을 본다 |
 | `text contents could not be decoded` | `--user-data`에 `fileb://`를 썼는지 (5번) |
 
 ## 지금 떠 있는 것
@@ -208,6 +260,9 @@ cd server/deploy
 | 보안그룹 | `kkume-server-sg` — 22는 개발 PC IP만, 80은 공개 |
 | 인스턴스 프로파일 | `kkume-ec2-ecr` (ECR 읽기 전용) |
 | 인스턴스 | `t3.micro`, Amazon Linux 2023, EBS 8GiB |
+| DB | `kkume-db` — PostgreSQL 17.11, db.t3.micro, gp3 20GiB, 암호화 켬, 퍼블릭 차단 |
+| DB 보안그룹 | `kkume-db-sg` — 5432 를 EC2 보안그룹에서만 허용 |
+| DB 서브넷 그룹 | `kkume-db-subnets` |
 
 **SSH 인바운드는 개발 PC의 공인 IP 하나로 묶여 있다.** 집·학교를 옮기거나
 IP가 바뀌면 접속이 막힌다. 그때는 규칙을 새 IP로 갈아준다.
