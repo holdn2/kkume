@@ -16,8 +16,37 @@ t3.micro(1GiB)의 메모리로는 아예 되지 않는다.
 - **컨테이너 메모리 상한 768m + `MaxRAMPercentage=70`** (`ec2-run.sh`) —
   상한을 주지 않으면 JVM이 호스트 전체를 기준으로 힙을 잡아 OS 몫까지 먹는다
 
-**프리 티어는 계정 개설 후 첫해까지다.** 12개월이 지나면 같은 구성이 그대로 과금된다.
-퍼블릭 IPv4 주소도 첫해에는 월 750시간이 무료지만 그 뒤로는 시간당 요금이 붙는다.
+## 리전은 시드니(ap-southeast-2)다
+
+계획서는 서울이었지만 **무료 플랜 계정은 한 리전에 묶여 있고 그것이 시드니로 잡혀 있다.**
+다른 리전은 조직 SCP가 **읽기까지** 거부한다.
+
+```
+ap-southeast-2  허용        ap-northeast-2(서울)  SCP 거부
+us-east-1       SCP 거부    ap-northeast-1(도쿄)  SCP 거부
+```
+
+SCP는 관리 계정에 붙어 있어 **프로젝트 계정에서는 읽지도 바꾸지도 못한다**
+(`organizations describe-policy` → AccessDenied). IAM만 통과하는데 글로벌 서비스라 그렇다.
+서울에서 권한 오류가 나면 IAM을 의심하기 전에 **리전부터 본다.**
+
+지연은 서울 왕복 150ms 안팎인데 이 앱에서는 문제가 되지 않는다 —
+기록은 로컬 SQLite에 먼저 쓰고(절대 규칙 1) 동기화는 백그라운드이며,
+AI 작업은 원래 수 초 이상 걸린다.
+
+## 비용
+
+이 계정은 **무료 플랜**이라 사용량이 크레딧에서 차감된다(만료 2027-03-04).
+예전 12개월 프리 티어와는 다른 제도다.
+
+예산 두 개를 걸어 두었다.
+
+| 예산 | 울리는 시점 |
+| --- | --- |
+| `kkume-zero-spend` | 크레딧이 바닥나 **실제 과금이 시작될 때** |
+| `kkume-credit-burn` ($120, 크레딧 제외) | 크레딧을 **50%·80%** 썼을 때, 100% 초과가 예상될 때 |
+
+**퍼블릭 IPv4 주소는 프리 티어가 없다**(시간당 $0.005 ≈ 월 $3.65). 빼먹기 쉬운 고정비다.
 
 ## 파일
 
@@ -37,7 +66,7 @@ t3.micro(1GiB)의 메모리로는 아예 되지 않는다.
 ### 0. 자격증명
 
 ```bash
-aws configure          # 액세스 키·시크릿·리전(ap-northeast-2) 입력
+aws configure          # 액세스 키·시크릿·리전(ap-southeast-2) 입력
 aws sts get-caller-identity    # Account 값을 .env의 AWS_ACCOUNT_ID에 넣는다
 ```
 
@@ -46,7 +75,7 @@ aws sts get-caller-identity    # Account 값을 .env의 AWS_ACCOUNT_ID에 넣는
 ### 1. ECR 리포지터리
 
 ```bash
-aws ecr create-repository --repository-name kkume-server --region ap-northeast-2
+aws ecr create-repository --repository-name kkume-server --region ap-southeast-2
 ```
 
 ### 2. 키페어
@@ -76,13 +105,16 @@ aws ec2 authorize-security-group-ingress --group-id sg-xxxx \
 
 인스턴스에 액세스 키를 두지 않기 위한 것이다. 역할을 붙이면 EC2가 알아서 인증한다.
 
+> **Windows에서는 `file://`에 Windows 경로를 준다.** AWS CLI가 Windows 바이너리라
+> Git Bash의 `/tmp/...`를 찾지 못한다. `file://C:\경로\trust.json` 형태로 쓴다.
+
 ```bash
-cat > /tmp/trust.json <<'JSON'
+cat > trust.json <<'JSON'
 {"Version":"2012-10-17","Statement":[{"Effect":"Allow",
  "Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}
 JSON
 
-aws iam create-role --role-name kkume-ec2-ecr --assume-role-policy-document file:///tmp/trust.json
+aws iam create-role --role-name kkume-ec2-ecr --assume-role-policy-document file://trust.json
 aws iam attach-role-policy --role-name kkume-ec2-ecr \
   --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
 aws iam create-instance-profile --instance-profile-name kkume-ec2-ecr
@@ -92,18 +124,26 @@ aws iam add-role-to-instance-profile \
 
 ### 5. EC2 인스턴스
 
+AMI는 흔히 쓰는 `ssm get-parameters` 대신 `describe-images`로 찾는다.
+배포 사용자에게 SSM 권한을 주지 않기 위해서다.
+
 ```bash
-AMI=$(aws ssm get-parameters \
-  --names /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
-  --query 'Parameters[0].Value' --output text)
+AMI=$(aws ec2 describe-images --owners amazon \
+  --filters 'Name=name,Values=al2023-ami-2023.*-kernel-6.*-x86_64' \
+            'Name=state,Values=available' \
+  --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text)
 
 aws ec2 run-instances \
   --image-id "$AMI" --instance-type t3.micro \
   --key-name kkume-deploy --security-group-ids sg-xxxx \
   --iam-instance-profile Name=kkume-ec2-ecr \
-  --user-data file://user-data.sh \
+  --user-data fileb://user-data.sh \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=kkume-server}]'
 ```
+
+> **`--user-data`는 `file://`이 아니라 `fileb://`로 준다.** 주석이 한글이라
+> `file://`로 주면 Windows CLI가 로컬 코드페이지로 디코딩하려다
+> `text contents could not be decoded`로 죽는다. `fileb://`는 바이트 그대로 보낸다.
 
 퍼블릭 주소를 확인해 `.env`의 `EC2_HOST`에 넣는다.
 
@@ -115,13 +155,19 @@ aws ec2 describe-instances --filters Name=tag:Name,Values=kkume-server \
 
 ### 6. 준비 확인
 
-`user-data.sh`가 도는 데 1~2분 걸린다. 접속해서 두 가지를 확인한다.
+`user-data.sh`가 도는 데 1~2분 걸린다. 접속해서 세 가지를 확인한다.
 
 ```bash
 ssh -i ~/.ssh/kkume-deploy.pem ec2-user@<주소>
 docker --version     # 설치됐나
-aws --version        # ec2-run.sh가 ECR 로그인에 쓴다
+aws --version        # ec2-run.sh가 ECR 로그인에 쓴다 (AL2023에 이미 들어 있다)
+swapon --show        # /swapfile 2G 가 보여야 한다
 ```
+
+> **Docker가 보인다고 부팅 스크립트가 끝난 것이 아니다.** 스크립트에서 스왑 생성이
+> Docker 설치보다 뒤에 있고 `dd`가 15초쯤 걸린다. Docker만 보고 확인하면
+> 스왑이 없는 것처럼 보인다 — 실제로 한 번 그렇게 오진했다.
+> **끝났는지는 `swapon --show`로 판단한다.**
 
 `aws`가 없으면 `sudo dnf install -y awscli` 로 넣는다.
 
@@ -137,7 +183,28 @@ cd server/deploy
 
 | 증상 | 볼 곳 |
 | --- | --- |
+| **`explicit deny in a service control policy`** | **리전이 시드니가 맞는지 본다.** 권한 문제가 아니다 |
 | `ecr-push.sh`가 로그인에서 실패 | `aws sts get-caller-identity`로 자격증명부터 확인 |
 | EC2에서 pull이 403 | 인스턴스 프로파일이 붙었는지 확인 (4번). 붙인 직후면 잠시 기다린다 |
-| 컨테이너는 떴는데 바깥에서 안 됨 | 보안그룹 인바운드 80 (3번) |
+| 컨테이너는 떴는데 바깥에서 안 됨 | 보안그룹 인바운드 80 (3번). SSH가 안 되면 내 공인 IP가 바뀐 것이다 |
 | `/health`가 502·연결 거부 | `sudo docker logs kkume-server` |
+| `text contents could not be decoded` | `--user-data`에 `fileb://`를 썼는지 (5번) |
+
+## 지금 떠 있는 것
+
+| 자원 | 값 |
+| --- | --- |
+| 리전 | `ap-southeast-2` |
+| ECR | `341860778310.dkr.ecr.ap-southeast-2.amazonaws.com/kkume-server` |
+| 보안그룹 | `kkume-server-sg` — 22는 개발 PC IP만, 80은 공개 |
+| 인스턴스 프로파일 | `kkume-ec2-ecr` (ECR 읽기 전용) |
+| 인스턴스 | `t3.micro`, Amazon Linux 2023, EBS 8GiB |
+
+**SSH 인바운드는 개발 PC의 공인 IP 하나로 묶여 있다.** 집·학교를 옮기거나
+IP가 바뀌면 접속이 막힌다. 그때는 규칙을 새 IP로 갈아준다.
+
+```bash
+MYIP=$(curl -s https://checkip.amazonaws.com)
+aws ec2 authorize-security-group-ingress --group-id <sg-id> \
+  --protocol tcp --port 22 --cidr "${MYIP}/32"
+```

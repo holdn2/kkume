@@ -143,9 +143,15 @@ lucide-react-native · @shopify/flash-list · @gorhom/bottom-sheet ·
 
 **인프라** — AWS EC2(t3.micro) + RDS + S3 · EAS Build
 
-**EC2는 t3.micro다.** 계획서는 t3.small을 권했지만 프리 티어가 micro까지만 무료다.
-1GiB뿐이라 스왑 2GB와 컨테이너 메모리 상한을 걸어 두었다 — `server/deploy/README.md` 참조.
-**프리 티어는 계정 개설 후 첫해까지다.**
+**EC2는 t3.micro이고 리전은 시드니(`ap-southeast-2`)다.**
+계획서는 t3.small · 서울이었지만 둘 다 바꿨다.
+
+- **t3.micro** — 무료 구간이 micro까지다. 1GiB뿐이라 스왑 2GB와 컨테이너 메모리 상한을 걸어 뒀다
+- **시드니** — 배포 계정이 **무료 플랜**이라 한 리전에 묶여 있다.
+  다른 리전은 조직 SCP가 **읽기까지** 거부한다.
+  서울에서 `explicit deny in a service control policy`가 나오면 권한이 아니라 리전 문제다
+
+자세한 것은 `server/deploy/README.md`에 있다.
 
 단, **진입점(위젯 · 알림) 검증은 release 빌드로 한다.** dev client 빌드는
 JS 번들을 Metro에서 받아오는데 **잠금 상태에서는 네트워크가 제한돼 앱이 그대로 죽는다.**
