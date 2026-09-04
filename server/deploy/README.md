@@ -1,6 +1,14 @@
 # 서버 배포
 
-`/health`가 EC2에서 200을 주는 것까지의 절차. RDS·S3·인증·HTTPS는 아직 포함하지 않는다.
+> **지금은 배포하지 않는다.**
+>
+> DB가 붙은 뒤로 **이 이미지는 PostgreSQL 없이는 뜨지 않는다.** Flyway가 시작할 때
+> 연결을 요구하기 때문이다. RDS를 만들어 `SPRING_DATASOURCE_*` 를 넣기 전에
+> `deploy.sh` 를 돌리면 **지금 떠 있는 시연 서버가 죽고 그대로 올라오지 않는다.**
+>
+> RDS 연결까지 끝난 뒤에 이 문단을 지운다.
+
+`/health`가 EC2에서 200을 주는 것까지의 절차. S3·인증·HTTPS는 아직 포함하지 않는다.
 
 이미지는 **로컬에서 빌드해 ECR로 올리고 EC2는 pull만 한다.** EC2에서 Gradle 빌드를 돌리면
 t3.micro(1GiB)의 메모리로는 아예 되지 않는다.
@@ -184,6 +192,7 @@ cd server/deploy
 | 증상 | 볼 곳 |
 | --- | --- |
 | **`explicit deny in a service control policy`** | **리전이 시드니가 맞는지 본다.** 권한 문제가 아니다 |
+| **`Migration checksum mismatch`** (로컬) | 남의 compose 스택에 붙은 것이다. `compose.yaml` 의 `name:` 확인 |
 | `ecr-push.sh`가 로그인에서 실패 | `aws sts get-caller-identity`로 자격증명부터 확인 |
 | EC2에서 pull이 403 | 인스턴스 프로파일이 붙었는지 확인 (4번). 붙인 직후면 잠시 기다린다 |
 | 컨테이너는 떴는데 바깥에서 안 됨 | 보안그룹 인바운드 80 (3번). SSH가 안 되면 내 공인 IP가 바뀐 것이다 |
