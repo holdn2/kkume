@@ -1,0 +1,28 @@
+# 로컬 개발용 PostgreSQL.
+#
+# spring-boot-docker-compose 가 bootRun 때 이 파일을 읽어 컨테이너를 띄우고
+# 접속 정보를 애플리케이션에 넣어준다. application.properties 에 URL 을 적지 않는 이유다.
+#
+# 배포에서는 쓰지 않는다 — 그 의존성이 developmentOnly 라 jar 에 들어가지 않고,
+# EC2 는 환경변수(SPRING_DATASOURCE_*)로 RDS 를 본다.
+
+# 프로젝트 이름을 반드시 박아 둔다.
+#
+# 안 적으면 Compose 가 **디렉터리 이름**으로 프로젝트를 식별한다. 이 파일은
+# server/ 에 있어서 프로젝트명이 "server" 가 되는데, 이 PC 에는 같은 이름의
+# 스택이 이미 떠 있었다(다른 저장소의 server/ 디렉터리). 그러면 Spring 이
+# 새로 띄우지 않고 **남의 컨테이너를 재사용하며 접속 정보까지 거기서 읽어온다.**
+# 실제로 그 DB 에 붙어 Flyway 가 checksum mismatch 로 멈췄다.
+name: kkume-server
+
+services:
+  postgres:
+    image: 'postgres:17-alpine'
+    environment:
+      - 'POSTGRES_DB=kkume'
+      - 'POSTGRES_USER=kkume'
+      - 'POSTGRES_PASSWORD=kkume'
+    ports:
+      # 호스트 포트를 고정하지 않는다. 이 PC 는 5432 를 다른 프로젝트가 쓸 수 있고,
+      # 접속 정보는 Spring 이 컨테이너에서 직접 읽어 가므로 고정할 이유가 없다.
+      - '5432'
