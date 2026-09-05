@@ -7,8 +7,13 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "ios": { "resourceClass": "m-medium" },
-      "android": { "buildType": "apk" }
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "channel": "development"
     },
     "preview": {
       "developmentClient": false,
@@ -16,8 +21,13 @@
       "env": {
         "EXPO_PUBLIC_STORYBOOK_ENABLED": "false"
       },
-      "ios": { "resourceClass": "m-medium" },
-      "android": { "buildType": "apk" }
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "channel": "preview"
     }
   }
 }
