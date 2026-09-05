@@ -174,14 +174,46 @@ EAS 무료 플랜을 쓴다. **iOS · Android 각각 월 15회**가 전부다.
 토큰 · 스토리북 스토리는 dev client + Metro로 즉시 반영된다.
 "혹시 몰라서" 다시 빌드하지 않는다.
 
+### JS만 바뀌었으면 빌드가 아니라 `eas update`다
+
+2026-09-05 빌드부터 **`expo-updates`가 들어가 있다.** 그래서 실기기에 새 JS를 얹는 데
+빌드가 필요 없다 — `preview` 프로필은 `preview` 채널을 본다.
+
+```
+npx eas update --branch preview --message "무엇을 바꿨는지"
+```
+
+`runtimeVersion`은 **`fingerprint`** 정책이다. `appVersion`이 아니다 —
+네이티브가 바뀌면 지문이 갈라져 **그 모듈이 없는 옛 빌드에는 새 JS가 아예 안 간다.**
+`appVersion`으로 두면 `version`을 안 올린 채 네이티브를 추가했을 때
+없는 모듈을 부르는 JS가 무선으로 배달된다. 이 저장소가 절대 규칙 10에서 겪은 실패와 같다.
+
+EAS Update는 무료 플랜에 포함된다(MAU 1,000 · 대역폭 100 GiB, 2026-09-04 확인).
+
 ### 빌드 전에 반드시 돌리는 것
 
-둘 다 로컬에서 몇 십 초면 끝나고, **실제로 빌드 실패를 잡아낸 적이 있다.**
+셋 다 로컬에서 끝나고, **실제로 빌드 실패를 잡아낸 적이 있다.**
 
 ```
 npx expo config --type introspect    # 플러그인 · entitlements · Info.plist 결과물
 npx expo export --platform ios       # JS 번들링 · 모듈 해석 오류
 ```
+
+```
+npx expo-doctor                      # 의존성 · 설정 스키마
+```
+
+**네이티브 설정을 건드렸으면 Docker로 `prebuild`까지 돌린다.** Windows에서는
+`expo prebuild -p ios`가 막히지만 컨테이너에서는 3분이면 된다. 위젯 익스텐션이
+Swift로 생성되는 데까지 확인할 수 있다 — EAS에서 가장 잘 깨지는 자리다.
+
+```
+git archive HEAD mobile | tar -x -C <임시폴더>
+MSYS_NO_PATHCONV=1 docker run --rm -v "<임시폴더>:/app" -w /app node:22-bookworm   bash -lc 'npm install --legacy-peer-deps && npx expo prebuild --platform ios --no-install'
+```
+
+`ios/ExpoWidgetsTarget/RecordBoth.swift`가 만들어지면 통과다.
+**Swift 컴파일과 CocoaPods만은 macOS 전용이라 EAS가 유일한 판정처다.**
 
 `storybook.requires.ts`가 EAS에서만 없어 빌드가 깨지는 것을
 `expo export`로 미리 잡았다. 그걸 몰랐으면 빌드 한 번을 날렸다.
