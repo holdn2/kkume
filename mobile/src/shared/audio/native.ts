@@ -50,6 +50,11 @@ export function useNativeRecorder(): Recorder {
     rec.record();
     setDurationMs(0);
     setIsRecording(true);
+
+    // `prepareToRecordAsync()`가 파일을 먼저 만들기 때문에 여기서 이미 경로가 있다.
+    // **끝나기를 기다리지 않고 지금 돌려준다** — 녹음 중에 앱이 죽으면
+    // `stop()`을 못 부르고, 그러면 이 경로가 어디에도 안 남는다
+    return rec.uri;
   }, [rec]);
 
   const stop = useCallback(async (): Promise<RecordingResult> => {

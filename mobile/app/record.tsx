@@ -58,14 +58,8 @@ export default function RecordModal() {
   const [savedText, setSavedText] = useState<string | null>(null);
   const saved = savedText !== null && savedText === text;
 
-  // 들어오자마자 녹음이 시작된다. 시작 버튼을 누르게 하면 그게 결정이다.
-  // start는 신원이 안정적이라 이 effect는 한 번만 돈다.
-  useEffect(() => {
-    if (resolved !== 'voice') return;
-    void start()
-      .then(startFeedback)
-      .catch((e) => setError(String(e)));
-  }, [resolved, start]);
+  // 녹음을 시작하는 effect는 persist가 정의된 뒤에 있다 — 시작하자마자
+  // 파일 경로를 DB에 못 박아야 해서 persist를 참조하기 때문이다.
 
   /** 저장을 한 줄로 세운다. 이유는 바로 아래 persist에 있다 */
   const queue = useRef<Promise<unknown>>(Promise.resolve());
@@ -112,6 +106,29 @@ export default function RecordModal() {
     },
     [],
   );
+
+  /**
+   * 들어오자마자 녹음이 시작된다. 시작 버튼을 누르게 하면 그게 결정이다(절대 규칙 7).
+   *
+   * **시작과 동시에 파일 경로를 DB에 못 박는다.** 녹음 중에 앱이 죽으면
+   * `stop()`을 부를 기회가 없어서, 파일은 디스크에 남는데 그 경로가 JS 어디에도
+   * 안 남는다 — 그러면 영영 못 찾는다(절대 규칙 2). PR #13 리뷰 때 이 위험을
+   * 알고도 "4주차에 같이 보겠다"고 미뤘던 자리다.
+   *
+   * 이때 만들어지는 행은 `audio_path`는 있고 `duration_ms`는 없다.
+   * **그 조합이 곧 "끝나지 않은 녹음"**이라 따로 컬럼을 두지 않았다 —
+   * 정상 종료는 `finish()`가 둘을 같이 넣기 때문에 섞이지 않는다.
+   */
+  useEffect(() => {
+    if (resolved !== 'voice') return;
+    void start()
+      .then((uri) => {
+        startFeedback();
+        // 경로를 못 받는 구현이면 그냥 넘어간다. 여기서 막으면 녹음 자체가 안 된다
+        if (uri) void persist({ audioPath: uri });
+      })
+      .catch((e) => setError(String(e)));
+  }, [resolved, start, persist]);
 
   /**
    * 반대쪽으로 넘어간다. 넘어가기 전에 지금 것을 먼저 붙인다 — 잃는 것이 없어야 되돌리기다.

@@ -42,6 +42,9 @@ export function useFakeRecorder(): Recorder {
   const start = useCallback(async () => {
     setDurationMs(0);
     setIsRecording(true);
+    // 진짜 구현과 같은 시점에 같은 모양의 값을 준다. 여기서 null을 주면
+    // 네이티브가 없는 빌드에서 "미완성 기록" 흐름을 아예 못 보게 된다
+    return FAKE_URI;
   }, []);
 
   const stop = useCallback(async (): Promise<RecordingResult> => {
