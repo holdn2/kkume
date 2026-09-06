@@ -98,7 +98,7 @@ class DreamPersistenceTest {
 		dreams.save(dream);
 
 		// 기기에서 올라온 내용으로 갱신한다 — audioUrl 은 apply() 의 인자가 아니다
-		dream.apply("제목", "본문", 1234, now, null, null, now);
+		dream.apply("제목", "본문", 1234, now, null, null, now, now);
 		dreams.save(dream);
 
 		assertThat(dreams.findById(dream.getId()).orElseThrow().getAudioUrl())

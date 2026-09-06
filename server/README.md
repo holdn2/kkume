@@ -62,6 +62,81 @@ GET /api/me
 
 토큰이 아직 쓸 만한지 확인하는 데도 쓴다.
 
+### 동기화
+
+기기의 로컬 SQLite 와 서버를 맞춘다. **꿈 기록 행만 오간다** — 오디오 파일은
+여기서 다루지 않는다(다음 이슈).
+
+#### 받아가기
+
+```http
+GET /api/sync/dreams?since=2026-09-06T00:12:03.456789Z&cursor=m8x2k-a91f&limit=100
+```
+
+```json
+{
+  "dreams": [ { "id": "m8x2k-a91f", "title": "고래 꿈", "deletedAt": null, "updatedAt": "...", "clientUpdatedAt": "...", "...": "" } ],
+  "nextSince": "2026-09-06T00:12:09.001122Z",
+  "nextCursor": "m8x3p-b02c",
+  "hasMore": false
+}
+```
+
+`since` 없이 부르면 처음부터 전부 받는다. **기기를 바꾸거나 앱을 다시 깐 경우**가
+여기에 해당한다. `hasMore` 가 `true` 면 `nextSince` 와 `nextCursor` 를 그대로 넣어
+곧바로 한 번 더 부른다.
+
+**둘을 함께 보내야 한다.** 시각만 보내면 같은 시각의 기록이 여럿일 때 페이지 경계에
+걸린 한 건을 아무도 받아 가지 않는다.
+
+**지워진 기록도 담겨 온다.** `deletedAt` 이 채워진 채로 온다 — 빼 버리면 기기가
+삭제를 영영 모르고, 지운 기록이 다음 동기화에서 되살아난다.
+
+#### 올리기
+
+```http
+POST /api/sync/dreams
+{ "dreams": [ { "id": "m8x2k-a91f", "recordedAt": "...", "title": "고래 꿈",
+               "text": "...", "durationMs": 1200, "reviewedAt": null,
+               "deletedAt": null, "updatedAt": "..." } ] }
+```
+
+```json
+{ "results": [
+  { "id": "m8x2k-a91f", "status": "saved",    "reason": null },
+  { "id": "m8x3p-b02c", "status": "skipped",  "reason": null },
+  { "id": "m8x4q-c73d", "status": "rejected", "reason": "title_too_long" }
+] }
+```
+
+| status | 뜻 | 기기가 할 일 |
+| --- | --- | --- |
+| `saved` | 반영됐다 | 올라감으로 표시한다 |
+| `skipped` | 서버 것이 더 새롭다 | 받아가기로 서버 것을 가져간다 |
+| `rejected` | 받을 수 없다 | **폰에 남긴다.** 고치기 전에는 다시 보내도 같다 |
+
+거절 이유는 `missing_id` · `id_too_long` · `missing_recorded_at` ·
+`missing_updated_at` · `title_too_long` · `not_owned` 다.
+
+**한 건이 실패해도 나머지는 저장된다.** 전부 되돌리면 그 한 건을 고치기 전까지
+오프라인에 쌓인 나머지가 영영 올라가지 못한다.
+
+#### 정해 둔 규칙
+
+| | |
+| --- | --- |
+| **충돌** | `updatedAt` 이 더 새로운 쪽이 이긴다. 같으면 서버를 유지한다 |
+| **삭제** | 양쪽 다 소프트 삭제. 지워진 행도 응답에 담는다 |
+| **배치** | 한 번에 **100건**. 넘으면 `400 too_many` — 기기가 나눠 보낸다 |
+| **오디오** | 이 API 는 손대지 않는다. `audioUrl` 은 업로드 쪽에서만 바뀐다 |
+
+**`updatedAt` 과 `clientUpdatedAt` 은 다른 시계다.** `updatedAt` 은 서버가 쓴 시각이라
+커서가 이것을 따라가고, `clientUpdatedAt` 은 기기가 고친 시각이라 충돌 판정에만 쓴다.
+하나로 합치면 시계가 느린 폰이 올릴 때 커서가 뒤로 가서, 다른 기기가 그 기록을 영영 못 받는다.
+
+**서버가 기기의 값을 받지 않는 것들** — `audioUrl` · `sttStatus` · `userId`.
+사용자는 토큰에서만 읽는다. 본문으로 받으면 남의 id 를 적어 넣는 순간 남의 기록에 닿는다.
+
 ### 인증이 필요 없는 경로
 
 `/health` · `/health/ready` · `/api/auth/**` 뿐이다. 나머지는 전부 토큰이 있어야 한다.
@@ -72,6 +147,7 @@ GET /api/me
 | --- | --- |
 | 토큰 없음 · 만료 · 위조 | `401` |
 | 구글 토큰 검증 실패 | `401` `{"code":"invalid_token","message":"로그인에 실패했습니다"}` |
+| 한 번에 100건을 넘겨 올림 | `400` `{"code":"too_many", ...}` |
 
 **왜 실패했는지 알려주지 않는다.** "서명이 틀렸다" 와 "대상이 틀렸다" 를 구분해 주면
 토큰을 맞춰 보는 쪽에 힌트가 된다.
