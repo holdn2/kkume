@@ -181,8 +181,14 @@ EAS 무료 플랜을 쓴다. **iOS · Android 각각 월 15회**가 전부다.
 
 ```
 cd mobile
-EXPO_PUBLIC_STORYBOOK_ENABLED=false npm exec -- eas update   --branch preview --environment preview --message "무엇을 바꿨는지"
+$env:EXPO_PUBLIC_STORYBOOK_ENABLED = "false"
+npm exec -- eas update --branch=preview --environment=preview --message "무엇을 바꿨는지"
 ```
+
+**PowerShell 문법이고, 플래그 값은 등호로 붙인다.** `VAR=x cmd`는 bash 것이라
+PowerShell에서는 파서 에러가 난다. 그리고 값을 띄어 쓰면 `npm exec`를 거치면서
+떨어져 나가 `Unexpected argument`가 난다 — `eas update:list --branch preview`가
+실제로 그렇게 실패했다(2026-09-06).
 
 **환경변수를 손으로 붙여야 한다.** `EXPO_PUBLIC_STORYBOOK_ENABLED=false`는
 `eas.json`의 **build 프로필 `env`**라 빌드에만 먹는다. `eas update`는 번들을
