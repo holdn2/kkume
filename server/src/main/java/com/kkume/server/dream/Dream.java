@@ -68,6 +68,16 @@ public class Dream {
 	@Column(name = "updated_at", nullable = false)
 	private Instant updatedAt;
 
+	/**
+	 * 기기가 이 기록을 마지막으로 고친 시각. <b>충돌 판정에만 쓴다.</b>
+	 *
+	 * <p>{@link #updatedAt} 과 나눈 이유는 시계가 다르기 때문이다. 커서는 서버 시각을
+	 * 따라가야 순서가 뒤로 가지 않고, 충돌은 기기 시각으로 봐야 늦게 올라온 최신 수정이
+	 * 옛 내용에 덮이지 않는다.
+	 */
+	@Column(name = "client_updated_at", nullable = false)
+	private Instant clientUpdatedAt;
+
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
@@ -81,6 +91,7 @@ public class Dream {
 		this.recordedAt = recordedAt;
 		this.createdAt = now;
 		this.updatedAt = now;
+		this.clientUpdatedAt = now;
 	}
 
 	public String getId() {
@@ -139,6 +150,10 @@ public class Dream {
 		return updatedAt;
 	}
 
+	public Instant getClientUpdatedAt() {
+		return clientUpdatedAt;
+	}
+
 	public Instant getDeletedAt() {
 		return deletedAt;
 	}
@@ -154,14 +169,24 @@ public class Dream {
 	 * 이미 올라간 원본을 지우지 않는다 — 그것이 기록 소실의 유일한 경로가 된다.
 	 */
 	public void apply(String title, String text, Integer durationMs, Instant recordedAt,
-			Instant reviewedAt, Instant deletedAt, Instant now) {
+			Instant reviewedAt, Instant deletedAt, Instant clientUpdatedAt, Instant now) {
 		this.title = title;
 		this.text = text;
 		this.durationMs = durationMs;
 		this.recordedAt = recordedAt;
 		this.reviewedAt = reviewedAt;
 		this.deletedAt = deletedAt;
+		this.clientUpdatedAt = clientUpdatedAt;
 		this.updatedAt = now;
+	}
+
+	/**
+	 * 올라온 것이 서버에 있는 것보다 새로운가. 같으면 <b>서버를 유지한다</b> —
+	 * 같은 시각이면 어느 쪽이 옳은지 알 방법이 없고, 그때 덮어쓰면 이미 반영된
+	 * 내용이 한 번 더 왕복하면서 흔들린다.
+	 */
+	public boolean isOlderThan(Instant incomingClientUpdatedAt) {
+		return this.clientUpdatedAt.isBefore(incomingClientUpdatedAt);
 	}
 
 	public void attachAudio(String audioUrl, Instant now) {
