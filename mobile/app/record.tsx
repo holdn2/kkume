@@ -83,6 +83,15 @@ export default function RecordModal() {
   const pendingAudio = useRef<RecordingResult | null>(null);
 
   /** 녹음을 멈춰 결과를 얻는다. 이미 멈춰 있으면 그때 받아 둔 것을 그대로 쓴다 */
+  const leave = useCallback(() => router.replace('/log'), [router]);
+
+  /**
+   * 백그라운드에서 녹음을 마무리했다는 표시. 돌아왔을 때 목록으로 보낼지를 이걸로 정한다.
+   * state가 아니라 ref인 이유는 화면을 다시 그릴 일이 없어서다 — 값이 쓰이는 곳은
+   * 이벤트 콜백 안뿐이고, state로 두면 리스너가 옛 값을 잡는다
+   */
+  const finalizedInBg = useRef(false);
+
   const takeAudio = useCallback(async () => {
     if (!pendingAudio.current) pendingAudio.current = await stop();
     return pendingAudio.current;
@@ -158,21 +167,35 @@ export default function RecordModal() {
   useEffect(() => {
     if (resolved !== 'voice') return;
     const sub = AppState.addEventListener('change', (next) => {
-      if (next !== 'background' || !rec.isRecording) return;
-      void (async () => {
-        try {
-          const out = await takeAudio();
-          await persist({ audioPath: out.uri, durationMs: out.durationMs });
-        } catch {
-          // 여기서는 화면에 남길 수 없다 — 이미 백그라운드다.
-          // 시작할 때 넣어 둔 행이 있으니 경로까지 잃지는 않는다
-        }
-        // pendingAudio는 비우지 않는다. 돌아와서 정지를 눌러도 멈춘 녹음기에
-        // stop()을 다시 부르지 않고 이 결과를 그대로 쓴다
-      })();
+      if (next === 'background' && rec.isRecording) {
+        void (async () => {
+          try {
+            const out = await takeAudio();
+            await persist({ audioPath: out.uri, durationMs: out.durationMs });
+          } catch {
+            // 여기서는 화면에 남길 수 없다 — 이미 백그라운드다.
+            // 시작할 때 넣어 둔 행이 있으니 경로까지 잃지는 않는다
+          }
+          // 실패했어도 표시한다. 돌아왔을 때 멈춘 화면에 세워 두는 것이 더 나쁘다
+          finalizedInBg.current = true;
+          // pendingAudio는 비우지 않는다. 정지를 누르더라도 멈춘 녹음기에
+          // stop()을 다시 부르지 않고 이 결과를 그대로 쓴다
+        })();
+        return;
+      }
+
+      // **돌아오면 목록으로 보낸다.** 녹음은 이미 끝났고 저장도 됐는데
+      // 멈춘 녹음 화면을 그대로 보여주면, 회색 타이머와 정지 버튼 앞에서
+      // "이거 눌러도 되나"를 판단하게 된다 — 그게 곧 절대 규칙 7 위반이다.
+      // 이미 끝난 일을 다시 확인시키지 않는다
+      if (next === 'active' && finalizedInBg.current) {
+        finalizedInBg.current = false;
+        savedFeedback();
+        leave();
+      }
     });
     return () => sub.remove();
-  }, [resolved, rec.isRecording, takeAudio, persist]);
+  }, [resolved, rec.isRecording, takeAudio, persist, leave]);
 
   /**
    * 반대쪽으로 넘어간다. 넘어가기 전에 지금 것을 먼저 붙인다 — 잃는 것이 없어야 되돌리기다.
@@ -233,8 +256,6 @@ export default function RecordModal() {
    * 위젯으로 들어왔으면 돌아갈 곳이 없고 탭에서 들어왔으면 빠른기록으로 되돌아간다 —
    * 방금 남긴 것이 어디 갔는지 알 수 없는 자리다. 목록은 저장됐다는 증거이기도 하다.
    */
-  const leave = useCallback(() => router.replace('/log'), [router]);
-
   const finish = () => {
     void (async () => {
       try {
