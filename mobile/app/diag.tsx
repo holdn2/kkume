@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, Card, Row, Screen, Stack, Title } from '@components';
 import { audioBackend, mmss } from '@shared/audio';
 import { getDreamRepo, storageBackend, type Dream } from '@shared/db';
+import { updateInfo } from '@shared/updates';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 import { ensureWidgetSnapshot, widgetBackend } from '@features/widget';
@@ -70,6 +71,8 @@ export default function DiagScreen() {
     })();
   };
 
+  const upd = updateInfo();
+
   return (
     <Screen scroll>
       <Title sub="preview 빌드에서 네이티브가 실제로 붙었는지 본다">빌드 진단</Title>
@@ -105,7 +108,42 @@ export default function DiagScreen() {
             <Badge label="없음 — 빌드에 안 들어감" tone="warning" />
           )}
         </Row>
+        {/* 이 줄이 OTA 판정 그 자체다. 코드가 안 바뀐 업데이트는 화면이 똑같아서
+            "새 번들이 왔다"와 "안 와서 옛 번들이 돈다"가 눈으로 구분되지 않는다 */}
+        <Row>
+          <AppText size="label" style={{ flex: 1 }}>
+            번들
+          </AppText>
+          {upd == null ? (
+            <Badge label="없음 — 빌드에 안 들어감" tone="warning" />
+          ) : !upd.enabled ? (
+            <Badge label="꺼짐 — 개발 빌드" tone="warning" />
+          ) : upd.embedded ? (
+            <Badge label="빌드에 박힌 것 — OTA 아직" tone="warning" />
+          ) : (
+            <Badge label="무선으로 받은 것" tone="running" />
+          )}
+        </Row>
       </Stack>
+
+      {upd != null && (
+        <Card>
+          <Stack gap={sp[2]}>
+            <AppText size="caption" color={c.fgMuted}>
+              채널 {upd.channel ?? '없음'}
+            </AppText>
+            <AppText size="caption" color={c.fgMuted}>
+              런타임 {upd.runtimeVersion ?? '없음'}
+            </AppText>
+            <AppText size="caption" color={c.fgMuted}>
+              업데이트 {upd.updateId ?? '없음 (빌드 원본)'}
+            </AppText>
+            <AppText size="caption" color={c.fgMuted}>
+              받은 시각 {upd.createdAt ? upd.createdAt.toLocaleString('ko-KR') : '없음'}
+            </AppText>
+          </Stack>
+        </Card>
+      )}
 
       {!!err && (
         <Card>

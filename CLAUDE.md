@@ -180,8 +180,32 @@ EAS 무료 플랜을 쓴다. **iOS · Android 각각 월 15회**가 전부다.
 빌드가 필요 없다 — `preview` 프로필은 `preview` 채널을 본다.
 
 ```
-npx eas update --branch preview --message "무엇을 바꿨는지"
+cd mobile
+$env:EXPO_PUBLIC_STORYBOOK_ENABLED = "false"
+npm exec -- eas update --branch=preview --environment=preview --message "무엇을 바꿨는지"
 ```
+
+**PowerShell 문법이고, 플래그 값은 등호로 붙인다.** `VAR=x cmd`는 bash 것이라
+PowerShell에서는 파서 에러가 난다. 그리고 값을 띄어 쓰면 `npm exec`를 거치면서
+떨어져 나가 `Unexpected argument`가 난다 — `eas update:list --branch preview`가
+실제로 그렇게 실패했다(2026-09-06).
+
+**환경변수를 손으로 붙여야 한다.** `EXPO_PUBLIC_STORYBOOK_ENABLED=false`는
+`eas.json`의 **build 프로필 `env`**라 빌드에만 먹는다. `eas update`는 번들을
+**로컬에서** 만들기 때문에 그 값을 물고 가지 않는다. 빼먹으면
+`metro.config.js`의 기본값(`!== 'false'` → 켜짐)이 그대로 걸려서
+**설치된 빌드에는 없는 스토리북이 들어간 번들**이 무선으로 나간다.
+주석에 적힌 대로 번들이 2.4MB에서 7.1MB로 불어난다.
+`--environment`도 `--non-interactive`에서는 필수다.
+
+쏘고 나면 출력의 **`Runtime version`이 기기에 깔린 빌드의 `runtime.version`과
+같은지 확인한다.** 다르면 그 기기에는 안 간다. 빌드 쪽 값은 이렇게 본다.
+
+```
+npm exec -- eas build:list --limit 1 --json --non-interactive
+```
+
+`runtime.version`과 `updateChannel.name`을 본다.
 
 `runtimeVersion`은 **`fingerprint`** 정책이다. `appVersion`이 아니다 —
 네이티브가 바뀌면 지문이 갈라져 **그 모듈이 없는 옛 빌드에는 새 JS가 아예 안 간다.**
