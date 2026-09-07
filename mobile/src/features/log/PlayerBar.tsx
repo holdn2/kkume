@@ -52,8 +52,12 @@ export function PlayerBar({ uri, durationMs }: { uri: string | null; durationMs:
           <AppText size="caption" color={c.fgFaint} style={{ flex: 1 }}>
             {mmss(player.positionMs)}
           </AppText>
+          {/* 길이가 0이면 "0초짜리 녹음"이 아니라 **못 읽은 것**이다 —
+              마무리되지 않은 파일은 헤더가 없어 길이가 안 나온다.
+              `00:00`으로 그리면 멀쩡한 0초 녹음처럼 읽혀서 `--:--`로 둔다
+              (같은 이유가 `mmss`의 주석에 있다) */}
           <AppText size="caption" color={c.fgFaint}>
-            {mmss(player.durationMs)}
+            {mmss(player.durationMs || null)}
           </AppText>
         </Row>
       </View>

@@ -28,7 +28,14 @@ export function DreamCard({ dream, onPress }: { dream: Dream; onPress?: () => vo
         <Row gap={sp[2]}>
           <AppText size="caption" color={c.fgFaint} style={{ flex: 1 }}>
             {when(dream.recordedAt)}
-            {dream.audioPath ? ` · ${mmss(dream.durationMs)}` : ''}
+            {/* 경로는 있는데 길이가 없으면 **끝나지 않은 녹음**이다 —
+                녹음 중에 앱이 죽었다. 파일은 남아 있으니 들을 수는 있다.
+                `--:--`로 두면 "길이만 모르는 멀쩡한 기록"으로 읽혀서 따로 말한다 */}
+            {dream.audioPath
+              ? dream.durationMs == null
+                ? ' · 끝나지 않은 녹음'
+                : ` · ${mmss(dream.durationMs)}`
+              : ''}
           </AppText>
         </Row>
       </Stack>

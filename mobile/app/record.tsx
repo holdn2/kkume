@@ -1,7 +1,15 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Mic, PenLine, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import {
+  AppState,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { Input, Row, Screen } from '@components';
 import { Waveform } from '@features/record/Waveform';
@@ -58,14 +66,8 @@ export default function RecordModal() {
   const [savedText, setSavedText] = useState<string | null>(null);
   const saved = savedText !== null && savedText === text;
 
-  // 들어오자마자 녹음이 시작된다. 시작 버튼을 누르게 하면 그게 결정이다.
-  // start는 신원이 안정적이라 이 effect는 한 번만 돈다.
-  useEffect(() => {
-    if (resolved !== 'voice') return;
-    void start()
-      .then(startFeedback)
-      .catch((e) => setError(String(e)));
-  }, [resolved, start]);
+  // 녹음을 시작하는 effect는 persist가 정의된 뒤에 있다 — 시작하자마자
+  // 파일 경로를 DB에 못 박아야 해서 persist를 참조하기 때문이다.
 
   /** 저장을 한 줄로 세운다. 이유는 바로 아래 persist에 있다 */
   const queue = useRef<Promise<unknown>>(Promise.resolve());
@@ -81,6 +83,15 @@ export default function RecordModal() {
   const pendingAudio = useRef<RecordingResult | null>(null);
 
   /** 녹음을 멈춰 결과를 얻는다. 이미 멈춰 있으면 그때 받아 둔 것을 그대로 쓴다 */
+  const leave = useCallback(() => router.replace('/log'), [router]);
+
+  /**
+   * 백그라운드에서 녹음을 마무리했다는 표시. 돌아왔을 때 목록으로 보낼지를 이걸로 정한다.
+   * state가 아니라 ref인 이유는 화면을 다시 그릴 일이 없어서다 — 값이 쓰이는 곳은
+   * 이벤트 콜백 안뿐이고, state로 두면 리스너가 옛 값을 잡는다
+   */
+  const finalizedInBg = useRef(false);
+
   const takeAudio = useCallback(async () => {
     if (!pendingAudio.current) pendingAudio.current = await stop();
     return pendingAudio.current;
@@ -112,6 +123,79 @@ export default function RecordModal() {
     },
     [],
   );
+
+  /**
+   * 들어오자마자 녹음이 시작된다. 시작 버튼을 누르게 하면 그게 결정이다(절대 규칙 7).
+   *
+   * **시작과 동시에 파일 경로를 DB에 못 박는다.** 녹음 중에 앱이 죽으면
+   * `stop()`을 부를 기회가 없어서, 파일은 디스크에 남는데 그 경로가 JS 어디에도
+   * 안 남는다 — 그러면 영영 못 찾는다(절대 규칙 2). PR #13 리뷰 때 이 위험을
+   * 알고도 "4주차에 같이 보겠다"고 미뤘던 자리다.
+   *
+   * 이때 만들어지는 행은 `audio_path`는 있고 `duration_ms`는 없다.
+   * **그 조합이 곧 "끝나지 않은 녹음"**이라 따로 컬럼을 두지 않았다 —
+   * 정상 종료는 `finish()`가 둘을 같이 넣기 때문에 섞이지 않는다.
+   */
+  useEffect(() => {
+    if (resolved !== 'voice') return;
+    void start()
+      .then((uri) => {
+        startFeedback();
+        // 경로를 못 받는 구현이면 그냥 넘어간다. 여기서 막으면 녹음 자체가 안 된다
+        if (uri) void persist({ audioPath: uri });
+      })
+      .catch((e) => setError(String(e)));
+  }, [resolved, start, persist]);
+
+  /**
+   * **백그라운드로 가면 녹음을 마무리한다.** 시작 시점에 경로를 못 박는 것만으로는
+   * 부족하다는 것이 2026-09-07 실기기 확인에서 드러났다 — 행은 남았는데
+   * **파일이 재생되지 않고 `0초`로 나왔다.**
+   *
+   * 녹음기는 `stop()`에서 파일 헤더를 쓴다. 그 전에 죽으면 소리 데이터는 들어 있어도
+   * 재생기가 길이를 못 읽어 **못 쓰는 파일**이 된다. 경로만 살려서는 절대 규칙 2를
+   * 지킨 것이 아니다.
+   *
+   * **이 앱은 백그라운드에서 녹음할 수 없다.** `app.json`에 `UIBackgroundModes`가
+   * 없어서 iOS가 앱을 정지시킨다. 즉 **홈으로 나가기만 해도 녹음은 이미 죽는다** —
+   * 스위처로 밀어 없앨 때만의 문제가 아니었다. 어차피 못 이어갈 녹음이므로
+   * 떠나는 그 순간 마무리해서 **멀쩡한 파일로 남긴다.**
+   *
+   * `inactive`가 아니라 `background`만 본다. `inactive`는 알림창을 내리거나
+   * 전화가 올 때도 오는데, 거기서 멈추면 **새벽에 알림 하나로 녹음이 끊긴다.**
+   */
+  useEffect(() => {
+    if (resolved !== 'voice') return;
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'background' && rec.isRecording) {
+        void (async () => {
+          try {
+            const out = await takeAudio();
+            await persist({ audioPath: out.uri, durationMs: out.durationMs });
+          } catch {
+            // 여기서는 화면에 남길 수 없다 — 이미 백그라운드다.
+            // 시작할 때 넣어 둔 행이 있으니 경로까지 잃지는 않는다
+          }
+          // 실패했어도 표시한다. 돌아왔을 때 멈춘 화면에 세워 두는 것이 더 나쁘다
+          finalizedInBg.current = true;
+          // pendingAudio는 비우지 않는다. 정지를 누르더라도 멈춘 녹음기에
+          // stop()을 다시 부르지 않고 이 결과를 그대로 쓴다
+        })();
+        return;
+      }
+
+      // **돌아오면 목록으로 보낸다.** 녹음은 이미 끝났고 저장도 됐는데
+      // 멈춘 녹음 화면을 그대로 보여주면, 회색 타이머와 정지 버튼 앞에서
+      // "이거 눌러도 되나"를 판단하게 된다 — 그게 곧 절대 규칙 7 위반이다.
+      // 이미 끝난 일을 다시 확인시키지 않는다
+      if (next === 'active' && finalizedInBg.current) {
+        finalizedInBg.current = false;
+        savedFeedback();
+        leave();
+      }
+    });
+    return () => sub.remove();
+  }, [resolved, rec.isRecording, takeAudio, persist, leave]);
 
   /**
    * 반대쪽으로 넘어간다. 넘어가기 전에 지금 것을 먼저 붙인다 — 잃는 것이 없어야 되돌리기다.
@@ -172,8 +256,6 @@ export default function RecordModal() {
    * 위젯으로 들어왔으면 돌아갈 곳이 없고 탭에서 들어왔으면 빠른기록으로 되돌아간다 —
    * 방금 남긴 것이 어디 갔는지 알 수 없는 자리다. 목록은 저장됐다는 증거이기도 하다.
    */
-  const leave = useCallback(() => router.replace('/log'), [router]);
-
   const finish = () => {
     void (async () => {
       try {
