@@ -1,7 +1,15 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Mic, PenLine, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import {
+  AppState,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { Input, Row, Screen } from '@components';
 import { Waveform } from '@features/record/Waveform';
@@ -129,6 +137,42 @@ export default function RecordModal() {
       })
       .catch((e) => setError(String(e)));
   }, [resolved, start, persist]);
+
+  /**
+   * **백그라운드로 가면 녹음을 마무리한다.** 시작 시점에 경로를 못 박는 것만으로는
+   * 부족하다는 것이 2026-09-07 실기기 확인에서 드러났다 — 행은 남았는데
+   * **파일이 재생되지 않고 `0초`로 나왔다.**
+   *
+   * 녹음기는 `stop()`에서 파일 헤더를 쓴다. 그 전에 죽으면 소리 데이터는 들어 있어도
+   * 재생기가 길이를 못 읽어 **못 쓰는 파일**이 된다. 경로만 살려서는 절대 규칙 2를
+   * 지킨 것이 아니다.
+   *
+   * **이 앱은 백그라운드에서 녹음할 수 없다.** `app.json`에 `UIBackgroundModes`가
+   * 없어서 iOS가 앱을 정지시킨다. 즉 **홈으로 나가기만 해도 녹음은 이미 죽는다** —
+   * 스위처로 밀어 없앨 때만의 문제가 아니었다. 어차피 못 이어갈 녹음이므로
+   * 떠나는 그 순간 마무리해서 **멀쩡한 파일로 남긴다.**
+   *
+   * `inactive`가 아니라 `background`만 본다. `inactive`는 알림창을 내리거나
+   * 전화가 올 때도 오는데, 거기서 멈추면 **새벽에 알림 하나로 녹음이 끊긴다.**
+   */
+  useEffect(() => {
+    if (resolved !== 'voice') return;
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'background' || !rec.isRecording) return;
+      void (async () => {
+        try {
+          const out = await takeAudio();
+          await persist({ audioPath: out.uri, durationMs: out.durationMs });
+        } catch {
+          // 여기서는 화면에 남길 수 없다 — 이미 백그라운드다.
+          // 시작할 때 넣어 둔 행이 있으니 경로까지 잃지는 않는다
+        }
+        // pendingAudio는 비우지 않는다. 돌아와서 정지를 눌러도 멈춘 녹음기에
+        // stop()을 다시 부르지 않고 이 결과를 그대로 쓴다
+      })();
+    });
+    return () => sub.remove();
+  }, [resolved, rec.isRecording, takeAudio, persist]);
 
   /**
    * 반대쪽으로 넘어간다. 넘어가기 전에 지금 것을 먼저 붙인다 — 잃는 것이 없어야 되돌리기다.
