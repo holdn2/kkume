@@ -78,11 +78,24 @@ export async function signInWithGoogle(): Promise<GoogleResult> {
 
     if (!isSuccessResponse(res)) return { ok: false, reason: 'cancelled' };
 
-    const idToken: string | null = res.data?.idToken ?? null;
+    let idToken: string | null = res.data?.idToken ?? null;
+
     if (!idToken) {
-      // 로그인은 됐는데 토큰이 안 온 경우다. webClientId가 비어 있으면 이렇게 된다 —
-      // 구글은 `aud`를 정할 대상이 없으면 ID 토큰을 만들지 않는다
-      return { ok: false, reason: 'failed', detail: 'idToken이 비어 있습니다' };
+      // **한 번 더 받아 본다.** `signIn()`의 `idToken`은 타입부터 `string | null`이고,
+      // iOS에서 비어 오는 경우가 있다. `getTokens()`는 토큰만 따로 받아오는 경로라
+      // 여기서 나오는 일이 있다 — 없으면 그때 실패로 본다
+      try {
+        const t = await GoogleSignin.getTokens();
+        idToken = t?.idToken ?? null;
+      } catch (inner) {
+        return { ok: false, reason: 'failed', detail: `getTokens 실패: ${describe(inner)}` };
+      }
+    }
+
+    if (!idToken) {
+      // 로그인은 됐는데 토큰이 끝내 안 왔다. `webClientId`가 웹 유형 클라이언트가
+      // 아니면 이렇게 된다 — 구글은 `aud`로 쓸 대상이 없으면 ID 토큰을 만들지 않는다
+      return { ok: false, reason: 'failed', detail: 'idToken이 비어 있습니다 (webClientId 확인)' };
     }
     return { ok: true, idToken };
   } catch (e) {
@@ -92,8 +105,21 @@ export async function signInWithGoogle(): Promise<GoogleResult> {
     if (isErrorWithCode(e) && code === statusCodes.SIGN_IN_CANCELLED) {
       return { ok: false, reason: 'cancelled' };
     }
-    return { ok: false, reason: 'failed', detail: String(e) };
+    return { ok: false, reason: 'failed', detail: describe(e) };
   }
+}
+
+/**
+ * 구글 오류를 사람이 옮겨 적을 수 있는 한 줄로.
+ *
+ * **`String(e)`로는 부족하다.** 구글 쪽 오류는 `code`에 원인이 들어 있는데
+ * `String()`은 `message`만 꺼내서, 화면에 찍어도 어느 설정이 틀렸는지 알 수 없다.
+ * 2026-09-12에 실제로 그 상태로 막혔다.
+ */
+function describe(e: unknown): string {
+  const o = e as { code?: string | number; message?: string } | null;
+  const parts = [o?.code != null ? `code=${o.code}` : null, o?.message ?? null].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : String(e);
 }
 
 export async function signOutFromGoogle() {

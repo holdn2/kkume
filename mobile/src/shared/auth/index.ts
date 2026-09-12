@@ -62,11 +62,16 @@ export function useAuth(): AuthState {
         // 취소는 실패가 아니다. 사용자가 스스로 닫은 것에 오류 문구를 띄우면
         // 자기가 뭘 잘못한 줄 알고 다시 시도하지 않는다
         if (g.reason === 'cancelled') return;
-        setError(
+        // **`detail`을 버리지 않는다.** 2026-09-12에 계정 선택까지 되고 그 뒤에 실패했는데,
+        // 화면에 "구글 로그인에 실패했습니다"만 떠서 **원인을 좁힐 근거가 하나도 없었다.**
+        // 구글 쪽 오류는 코드가 제각각이라 미리 문구를 매핑해 둘 수 없다 —
+        // 받은 것을 그대로 보여주는 편이 낫다. 개발 중에만 보이는 화면이 아니라
+        // 마이 탭이지만, 로그인 실패는 사용자도 스크린샷을 찍어 알려야 하는 상황이다
+        const base =
           g.reason === 'unavailable'
             ? '이 빌드에는 구글 로그인이 들어 있지 않습니다'
-            : '구글 로그인에 실패했습니다',
-        );
+            : '구글 로그인에 실패했습니다';
+        setError(g.detail ? `${base}\n${g.detail}` : base);
         return;
       }
       const res = await loginWithGoogle(g.idToken);
