@@ -67,7 +67,7 @@
       [
         "@react-native-google-signin/google-signin",
         {
-          "iosUrlScheme": "com.googleusercontent.apps.CHANGE-ME"
+          "iosUrlScheme": "com.googleusercontent.apps.93992852944-ke866ebu7f54crioh585333u13cahc0a"
         }
       ],
       "expo-apple-authentication",
@@ -83,9 +83,9 @@
       "eas": {
         "projectId": "15c9a3a6-60ae-4a44-9dfd-801be469857e"
       },
-      "apiBaseUrl": "CHANGE-ME",
+      "apiBaseUrl": "http://13.239.58.251",
       "googleWebClientId": "93992852944-9a2lqaidmev14r5jj93pj8e4btdf8qrh.apps.googleusercontent.com",
-      "googleIosClientId": "CHANGE-ME"
+      "googleIosClientId": "93992852944-ke866ebu7f54crioh585333u13cahc0a.apps.googleusercontent.com"
     },
     "updates": {
       "url": "https://u.expo.dev/15c9a3a6-60ae-4a44-9dfd-801be469857e"
