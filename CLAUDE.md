@@ -249,7 +249,7 @@ EAS Update는 무료 플랜에 포함된다(MAU 1,000 · 대역폭 100 GiB, 2026
 셋 다 로컬에서 끝나고, **실제로 빌드 실패를 잡아낸 적이 있다.**
 
 ```
-npx expo config --type introspect    # 플러그인 · entitlements · Info.plist 결과물
+npx expo config --type introspect    # 플러그인 · entitlements · 설정 병합 결과
 npx expo export --platform ios       # JS 번들링 · 모듈 해석 오류
 ```
 
@@ -268,6 +268,23 @@ MSYS_NO_PATHCONV=1 docker run --rm -v "<임시폴더>:/app" -w /app node:22-book
 
 `ios/ExpoWidgetsTarget/RecordBoth.swift`가 만들어지면 통과다.
 **Swift 컴파일과 CocoaPods만은 macOS 전용이라 EAS가 유일한 판정처다.**
+
+**`Info.plist`는 `introspect`가 아니라 이 산출물에서 본다.** 둘이 다른 값을 준다 —
+`introspect`는 개발 기본값을 섞어 보여주고, **빌드에 실제로 들어가는 것은
+`prebuild`가 만든 `ios/app/Info.plist`다.** 2026-09-12에 ATS를 `introspect`로만
+확인하고 `NSAllowsArbitraryLoads`가 `true`인 줄 알았는데, 산출물에는 `false`였다.
+평문 HTTP 서버로 나가지 못해 **빌드를 한 번 더 썼다.** 산출물은 이미 받아 놓고
+URL 스킴만 보고 넘어간 것이 원인이다.
+
+```
+grep -A8 "NSAppTransportSecurity" ios/app/Info.plist
+cat ios/app/*.entitlements
+```
+
+**ATS의 `NSExceptionDomains`는 도메인 이름만 받는다.** 서버 주소가 IP면 예외를
+걸 수 없어 `NSAllowsArbitraryLoads`로 통째로 여는 수밖에 없다.
+**도메인과 TLS를 붙이면 이 설정을 지울 수 있고, 그 변경은 빌드를 안 먹는다** —
+`apiBaseUrl`은 `app.json`의 `extra`에 있고 그건 OTA로 따라간다.
 
 `storybook.requires.ts`가 EAS에서만 없어 빌드가 깨지는 것을
 `expo export`로 미리 잡았다. 그걸 몰랐으면 빌드 한 번을 날렸다.
