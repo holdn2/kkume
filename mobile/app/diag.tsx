@@ -5,6 +5,9 @@ import { Badge, Button, Card, Row, Screen, Stack, Title } from '@components';
 import { audioBackend, mmss } from '@shared/audio';
 import { getDreamRepo, storageBackend, type Dream } from '@shared/db';
 import { updateInfo } from '@shared/updates';
+import { HAS_API } from '@shared/api/client';
+import { googleBackend, sessionBackend } from '@shared/auth';
+import { AUTH_CONFIGURED } from '@shared/auth/google';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 import { ensureWidgetSnapshot, widgetBackend } from '@features/widget';
@@ -122,6 +125,40 @@ export default function DiagScreen() {
             <Badge label="빌드에 박힌 것 — OTA 아직" tone="warning" />
           ) : (
             <Badge label="무선으로 받은 것" tone="running" />
+          )}
+        </Row>
+        {/* 인증은 네이티브라 빌드를 한 번 먹는다. 그 빌드에서 무엇이 붙었는지
+            여기서 바로 갈린다 — 로그인이 안 될 때 모듈 문제인지 설정 문제인지 */}
+        <Row>
+          <AppText size="label" style={{ flex: 1 }}>
+            로그인
+          </AppText>
+          {googleBackend() !== 'google-signin' ? (
+            <Badge label="없음 — 빌드에 안 들어감" tone="warning" />
+          ) : !AUTH_CONFIGURED ? (
+            <Badge label="클라이언트 ID 자리표시자" tone="warning" />
+          ) : (
+            <Badge label="google-signin" tone="neutral" />
+          )}
+        </Row>
+        <Row>
+          <AppText size="label" style={{ flex: 1 }}>
+            세션
+          </AppText>
+          {sessionBackend() === 'secure-store' ? (
+            <Badge label="secure-store" tone="neutral" />
+          ) : (
+            <Badge label="메모리 — 껐다 켜면 로그아웃" tone="warning" />
+          )}
+        </Row>
+        <Row>
+          <AppText size="label" style={{ flex: 1 }}>
+            서버 주소
+          </AppText>
+          {HAS_API ? (
+            <Badge label="설정됨" tone="neutral" />
+          ) : (
+            <Badge label="없음 — 동기화 불가" tone="warning" />
           )}
         </Row>
       </Stack>

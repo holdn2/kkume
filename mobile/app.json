@@ -63,7 +63,15 @@
       ],
       "expo-notifications",
       "expo-asset",
-      "expo-image"
+      "expo-image",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.CHANGE-ME"
+        }
+      ],
+      "expo-apple-authentication",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -73,7 +81,10 @@
       "router": {},
       "eas": {
         "projectId": "15c9a3a6-60ae-4a44-9dfd-801be469857e"
-      }
+      },
+      "apiBaseUrl": "CHANGE-ME",
+      "googleWebClientId": "93992852944-9a2lqaidmev14r5jj93pj8e4btdf8qrh.apps.googleusercontent.com",
+      "googleIosClientId": "CHANGE-ME"
     },
     "updates": {
       "url": "https://u.expo.dev/15c9a3a6-60ae-4a44-9dfd-801be469857e"
