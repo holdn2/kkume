@@ -56,6 +56,8 @@ export function useAuth(): AuthState {
   const signIn = useCallback(async () => {
     setBusy(true);
     setError(null);
+    // try 바깥에 둔다. catch에서 함께 보여줘야 하는데 안에 두면 안 보인다
+    let aud: string | null = null;
     try {
       const g = await signInWithGoogle();
       if (!g.ok) {
@@ -74,13 +76,20 @@ export function useAuth(): AuthState {
         setError(g.detail ? `${base}\n${g.detail}` : base);
         return;
       }
+      // **실패하면 토큰의 `aud`를 함께 보여준다.** 서버는 이 값이 허용 목록에
+      // 없으면 401을 주는데 이유를 알려주지 않는다(일부러 그렇게 만들었다).
+      // 그러면 화면만 보고는 "서버가 안 뜬 것"과 "대상이 안 맞는 것"을 못 가른다.
+      // 임시가 아니라 남겨 둔다 — 클라이언트 ID는 앱에 어차피 박혀 있어 비밀이 아니고,
+      // 이 한 줄이 없으면 다음에 같은 자리에서 또 막힌다
+      aud = audienceOf(g.idToken);
       const res = await loginWithGoogle(g.idToken);
       const s = toSession(res);
       await saveSession(s);
       setSession(s);
     } catch (e) {
       // 서버가 주는 문구는 이미 존댓말이라 그대로 보여준다
-      setError(isApiError(e) ? e.message : '로그인에 실패했습니다');
+      const base = isApiError(e) ? e.message : '로그인에 실패했습니다';
+      setError(aud ? `${base}\n토큰 대상: ${aud}` : base);
     } finally {
       setBusy(false);
     }
@@ -98,4 +107,27 @@ export function useAuth(): AuthState {
   }, []);
 
   return { session, loading, busy, error, signIn, signOut };
+}
+
+/**
+ * ID 토큰의 `aud`를 꺼낸다. **서명은 검증하지 않는다** — 그건 서버 일이고,
+ * 여기서는 어느 클라이언트를 대상으로 발급됐는지 보여주기만 한다.
+ *
+ * 서버의 허용 목록과 이 값이 다르면 401이 나는데, 서버가 이유를 안 알려주므로
+ * 앱이 스스로 말해 주지 않으면 원인을 못 찾는다.
+ */
+function audienceOf(jwt: string): string | null {
+  try {
+    const payload = jwt.split('.')[1];
+    if (!payload) return null;
+    // base64url이라 표준 base64로 바꾼 뒤 길이를 맞춘다
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const claims = JSON.parse(globalThis.atob(padded)) as { aud?: string | string[] };
+    const a = claims.aud;
+    return Array.isArray(a) ? a.join(', ') : (a ?? null);
+  } catch {
+    // 모양이 다르면 그냥 안 보여준다. 여기서 던지면 로그인이 막힌다
+    return null;
+  }
 }
