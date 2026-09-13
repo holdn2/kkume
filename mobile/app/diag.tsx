@@ -5,7 +5,7 @@ import { Badge, Button, Card, Row, Screen, Stack, Title } from '@components';
 import { audioBackend, mmss } from '@shared/audio';
 import { getDreamRepo, storageBackend, type Dream } from '@shared/db';
 import { updateInfo } from '@shared/updates';
-import { HAS_API } from '@shared/api/client';
+import { API_BASE_URL, HAS_API, ping } from '@shared/api/client';
 import { googleBackend, sessionBackend } from '@shared/auth';
 import { AUTH_CONFIGURED } from '@shared/auth/google';
 import { AppText } from '@shared/ui';
@@ -75,6 +75,13 @@ export default function DiagScreen() {
   };
 
   const upd = updateInfo();
+  const [pinged, setPinged] = useState<string | null>(null);
+
+  /** 서버에 닿는지만 따로 잰다. 로그인 흐름과 섞이면 어디서 끊겼는지 못 가린다 */
+  const doPing = () => {
+    setPinged('확인 중입니다');
+    void ping().then(setPinged);
+  };
 
   return (
     <Screen scroll>
@@ -193,8 +200,20 @@ export default function DiagScreen() {
       <Stack gap={sp[2]}>
         <Button label="마이그레이션 v2 확인" size="sm" onPress={probe} disabled={busy} />
         <Button label="위젯 스냅샷 다시 그리기" size="sm" variant="secondary" onPress={ensureWidgetSnapshot} />
+        <Button label="서버 연결 확인" size="sm" variant="secondary" onPress={doPing} />
         <Button label="새로고침" size="sm" variant="ghost" onPress={refresh} />
       </Stack>
+
+      {!!pinged && (
+        <Card>
+          <Stack gap={sp[2]}>
+            <AppText size="caption" color={c.fgFaint}>
+              {API_BASE_URL || '(주소 없음)'}
+            </AppText>
+            <AppText size="caption">{pinged}</AppText>
+          </Stack>
+        </Card>
+      )}
 
       <AppText size="caption" color={c.fgFaint}>
         기록 {rows.length}건 (최근 10건까지)
