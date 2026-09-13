@@ -15,8 +15,7 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSMicrophoneUsageDescription": "일어난 직후 꿈을 녹음해 기록하기 위해 마이크를 사용합니다.",
         "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true,
-          "NSAllowsLocalNetworking": true
+          "NSAllowsArbitraryLoads": true
         }
       },
       "appleTeamId": "3PW3FZG3GR"
