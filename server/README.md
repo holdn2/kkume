@@ -18,6 +18,16 @@ Spring Boot 4.1 · Java 21 · PostgreSQL · Flyway.
 
 ## 앱이 쓰는 API
 
+### 주소
+
+```
+https://13.239.58.251.nip.io
+```
+
+**앱은 이 주소를 쓴다.** iOS 가 평문 HTTP 를 막기 때문이다. `http://13.239.58.251` 도 아직 살아 있지만
+모바일이 옮겨 가기 전까지만 둔다. 이 주소는 EC2 의 IP 에 묶여 있다 — 자세한 것은 `deploy/README.md` 의 HTTPS 절.
+
+
 ### 로그인
 
 ```http

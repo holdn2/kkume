@@ -1,0 +1,26 @@
+# HTTPS 입구. https.sh 가 EC2 의 /opt/kkume/Caddyfile 로 올린다.
+#
+# 호스트 80 번은 앱 컨테이너가 쓰고 있다(ec2-run.sh 의 -p 80:8080).
+# 그 주소(http://<IP>)를 살려 둔 채 HTTPS 를 붙이려고 Caddy 는 443 만 쓴다.
+# 80 을 Caddy 에 넘기면 앱 컨테이너를 다시 띄워야 하고, 그것은 곧 배포다.
+#
+# 호스트 이름과 앱 포트는 컨테이너 환경변수로 받는다(ec2-https.sh).
+{
+	# 80 을 쓰지 않는다. HTTP -> HTTPS 리다이렉트 리스너를 띄우지 않고,
+	# HTTP 포트도 앱과 겹치지 않는 곳으로 비켜 둔다. 보안그룹에서 열지 않으므로 밖에서는 닿지 않는다.
+	auto_https disable_redirects
+	http_port 8081
+}
+
+{$KKUME_HTTPS_HOST} {
+	tls {
+		issuer acme {
+			# 인증서 검증을 80 대신 443 으로 받는다(TLS-ALPN-01).
+			# HTTP 검증을 켜 두면 Let's Encrypt 가 80 으로 와서 앱에 닿고 실패하는데,
+			# 그 실패도 발급 한도(같은 이름에 시간당 5회)에 잡힌다.
+			disable_http_challenge
+		}
+	}
+
+	reverse_proxy 127.0.0.1:{$KKUME_APP_PORT}
+}
