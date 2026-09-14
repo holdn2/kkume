@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { loginWithGoogle } from '@shared/api/auth';
 import { isApiError } from '@shared/api/client';
+import { syncIfSignedIn } from '@shared/sync';
 
 import { signInWithGoogle, signOutFromGoogle } from './google';
 import { clearSession, isExpired, loadSession, saveSession, toSession, type Session } from './session';
@@ -86,6 +87,10 @@ export function useAuth(): AuthState {
       const s = toSession(res);
       await saveSession(s);
       setSession(s);
+      // 로그인 전에 쌓인 기록을 바로 올린다. 소유자는 서버가 토큰에서 정하므로
+      // 로컬 `user_id`를 따로 잇지 않아도 이 사용자 것이 된다.
+      // 기다리지 않는다 — 로그인 완료가 동기화에 묶이면 느린 망에서 버튼이 안 풀린다
+      void syncIfSignedIn({ force: true });
     } catch (e) {
       // 서버가 주는 문구는 이미 존댓말이라 그대로 보여준다
       const base = isApiError(e) ? e.message : '로그인에 실패했습니다';

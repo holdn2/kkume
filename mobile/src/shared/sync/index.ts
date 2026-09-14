@@ -1,5 +1,6 @@
-import { isApiError } from '@shared/api/client';
+import { HAS_API, isApiError } from '@shared/api/client';
 import { MAX_BATCH, pullDreams, pushDreams, type DreamPayload } from '@shared/api/sync';
+import { isExpired, loadSession } from '@shared/auth/session';
 import { getDreamRepo, SETTINGS, type Dream } from '@shared/db';
 
 /**
@@ -111,4 +112,40 @@ export async function syncOnce(token: string): Promise<SyncReport> {
   }
 
   return report;
+}
+
+/** 목록 탭을 오갈 때마다 서버를 두드리지 않는다 */
+const MIN_INTERVAL_MS = 30_000;
+
+let lastRunAt = 0;
+let inFlight: Promise<SyncReport | null> | null = null;
+
+/**
+ * 로그인돼 있으면 한 번 돈다. 아니면 조용히 `null`을 돌려준다.
+ *
+ * **화면이 부르는 것은 이것이다.** 토큰을 화면이 들고 다니지 않게 여기서 꺼낸다.
+ *
+ * 두 가지를 막는다.
+ * - **겹침** — 목록 포커스와 로그인 직후가 동시에 부르면 같은 기록을 두 번 올린다.
+ *   진행 중인 것이 있으면 그 약속을 그대로 돌려준다
+ * - **잦은 호출** — 탭을 오갈 때마다 부르면 무료 플랜 서버(t3.micro)에 부담이다.
+ *   `force`가 아니면 30초 안에 다시 돌지 않는다
+ */
+export function syncIfSignedIn(opts: { force?: boolean } = {}): Promise<SyncReport | null> {
+  if (inFlight) return inFlight;
+  if (!HAS_API) return Promise.resolve(null);
+  if (!opts.force && Date.now() - lastRunAt < MIN_INTERVAL_MS) return Promise.resolve(null);
+
+  inFlight = (async () => {
+    try {
+      const s = await loadSession();
+      // 로그인 안 했거나 만료됐으면 부르지 않는다. 401만 받고 끝난다
+      if (!s || isExpired(s)) return null;
+      lastRunAt = Date.now();
+      return await syncOnce(s.accessToken);
+    } finally {
+      inFlight = null;
+    }
+  })();
+  return inFlight;
 }

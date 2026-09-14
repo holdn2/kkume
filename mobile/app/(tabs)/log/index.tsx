@@ -6,6 +6,7 @@ import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { Card, Screen, Title } from '@components';
 import { DreamCard } from '@features/log/DreamCard';
 import { getDreamRepo, type Dream } from '@shared/db';
+import { syncIfSignedIn } from '@shared/sync';
 import { AppText } from '@shared/ui';
 import { c, hit, press, r, sp } from '@theme/token';
 
@@ -35,7 +36,20 @@ export default function LogScreen() {
 
   // 기록하고 돌아오면 목록에 있어야 한다. 화면에 들어올 때마다 다시 읽는다 —
   // 기록 화면은 저장하고 router.replace로 이 화면에 떨어뜨리므로 마운트가 새로 일어나지 않는다
-  useFocusEffect(load);
+  //
+  // **동기화도 여기서 부른다.** 앱 시작이나 백그라운드 복귀에 걸지 않은 이유가 있다 —
+  // 새벽에 위젯으로 들어온 흐름에 끼어들 수 있고, 그건 절대 규칙 1(로컬에 먼저)이
+  // 막으려는 자리다. 목록은 낮에 보는 화면이라 안전하다.
+  // **로컬을 먼저 그리고 동기화는 뒤에 돈다.** 서버를 기다리면 목록이 늦게 뜬다
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      void syncIfSignedIn().then((r) => {
+        // 뭔가 바뀌었을 때만 다시 읽는다. 매번 읽으면 목록이 한 번 깜빡인다
+        if (r && (r.pulled > 0 || r.pushed > 0)) load();
+      });
+    }, [load]),
+  );
 
   return (
     <Screen>
