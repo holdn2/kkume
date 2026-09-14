@@ -77,8 +77,20 @@ export type ServerDream = {
   reviewedAt: string | null;
   deletedAt: string | null;
   createdAt: string;
-  updatedAt: string;
+  /**
+   * **그 버전을 만든 기기의 시각**(서버 응답의 `clientUpdatedAt`). 로컬 `updated_at`과
+   * `synced_at` 둘 다에 이 값이 들어간다.
+   *
+   * 서버 응답의 `updatedAt`(서버 시계)을 쓰지 않는다. 한때 그걸 `updated_at`에 넣고
+   * `synced_at`에는 기기 시각을 넣었는데, **두 시계를 섞어 비교하는 순간** 서버 시계가
+   * 조금만 빨라도 같은 기록이 매 회차 오갔다(재현 테스트 C). 서버 시각은 마이크로초
+   * 6자리라 기기의 3자리와 문자열로 비교하면 순서까지 뒤집혔다(C2).
+   */
+  clientUpdatedAt: string;
 };
+
+/** 올린 기록 한 건 — **보낸 그 버전의** `updatedAt`까지 들고 다닌다 */
+export type SentVersion = { id: string; updatedAt: string };
 
 /**
  * 화면에 보여주는 동기화 상태.
@@ -123,11 +135,26 @@ export interface DreamRepo {
    */
   listUnsynced(limit?: number): Promise<Dream[]>;
 
-  /** 올린 것이 받아들여졌다고 표시한다 */
-  markSynced(ids: string[], at?: string): Promise<void>;
+  /**
+   * 올린 것이 받아들여졌다고 표시한다. **보낸 그 버전일 때만** 표시한다.
+   *
+   * `synced_at`에는 표시한 순간의 시각이 아니라 **보낸 `updatedAt`을** 넣는다.
+   * 그러면 "깨끗하다"가 `updated_at = synced_at`이 되고, 요청이 떠 있는 동안 사용자가
+   * 고쳐서 `updated_at`이 바뀌었으면 조건에 안 맞아 표시되지 않고 다음 회차에 다시 나간다.
+   * 표시 시각을 넣었을 때는 그 수정이 "올라간 것"으로 묻혔다(재현 테스트 A).
+   */
+  markSynced(sent: SentVersion[]): Promise<void>;
 
   /**
-   * 서버에서 받은 기록을 반영한다. 없으면 만들고 있으면 덮는다.
+   * 서버에서 받은 기록을 반영한다. 없으면 만들고, 있으면 **로컬이 깨끗하거나
+   * 서버 쪽 버전이 로컬 수정보다 늦을 때만** 덮는다 — 서버가 올리기를 판정하는 규칙
+   * (`clientUpdatedAt`이 늦은 쪽이 이긴다)과 같다.
+   *
+   * 조건 없이 덮었을 때는 로컬이 더 늦게 고친 것(요청이 떠 있는 동안 고친 것 · 거절된 것 ·
+   * 100건 상한에 밀린 것)이 서버의 옛 내용으로 조용히 사라졌다(재현 테스트 B1 · B2 · B3).
+   * 반대로 "깨끗할 때만"으로 막으면 기기 둘에서 서버 쪽이 이겼을 때 영영 안 맞춰졌다 —
+   * 남긴 행은 다음 올리기에서 `skipped`로 깨끗해지지만 이미 `since`를 지나 다시 내려오지
+   * 않는다(B4).
    *
    * **`audioPath`와 `sttStatus`는 건드리지 않는다.** 서버의 `audioUrl`은 S3 주소이고
    * 로컬 `audioPath`는 이 기기의 파일 경로라 **같은 자리가 아니다.** 덮으면
@@ -169,4 +196,19 @@ export function newId() {
 
 export function nowIso() {
   return new Date().toISOString();
+}
+
+/**
+ * 시각 문자열을 `nowIso()`와 같은 모양(밀리초 3자리)으로 맞춘다.
+ *
+ * **로컬 `updated_at` · `synced_at`은 문자열로 비교된다**(`listUnsynced`). 자릿수가 섞이면
+ * `"…03.024900Z" > "…03.024Z"`처럼 시각으로는 참인 것이 문자열로는 거짓이 된다.
+ * 서버는 소수부를 0 · 3 · 6자리로 주므로(Java `Instant`) 들어올 때 한 모양으로 맞춘다.
+ *
+ * `Date.parse`를 쓰지 않는다. 6자리 소수부를 받아 주는지는 JS 엔진마다 다르다.
+ */
+export function toMillisIso(iso: string): string {
+  const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z$/.exec(iso);
+  if (!m) return iso;
+  return `${m[1]}.${(m[2] ?? '').padEnd(3, '0').slice(0, 3)}Z`;
 }

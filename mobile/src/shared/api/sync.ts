@@ -38,7 +38,12 @@ export type DreamView = {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  clientUpdatedAt: string | null;
+  /**
+   * 그 버전을 만든 **기기의** 시각. 기기가 보낸 값 그대로 돌아온다.
+   * 운영 스키마에서 NOT NULL이다(서버 문서 032).
+   * `updatedAt`은 서버 시계라 커서용이고, 로컬에 적는 것은 이 값이다
+   */
+  clientUpdatedAt: string;
 };
 
 /** `saved` · `skipped` · `rejected`. 거절이면 `reason`이 붙는다 */

@@ -1,7 +1,7 @@
 import { HAS_API, isApiError } from '@shared/api/client';
 import { MAX_BATCH, pullDreams, pushDreams, type DreamPayload } from '@shared/api/sync';
 import { isExpired, loadSession } from '@shared/auth/session';
-import { getDreamRepo, SETTINGS, type Dream } from '@shared/db';
+import { getDreamRepo, SETTINGS, type Dream, type SentVersion } from '@shared/db';
 
 /**
  * 동기화는 **올리고 나서 받는다.**
@@ -59,15 +59,19 @@ export async function syncOnce(token: string): Promise<SyncReport> {
     const pending = await repo.listUnsynced(MAX_BATCH);
     if (pending.length > 0) {
       const { results } = await pushDreams(token, pending.map(toPayload));
-      const ok: string[] = [];
+      // **보낸 버전을 기억해 둔다.** 표시할 때 "지금 로컬"이 아니라 "보낸 그 버전"과
+      // 대조해야 요청이 떠 있는 동안 고친 것을 놓치지 않는다(재현 테스트 A)
+      const sentAt = new Map(pending.map((d) => [d.id, d.updatedAt]));
+      const ok: SentVersion[] = [];
       for (const r of results) {
-        if (r.status === 'saved') {
-          ok.push(r.id);
+        const updatedAt = sentAt.get(r.id);
+        if (r.status === 'saved' && updatedAt) {
+          ok.push({ id: r.id, updatedAt });
           report.pushed += 1;
-        } else if (r.status === 'skipped') {
+        } else if (r.status === 'skipped' && updatedAt) {
           // 서버 쪽이 더 최신이라 안 받았다. **이것도 동기화된 것으로 표시한다** —
           // 안 하면 같은 건을 영원히 다시 보내고, 아래 pull이 최신을 가져온다
-          ok.push(r.id);
+          ok.push({ id: r.id, updatedAt });
           report.skipped += 1;
         } else {
           // 거절은 표시하지 않는다. 표시하면 고칠 기회 없이 조용히 묻힌다
@@ -96,7 +100,9 @@ export async function syncOnce(token: string): Promise<SyncReport> {
           reviewedAt: v.reviewedAt,
           deletedAt: v.deletedAt,
           createdAt: v.createdAt,
-          updatedAt: v.updatedAt,
+          // `v.updatedAt`(서버 시계)이 아니라 그 버전을 만든 기기의 시각이다.
+          // 서버 시계를 넣으면 기기 시계와 섞여 같은 기록이 매 회차 오간다(재현 테스트 C)
+          clientUpdatedAt: v.clientUpdatedAt,
         });
         report.pulled += 1;
       }
