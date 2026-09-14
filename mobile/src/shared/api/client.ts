@@ -1,15 +1,22 @@
-import Constants from 'expo-constants';
-
 /**
  * 서버로 나가는 유일한 통로.
  *
- * **주소를 `EXPO_PUBLIC_*`로 두지 않았다.** 그건 번들을 만들 때 인라인되는데,
- * `eas update`는 번들을 로컬에서 만들기 때문에 셸에 값이 없으면 조용히 비어서 나간다 —
- * `EXPO_PUBLIC_STORYBOOK_ENABLED`로 이미 한 번 겪었다(`CLAUDE.md` 빌드 예산).
- * `app.json`의 `extra`는 설정과 함께 따라가므로 그 함정이 없다.
+ * **주소는 JS 상수로 둔다.** 다른 두 자리는 둘 다 함정이 있었다.
+ *
+ * - `EXPO_PUBLIC_*` — 번들을 만들 때 인라인되는데 `eas update`는 번들을 로컬에서
+ *   만들어서, 셸에 값이 없으면 조용히 비어서 나간다. `EXPO_PUBLIC_STORYBOOK_ENABLED`로
+ *   이미 한 번 겪었다(`CLAUDE.md` 빌드 예산)
+ * - `app.json`의 `extra` — **런타임 지문에 들어간다.** 2026-09-15에 `extra.apiBaseUrl`만
+ *   바꿔서 쟀더니 지문이 `ca744f5f`에서 `42a17f0a`로 갈라졌다. 그 상태로 OTA를 내면
+ *   설치된 빌드로 안 간다 — 주소 하나 바꾸려고 빌드를 써야 한다
+ *
+ * JS 파일은 지문에 안 들어가므로 주소가 바뀌어도 OTA로 나간다.
+ * `app.json`에 남아 있는 `extra.apiBaseUrl`은 여기서 읽지 않는다. 지우면 지문이 또
+ * 갈라지므로 다음 빌드 때 ATS 블록과 함께 지운다.
+ *
+ * 끝에 `/`를 붙이지 않는다. 경로가 `/api/...`로 시작해서 붙이면 `//`가 된다.
  */
-const BASE_URL: string = (Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined)
-  ?.apiBaseUrl ?? '';
+const BASE_URL = 'https://13.239.58.251.nip.io';
 
 export const HAS_API = BASE_URL.length > 0;
 

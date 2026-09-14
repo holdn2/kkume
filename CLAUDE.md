@@ -283,8 +283,30 @@ cat ios/app/*.entitlements
 
 **ATS의 `NSExceptionDomains`는 도메인 이름만 받는다.** 서버 주소가 IP면 예외를
 걸 수 없어 `NSAllowsArbitraryLoads`로 통째로 여는 수밖에 없다.
-**도메인과 TLS를 붙이면 이 설정을 지울 수 있고, 그 변경은 빌드를 안 먹는다** —
-`apiBaseUrl`은 `app.json`의 `extra`에 있고 그건 OTA로 따라간다.
+**도메인과 TLS를 붙이면 이 설정을 지울 수 있다. 다만 지우는 것은 빌드를 먹는다** —
+ATS 블록은 `Info.plist`에 들어가는 네이티브 설정이다. 서버가 HTTPS를 준 뒤에도
+**지우는 것은 다음 빌드에 묶는다.**
+
+### `app.json`은 통째로 지문에 들어간다 — `extra`도
+
+**`extra`에 값을 두면 OTA로 바꿀 수 있다고 생각하기 쉬운데, 틀렸다.**
+2026-09-15에 `extra.apiBaseUrl` 한 줄만 바꿔서 쟀더니 지문이 `ca744f5f`에서
+`42a17f0a`로 갈라졌다. 그대로 `eas update`를 냈으면 설치된 빌드로 안 갔다.
+이 문장이 한때 여기 반대로 적혀 있었고, 그걸 믿고 서버 쪽 문서(031·032)까지
+같은 전제로 쓰였다.
+
+**OTA로 바꿔야 할 값은 JS 상수로 둔다.** 서버 주소는 `src/shared/api/client.ts`의
+`BASE_URL`이다. JS 파일은 지문에 안 들어간다.
+
+**`app.json`을 건드린 커밋은 OTA를 막는다.** 설정 한 줄이라도 바꾸면 그 커밋 이후
+브랜치에서 내는 모든 OTA가 설치된 빌드와 갈라진다. 네이티브 변경은 **다음 빌드 직전에**
+모아서 넣는다. 쏘기 전에 지문을 재는 것으로 확인한다.
+
+```
+npm exec -- expo-updates fingerprint:generate --platform ios
+```
+
+출력의 `hash`가 설치된 빌드의 `runtime.version`과 같아야 한다.
 
 `storybook.requires.ts`가 EAS에서만 없어 빌드가 깨지는 것을
 `expo export`로 미리 잡았다. 그걸 몰랐으면 빌드 한 번을 날렸다.
