@@ -65,20 +65,28 @@ const scenarios = [
       });
       await syncOnce(TOKEN);
       const local = await repo.get(d.id);
+      // 덮이지 않고 남은 수정이 **다음 회차에 결국 서버로 가는지**까지 본다
+      server.onPush(null);
+      await syncOnce(TOKEN);
+      const serverAfter2 = server.rows.get(d.id)?.title;
       return {
-        reproduced: local.title !== 'v2',
-        detail: `로컬 제목 "${local.title}" (고친 값은 "v2") · 서버 제목 "${server.rows.get(d.id)?.title}"`,
+        reproduced: local.title !== 'v2' || serverAfter2 !== 'v2',
+        detail: `1회차 뒤 로컬 제목 "${local.title}" (고친 값은 "v2") · 2회차 뒤 서버 제목 "${serverAfter2}"`,
       };
     },
   },
   {
     key: 'B2',
-    title: '거절된 행의 로컬 수정이 다른 기기의 서버 내용에 덮인다',
+    title: '거절된 행 · 로컬이 더 늦게 고쳤는데 다른 기기의 옛 내용에 덮인다',
     async run(repo) {
+      // 순서가 핵심이다: v1 → 다른 기기 수정(T1) → 로컬 수정(T2, 더 늦음).
+      // 서버 규칙(clientUpdatedAt이 늦은 쪽이 이긴다)으로 로컬이 이겨야 하는 상황이다.
+      // 로컬 수정은 제목이 255자를 넘어 서버가 거절한다 — 그래도 폰에는 남아야 한다
       const d = await repo.create({ title: 'v1', text: '본문' });
       await syncOnce(TOKEN);
       await sleep(5);
-      server.editAsOtherDevice(d.id, { title: '기기2가 고친 제목' }, new Date(Date.now() + 1000).toISOString());
+      server.editAsOtherDevice(d.id, { title: '기기2가 먼저 고친 제목' }, new Date().toISOString());
+      await sleep(5);
       const longTitle = '가'.repeat(300);
       await repo.update(d.id, { title: longTitle });
       await sleep(5);
@@ -87,28 +95,56 @@ const scenarios = [
       const kept = local.title === longTitle;
       return {
         reproduced: !kept,
-        detail: `거절 이유 ${server.pushLog.filter((p) => p.id === d.id).at(-1)?.status} · 로컬 제목 ${kept ? '그대로(300자)' : `"${local.title}"로 바뀜`}`,
+        detail: `서버 판정 ${server.pushLog.filter((p) => p.id === d.id).at(-1)?.status} · 로컬 제목 ${kept ? '그대로(300자)' : `"${local.title}"로 바뀜`}`,
       };
     },
   },
   {
     key: 'B3',
-    title: '100건 상한에 밀린 행의 로컬 수정이 서버 내용에 덮인다',
+    title: '100건 상한에 밀린 행 · 로컬이 더 늦게 고쳤는데 옛 서버 내용에 덮인다',
     async run(repo) {
+      const d = await repo.create({ title: 'v1', text: '본문' });
+      await syncOnce(TOKEN);
+      await sleep(5);
+      server.editAsOtherDevice(d.id, { title: '기기2가 먼저 고친 제목' }, new Date().toISOString());
+      await sleep(5);
+      for (let i = 0; i < 100; i += 1) await repo.create({ title: `새 기록 ${i}` });
+      await sleep(5);
+      await repo.update(d.id, { title: '로컬에서 나중에 고친 제목' });
+      await sleep(5);
+      await syncOnce(TOKEN);
+      const afterRound1 = (await repo.get(d.id)).title;
+      // 이번 회차에 못 올린 수정이 **다음 회차들에 결국 서버로 가는지**까지 본다
+      for (let round = 0; round < 2; round += 1) await syncOnce(TOKEN);
+      const serverTitle = server.rows.get(d.id)?.title;
+      return {
+        reproduced: afterRound1 !== '로컬에서 나중에 고친 제목' || serverTitle !== '로컬에서 나중에 고친 제목',
+        detail: `1회차 뒤 로컬 "${afterRound1}" · 3회차 뒤 서버 "${serverTitle}"`,
+      };
+    },
+  },
+  {
+    key: 'B4',
+    title: '[B 수정 뒤 확인] 기기 둘 · 서버 쪽이 더 최신이면 몇 회차 뒤 양쪽이 같아진다',
+    async run(repo) {
+      // B3과 같은 상황에서 **다른 기기의 수정이 더 늦다**(서버 규칙상 그쪽이 이긴다).
+      // 로컬은 덮이지 않고 남았다가, 다음 회차에 올리면 서버가 skipped를 준다.
+      // 그 뒤 로컬도 서버 내용으로 따라가야 한다
       const d = await repo.create({ title: 'v1', text: '본문' });
       await syncOnce(TOKEN);
       await sleep(5);
       for (let i = 0; i < 100; i += 1) await repo.create({ title: `새 기록 ${i}` });
       await sleep(5);
       await repo.update(d.id, { title: '로컬에서 고친 제목' });
-      server.editAsOtherDevice(d.id, { title: '기기2가 고친 제목' }, new Date(Date.now() + 1000).toISOString());
       await sleep(5);
-      await syncOnce(TOKEN);
+      server.editAsOtherDevice(d.id, { title: '기기2가 더 늦게 고친 제목' }, new Date(Date.now() + 60_000).toISOString());
+      for (let round = 0; round < 3; round += 1) await syncOnce(TOKEN);
       const local = await repo.get(d.id);
-      const pushedD = server.pushLog.filter((p) => p.id === d.id).length;
+      const serverTitle = server.rows.get(d.id)?.title;
+      const pending = (await pendingIds(repo)).includes(d.id);
       return {
-        reproduced: local.title !== '로컬에서 고친 제목',
-        detail: `이번 회차에 d 전송 ${pushedD - 1}건 · 로컬 제목 "${local.title}"`,
+        reproduced: local.title !== serverTitle,
+        detail: `3회차 뒤 로컬 "${local.title}" · 서버 "${serverTitle}" · 로컬 대기열에 ${pending ? '있음' : '없음'}`,
       };
     },
   },
