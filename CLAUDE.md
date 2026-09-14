@@ -123,6 +123,11 @@ PR과 이슈 본문은 `.github/`의 템플릿 구조를 그대로 따른다.
     빌드 한 번에 확인할 것을 쌓아 두지 않는 것이 중요하다.
     **비동기 실패도 잡아야 한다.** `impactAsync`처럼 Promise를 돌려주는 것은
     동기 `try/catch`에 안 걸리고 `Uncaught (in promise)`로 샌다.
+    **Expo 모듈이 아닌 네이티브 모듈은 `requireOptionalNativeModule`에 안 잡힌다.**
+    `@react-native-google-signin/google-signin`은 순수 RN TurboModule이라 Expo 레지스트리에
+    없고, 내부가 `TurboModuleRegistry.getEnforcing`을 써서 없으면 던진다.
+    **던지지 않는 `TurboModuleRegistry.get('RNGoogleSignin')`으로 묻고 있을 때만 `require`**
+    한다(`src/shared/auth/google.ts`). 새 네이티브 라이브러리를 들이면 어느 쪽인지부터 본다.
 
 ## STT 결과는 `text` 하나에 쓴다 (2026-09-07 결정)
 
@@ -212,13 +217,20 @@ EAS 무료 플랜을 쓴다. **iOS · Android 각각 월 15회**가 전부다.
 ```
 cd mobile
 $env:EXPO_PUBLIC_STORYBOOK_ENABLED = "false"
-npm exec -- eas update --branch=preview --environment=preview --message "무엇을 바꿨는지"
+eas update --branch=preview --environment=preview --non-interactive --message="english message"
 ```
 
+**`eas`는 전역에 깔려 있다. `npm exec --`로 부르지 않는다.** `npm exec`를 거치면
+뒤쪽 플래그가 삼켜진다 — `--message`와 `--non-interactive`가 무시돼 프롬프트가 뜨고,
+기본 메시지로 **커밋 메시지 전문**(세션 URL 포함)이 들어간다(2026-09-12). `npx`가 낡은
+shim을 타서 `npm exec`로 우회하던 습관이 여기서는 독이다.
+
 **PowerShell 문법이고, 플래그 값은 등호로 붙인다.** `VAR=x cmd`는 bash 것이라
-PowerShell에서는 파서 에러가 난다. 그리고 값을 띄어 쓰면 `npm exec`를 거치면서
-떨어져 나가 `Unexpected argument`가 난다 — `eas update:list --branch preview`가
-실제로 그렇게 실패했다(2026-09-06).
+PowerShell에서는 파서 에러가 난다. 값을 띄어 쓰면 떨어져 나가 `Unexpected argument`가
+난다. **`--message`는 영문으로 쓴다** — PowerShell에서 한글 인자가 깨져 무시됐다.
+
+**`hermesc.exe`가 가끔 죽는다**(종료 코드 `0xE06D7363` · `2147483651`). JS 오류가 아니라
+번들러 쪽 일시 실패라 **그대로 한 번 더 돌리면 통과한다.** 회귀로 오해하기 딱 좋다.
 
 **환경변수를 손으로 붙여야 한다.** `EXPO_PUBLIC_STORYBOOK_ENABLED=false`는
 `eas.json`의 **build 프로필 `env`**라 빌드에만 먹는다. `eas update`는 번들을
@@ -283,6 +295,15 @@ cat ios/app/*.entitlements
 
 **ATS의 `NSExceptionDomains`는 도메인 이름만 받는다.** 서버 주소가 IP면 예외를
 걸 수 없어 `NSAllowsArbitraryLoads`로 통째로 여는 수밖에 없다.
+
+**`NSAllowsArbitraryLoads`는 옆 키가 있으면 무시된다.** `NSAllowsLocalNetworking` ·
+`NSAllowsArbitraryLoadsInWebContent` · `NSAllowsArbitraryLoadsForMedia` 중 하나라도
+함께 있으면 iOS 10 이상은 `NO`로 본다(Apple 문서). Expo 기본값이 `NSAllowsLocalNetworking:
+true`라, `NSAllowsArbitraryLoads`만 `true`로 바꾸고 옆 키를 그대로 두면 **산출물에는
+`true`로 찍혀도 실제로는 막힌다.** 2026-09-13에 산출물의 값만 보고 통과로 판정해
+빌드 한 번을 날렸다. **값 하나가 아니라 딕셔너리 전체를 읽는다.**
+지금 설치된 빌드(`63516cf3`)가 바로 그 상태라 평문 HTTP는 막혀 있다 — 서버가 HTTPS를
+주므로 영향은 없다.
 **도메인과 TLS를 붙이면 이 설정을 지울 수 있다. 다만 지우는 것은 빌드를 먹는다** —
 ATS 블록은 `Info.plist`에 들어가는 네이티브 설정이다. 서버가 HTTPS를 준 뒤에도
 **지우는 것은 다음 빌드에 묶는다.**
