@@ -62,6 +62,25 @@ export type DreamDraft = {
 export type DreamPatch = Partial<Omit<Dream, 'id' | 'createdAt'>>;
 
 /**
+ * 서버에서 내려온 기록 중 **로컬이 받아 적는 부분**.
+ *
+ * 서버의 `DreamView`에는 `audioUrl`·`sttStatus`·`clientUpdatedAt`도 있지만
+ * 여기 없다. 앞의 둘은 로컬의 같은 이름 칸과 뜻이 달라 덮으면 안 되고,
+ * 마지막은 서버가 충돌 판정에 쓰는 값이라 기기가 되받을 이유가 없다.
+ */
+export type ServerDream = {
+  id: string;
+  recordedAt: string;
+  title: string | null;
+  text: string | null;
+  durationMs: number | null;
+  reviewedAt: string | null;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
  * 화면에 보여주는 동기화 상태.
  *
  * `실패`는 아직 없다. 동기화 자체가 5주차에 붙으므로, 실패를 지금 만들면
@@ -97,6 +116,26 @@ export interface DreamRepo {
   clear(): Promise<void>;
 
   /**
+   * 서버에 아직 못 올린 것. `syncedAt`이 없거나 **그 뒤에 고쳐진** 것이다.
+   *
+   * 지워진 것도 포함한다 — soft delete는 서버에도 가야 하는 변경이라,
+   * 빼면 한쪽에서 지운 기록이 다른 기기에 영영 남는다.
+   */
+  listUnsynced(limit?: number): Promise<Dream[]>;
+
+  /** 올린 것이 받아들여졌다고 표시한다 */
+  markSynced(ids: string[], at?: string): Promise<void>;
+
+  /**
+   * 서버에서 받은 기록을 반영한다. 없으면 만들고 있으면 덮는다.
+   *
+   * **`audioPath`와 `sttStatus`는 건드리지 않는다.** 서버의 `audioUrl`은 S3 주소이고
+   * 로컬 `audioPath`는 이 기기의 파일 경로라 **같은 자리가 아니다.** 덮으면
+   * 원본 오디오 참조가 사라진다(절대 규칙 2). 서버도 같은 이유로 반대 방향을 막아 뒀다.
+   */
+  upsertFromServer(d: ServerDream): Promise<void>;
+
+  /**
    * 한 줄짜리 설정. 없으면 null.
    *
    * 꿈 기록과 같은 저장소에 두는 이유는 하나다 — **네이티브 모듈을 늘리지 않으려고.**
@@ -110,6 +149,14 @@ export interface DreamRepo {
 export const SETTINGS = {
   /** 온보딩을 끝냈는가. 값이 있으면 끝낸 것이고, 담긴 것은 끝낸 시각이다 */
   onboardedAt: 'onboarded_at',
+  /**
+   * 서버에서 마지막으로 받아간 지점. 다음 `pull`의 `since`가 된다.
+   *
+   * **비어 있으면 처음부터 받는다** — 기기를 바꿨거나 앱을 다시 깐 경우다.
+   * 값을 함부로 앞당기면 그 사이 변경을 영영 못 받으므로,
+   * **한 페이지를 다 반영한 뒤에만** 옮긴다.
+   */
+  syncSince: 'sync_since',
 } as const;
 
 /**

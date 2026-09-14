@@ -6,6 +6,7 @@ import {
   type DreamPatch,
   type DreamRepo,
   type ListOptions,
+  type ServerDream,
 } from './types';
 
 /**
@@ -77,6 +78,41 @@ export function createMemoryRepo(): DreamRepo {
     async clear() {
       rows = [];
       settings = {};
+    },
+
+    async listUnsynced(limit = 100) {
+      return rows
+        .filter((r) => !r.syncedAt || r.updatedAt > r.syncedAt)
+        .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+        .slice(0, limit);
+    },
+
+    async markSynced(ids: string[], at = nowIso()) {
+      const set = new Set(ids);
+      rows = rows.map((r) => (set.has(r.id) ? { ...r, syncedAt: at } : r));
+    },
+
+    async upsertFromServer(d: ServerDream) {
+      const ts = nowIso();
+      const found = rows.find((r) => r.id === d.id);
+      if (found) {
+        // audioPath와 sttStatus는 그대로 둔다. 이유는 DreamRepo에 적어 뒀다
+        rows = rows.map((r) => (r.id === d.id ? { ...r, ...d, syncedAt: ts } : r));
+        return;
+      }
+      rows = [
+        ...rows,
+        {
+          ...d,
+          userId: null,
+          audioPath: null,
+          sttStatus: 'pending',
+          emotion: null,
+          keywords: null,
+          characters: null,
+          syncedAt: ts,
+        },
+      ];
     },
 
     async getSetting(key: string) {

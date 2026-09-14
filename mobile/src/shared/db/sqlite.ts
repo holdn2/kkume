@@ -9,6 +9,7 @@ import {
   type DreamPatch,
   type DreamRepo,
   type ListOptions,
+  type ServerDream,
 } from './types';
 
 /** DB 파일 이름. 바꾸면 기존 기록을 못 찾는다 — 절대 바꾸지 않는다 */
@@ -189,6 +190,53 @@ export function createSqliteRepo(db: Db): DreamRepo {
 
     async clear() {
       await db.runAsync('DELETE FROM dreams');
+    },
+
+    async listUnsynced(limit = 100) {
+      // `idx_dreams_unsynced`는 `synced_at IS NULL`만 덮는 부분 인덱스라
+      // 뒤쪽 조건은 인덱스를 못 탄다. 그래도 조건을 뺄 수 없다 —
+      // **올린 뒤에 고친 기록**이 빠지면 그 수정이 영영 안 올라간다.
+      // 오래된 것부터 보낸다. 배치가 잘려도 앞의 것이 먼저 반영된다
+      const rows = await db.getAllAsync<Row>(
+        `SELECT ${COLS} FROM dreams WHERE synced_at IS NULL OR updated_at > synced_at ` +
+          'ORDER BY updated_at ASC LIMIT ?',
+        [limit],
+      );
+      return rows.map(toDream);
+    },
+
+    async markSynced(ids: string[], at = nowIso()) {
+      if (ids.length === 0) return;
+      const holes = ids.map(() => '?').join(',');
+      await db.runAsync(`UPDATE dreams SET synced_at = ? WHERE id IN (${holes})`, [at, ...ids]);
+    },
+
+    async upsertFromServer(d: ServerDream) {
+      const ts = nowIso();
+      // `audio_path`와 `stt_status`를 목록에서 뺐다. 이유는 `DreamRepo`에 적어 뒀다 —
+      // 서버의 `audioUrl`은 S3 주소라 로컬 파일 경로와 같은 자리가 아니다
+      await db.runAsync(
+        'INSERT INTO dreams (id, recorded_at, title, text, duration_ms, reviewed_at, ' +
+          'created_at, updated_at, deleted_at, synced_at) ' +
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ' +
+          'ON CONFLICT(id) DO UPDATE SET ' +
+          'recorded_at = excluded.recorded_at, title = excluded.title, text = excluded.text, ' +
+          'duration_ms = excluded.duration_ms, reviewed_at = excluded.reviewed_at, ' +
+          'updated_at = excluded.updated_at, deleted_at = excluded.deleted_at, ' +
+          'synced_at = excluded.synced_at',
+        [
+          d.id,
+          d.recordedAt,
+          d.title,
+          d.text,
+          d.durationMs,
+          d.reviewedAt,
+          d.createdAt,
+          d.updatedAt,
+          d.deletedAt,
+          ts,
+        ],
+      );
     },
 
     async getSetting(key: string) {
