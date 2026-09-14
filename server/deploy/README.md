@@ -1,7 +1,7 @@
 # 서버 배포
 
-EC2 + RDS 로 `/health` 와 `/health/ready` 가 200 을 주는 것까지의 절차.
-S3 · 인증 · HTTPS 는 아직 포함하지 않는다.
+EC2 + RDS 로 `/health` 와 `/health/ready` 가 200 을 주고, 그 앞에 HTTPS 입구를 붙이기까지의 절차.
+S3 는 아직 포함하지 않는다.
 
 **이 이미지는 PostgreSQL 없이는 뜨지 않는다.** Flyway 가 시작할 때 연결을 요구한다.
 `.env` 의 `DB_*` 가 비어 있으면 `deploy.sh` 가 시작 전에 멈추므로,
@@ -62,6 +62,9 @@ AI 작업은 원래 수 초 이상 걸린다.
 | `deploy.sh` | ssh로 EC2에 배포하고 바깥에서 `/health` 확인 |
 | `ec2-run.sh` | EC2 안에서 도는 부분. `deploy.sh`가 stdin으로 밀어넣는다 |
 | `user-data.sh` | 인스턴스 최초 부팅 때 한 번. Docker 설치와 스왑 |
+| `https.sh` | ssh로 EC2에 HTTPS 입구(Caddy)를 띄우고 바깥에서 확인. **앱은 건드리지 않는다** |
+| `ec2-https.sh` | EC2 안에서 도는 부분. `https.sh`가 stdin으로 밀어넣는다 |
+| `Caddyfile` | HTTPS 입구 설정. EC2의 `/opt/kkume/Caddyfile`로 올라간다 |
 
 ## 최초 1회 — 자원 만들기
 
@@ -229,6 +232,60 @@ swapon --show        # /swapfile 2G 가 보여야 한다
 
 `aws`가 없으면 `sudo dnf install -y awscli` 로 넣는다.
 
+## HTTPS
+
+```
+https://13.239.58.251.nip.io  ->  Caddy(443)  ->  앱(호스트 80)
+http://13.239.58.251          ->  앱(호스트 80)
+```
+
+**iOS 가 평문 HTTP 를 막아서 붙였다.** ATS 예외(`NSExceptionDomains`)는 도메인 이름만 받고
+IP 는 받지 않아서, IP 주소로는 앱 쪽에서 좁게 열 방법이 없었다(문서 030 · 이슈 #36).
+
+### 도메인 없이 인증서를 받는 방법
+
+`<IP>.nip.io` 는 DNS 설정 없이 그 IP 로 해석된다. 이름이 생기므로 Let's Encrypt 가
+인증서를 발급할 수 있고, Caddy 가 발급과 갱신을 알아서 한다(만료 30일 전에 갱신).
+
+### Caddy 는 443 만 쓴다
+
+**호스트 80 은 앱이 쓰고 있다.** Caddy 에 80 을 넘기면 앱 컨테이너를 다시 띄워야 하고,
+그것은 곧 배포다 — 운영 DB 에 마이그레이션이 같이 나간다. 그래서
+
+- 인증서 검증을 80 대신 **443 으로 받는다**(`tls-alpn-01`). HTTP 검증을 켜 두면
+  Let's Encrypt 가 80 으로 와서 앱에 닿고 실패하는데, **그 실패도 발급 한도에 잡힌다**
+- HTTP -> HTTPS 리다이렉트를 끈다. 기존 `http://` 주소가 그대로 살아 있다
+
+그래서 `https.sh` 는 **배포가 아니다.** 앱 컨테이너 · RDS 를 건드리지 않는다.
+
+> **대체 발급처가 없다.** 발급처를 직접 지정하면 Caddy 의 기본 목록(Let's Encrypt + ZeroSSL)이
+> 사라지고, ZeroSSL 대체 발급은 원래도 이메일을 설정해야 켜진다. 저장소에 개인 이메일을
+> 두지 않으려고 넣지 않았다. **Let's Encrypt 가 막히면 도메인을 사거나 Cloudflare Tunnel 로 간다.**
+
+### 띄우는 법
+
+보안그룹에 **인바운드 443(0.0.0.0/0)** 이 있어야 한다. 80 은 이 목적으로는 필요 없다.
+
+```bash
+cd server/deploy
+./https.sh     # Caddyfile 올리기 -> 설정 검사 -> 컨테이너 교체 -> 바깥에서 세 가지 확인
+```
+
+설정 검사를 **교체 전에** 한다. 잘못된 설정으로 기존 컨테이너를 먼저 지우면 HTTPS 가 통째로 끊긴다.
+다시 돌려도 인증서를 새로 받지 않는다 — 이름 있는 볼륨 `kkume-caddy-data` 에 남아 있다.
+
+### EC2 를 정지하지 않는다
+
+**이 주소는 IP 에 묶여 있다.** Elastic IP 가 없어서, EC2 를 정지했다 켜면 퍼블릭 IP 가 바뀌고
+`<IP>.nip.io` 도 함께 바뀐다. 모바일은 주소를 박아 쓰므로 OTA 를 다시 내보내야 한다.
+
+재부팅(`reboot`)은 괜찮다 — IP 가 유지되고 두 컨테이너 모두 `--restart unless-stopped` 로 돌아온다.
+**비용을 줄여야 하면 RDS 만 정지한다.** 전체 비용의 61% 가 RDS 이고, IP 문제가 없다.
+
+지금 Elastic IP 를 붙이지 않은 이유 — **붙이는 순간 IP 가 바뀐다.** 모바일이 아직
+`http://13.239.58.251` 을 쓰고 있어서 그 주소가 즉시 죽는다. 모바일이 새 주소로 옮긴 뒤,
+발표 전에 붙이는 것을 다시 본다(붙이면 주소가 한 번 바뀐다).
+
 ## 배포할 때마다
 
 ```bash
@@ -250,6 +307,9 @@ cd server/deploy
 | **`/health` 는 200 인데 `/health/ready` 가 아님** | **RDS 쪽이다.** `kkume-db-sg` 가 EC2 보안그룹에서 5432 를 열어 주는지, `.env` 의 `DB_*` 가 맞는지 본다 |
 | 컨테이너가 재시작만 반복 | Flyway 가 DB 에 못 닿는 것이다. 로그의 `Database: jdbc:postgresql://...` 줄을 본다 |
 | `text contents could not be decoded` | `--user-data`에 `fileb://`를 썼는지 (5번) |
+| HTTPS 만 연결 거부 | 보안그룹 인바운드 443. 서버 안에서는 되는지 `https.sh` 출력의 "HTTPS 응답 확인" 줄을 본다 |
+| 인증서 발급이 120초 안에 안 끝남 | `sudo docker logs kkume-caddy`. `rateLimited` 면 **다시 돌리지 않는다** — 실패도 한도에 잡힌다 |
+| **HTTPS 주소가 통째로 안 됨(DNS)** | **IP 가 바뀐 것이다.** EC2 를 정지했다 켰는지 본다. `.env` 의 `EC2_HOST` 를 새 IP 로 고치고 `./https.sh` |
 
 ## 지금 떠 있는 것
 
@@ -257,7 +317,8 @@ cd server/deploy
 | --- | --- |
 | 리전 | `ap-southeast-2` |
 | ECR | `341860778310.dkr.ecr.ap-southeast-2.amazonaws.com/kkume-server` |
-| 보안그룹 | `kkume-server-sg` — 22는 개발 PC IP만, 80은 공개 |
+| 보안그룹 | `kkume-server-sg` — 22는 개발 PC IP만, 80·443은 공개 |
+| HTTPS | `https://13.239.58.251.nip.io` — Caddy `2.11.4`, Let's Encrypt, 메모리 상한 128m |
 | 인스턴스 프로파일 | `kkume-ec2-ecr` (ECR 읽기 전용) |
 | 인스턴스 | `t3.micro`, Amazon Linux 2023, EBS 8GiB |
 | DB | `kkume-db` — PostgreSQL 17.11, db.t3.micro, gp3 20GiB, 암호화 켬, 퍼블릭 차단 |
@@ -266,6 +327,9 @@ cd server/deploy
 
 **SSH 인바운드는 개발 PC의 공인 IP 하나로 묶여 있다.** 집·학교를 옮기거나
 IP가 바뀌면 접속이 막힌다. 그때는 규칙을 새 IP로 갈아준다.
+
+> **IP 는 눈으로 옮겨 적지 않는다.** 2026-09-14 에 `210.106.232.208` 을 `.20` 으로 잘못 읽어
+> 남의 IP 에 SSH 를 연 적이 있다. 명령 안에서 `checkip` 결과를 그대로 쓰고, 옛 규칙은 회수한다.
 
 ```bash
 MYIP=$(curl -s https://checkip.amazonaws.com)
