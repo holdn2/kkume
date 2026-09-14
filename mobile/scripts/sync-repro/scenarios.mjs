@@ -149,6 +149,29 @@ const scenarios = [
     },
   },
   {
+    key: 'B5',
+    title: '[관찰] 거절된 행 · 서버 쪽이 더 늦게 고쳤을 때 로컬 내용은 어떻게 되나',
+    observe: true,
+    async run(repo) {
+      // 버그 판정이 아니라 설계 확인이다. 받기의 덮는 조건이 서버 규칙(늦은 쪽이 이긴다)을
+      // 따르므로, 거절돼 못 올라간 로컬 내용도 서버 쪽이 더 늦으면 덮인다고 추론했다.
+      // 문서 033에서 서버 쪽 의견을 묻기 전에 실제로 그런지 본다
+      const d = await repo.create({ title: 'v1', text: '본문' });
+      await syncOnce(TOKEN);
+      await sleep(5);
+      const longTitle = '가'.repeat(300);
+      await repo.update(d.id, { title: longTitle });
+      await sleep(5);
+      server.editAsOtherDevice(d.id, { title: '기기2가 더 늦게 고친 제목' }, new Date(Date.now() + 60_000).toISOString());
+      await syncOnce(TOKEN);
+      const local = await repo.get(d.id);
+      return {
+        reproduced: false,
+        detail: `거절(${server.pushLog.filter((p) => p.id === d.id).at(-1)?.status}) 뒤 로컬 제목 ${local.title === longTitle ? '300자 그대로' : `"${local.title}"로 덮임`}`,
+      };
+    },
+  },
+  {
     key: 'C',
     title: '서버 시계가 5초 빠르면 같은 기록이 계속 오간다',
     async run(repo) {
@@ -238,7 +261,7 @@ for (const s of scenarios) {
     const repo = await freshRepo(kind);
     try {
       const r = await s.run(repo);
-      results.push({ key: s.key, kind, title: s.title, ...r });
+      results.push({ key: s.key, kind, title: s.title, observe: !!s.observe, ...r });
     } catch (e) {
       results.push({ key: s.key, kind, title: s.title, reproduced: null, detail: `테스트 오류: ${e?.message ?? e}` });
     }
@@ -246,6 +269,6 @@ for (const s of scenarios) {
 }
 
 for (const r of results) {
-  const mark = r.reproduced === null ? '오류    ' : r.reproduced ? '재현됨  ' : '재현 안 됨';
+  const mark = r.reproduced === null ? '오류    ' : r.observe ? '관찰    ' : r.reproduced ? '재현됨  ' : '재현 안 됨';
   console.log(`${r.key.padEnd(3)} ${r.kind.padEnd(6)} ${mark} ${r.title}\n            ${r.detail}`);
 }
