@@ -177,13 +177,18 @@ export const SETTINGS = {
   /** 온보딩을 끝냈는가. 값이 있으면 끝낸 것이고, 담긴 것은 끝낸 시각이다 */
   onboardedAt: 'onboarded_at',
   /**
-   * 서버에서 마지막으로 받아간 지점. 다음 `pull`의 `since`가 된다.
+   * 서버에서 마지막으로 받아간 지점. `{ since, cursor }`를 JSON 하나로 둔다 —
+   * 다음 `pull`에 둘을 그대로 넘긴다.
+   *
+   * **둘을 따로 저장하지 않는다.** 서버는 `since`와 `cursor`를 짝으로 읽으므로,
+   * 한쪽만 쓰고 앱이 죽으면 새 `since`에 옛 `cursor`가 붙어 같은 시각의 행 일부를
+   * 영영 못 받는다. 설정 한 줄은 한 번에 쓰인다.
    *
    * **비어 있으면 처음부터 받는다** — 기기를 바꿨거나 앱을 다시 깐 경우다.
    * 값을 함부로 앞당기면 그 사이 변경을 영영 못 받으므로,
    * **한 페이지를 다 반영한 뒤에만** 옮긴다.
    */
-  syncSince: 'sync_since',
+  syncPosition: 'sync_position',
 } as const;
 
 /**

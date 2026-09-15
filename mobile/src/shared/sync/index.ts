@@ -45,6 +45,28 @@ function toPayload(d: Dream): DreamPayload {
   };
 }
 
+type PullPosition = { since: string | null; cursor: string | null };
+
+type Repo = Awaited<ReturnType<typeof getDreamRepo>>;
+
+/**
+ * 저장해 둔 받기 위치. 없거나 깨졌으면 처음부터 받는다 —
+ * 이미 있는 행은 `upsertFromServer`가 그대로 흡수하므로, 다시 받는 것은 유실보다 낫다
+ */
+async function readPosition(repo: Repo): Promise<PullPosition> {
+  const raw = await repo.getSetting(SETTINGS.syncPosition);
+  if (!raw) return { since: null, cursor: null };
+  try {
+    const p = JSON.parse(raw) as Partial<PullPosition>;
+    return {
+      since: typeof p.since === 'string' ? p.since : null,
+      cursor: typeof p.cursor === 'string' ? p.cursor : null,
+    };
+  } catch {
+    return { since: null, cursor: null };
+  }
+}
+
 /**
  * 한 번 돈다. 여러 번 돌려야 할 수도 있어서 `morePending`을 함께 돌려준다 —
  * **여기서 while로 돌지 않는다.** 새벽에 화면을 잡고 있을 수 있고,
@@ -83,13 +105,16 @@ export async function syncOnce(token: string): Promise<SyncReport> {
     }
 
     // 2. 받는다
-    const since = await repo.getSetting(SETTINGS.syncSince);
-    let cursor: string | null = null;
+    // **since와 cursor는 짝으로 움직인다.** 서버는 (updatedAt > since) 또는
+    // (updatedAt = since 이고 id > cursor)로 이어 준다. cursor만 넘기고 since를 그대로 두면
+    // 첫 페이지가 다시 오고(재현 테스트 E), cursor를 남기지 않으면 같은 시각의 행 사이에서
+    // 회차가 끊겼을 때 나머지를 못 받는다(D)
+    let position = await readPosition(repo);
     let guard = 0;
     // 페이지가 이어지면 따라간다. 서버가 hasMore를 잘못 주는 경우를 대비해
-    // 상한을 둔다 — 없으면 여기서 앱이 멈춘다
+    // 상한을 둔다 — 없으면 여기서 앱이 멈춘다. 위치를 저장하므로 끊겨도 다음 회차가 이어받는다
     for (;;) {
-      const page = await pullDreams(token, { since, cursor });
+      const page = await pullDreams(token, { since: position.since, cursor: position.cursor });
       for (const v of page.dreams) {
         await repo.upsertFromServer({
           id: v.id,
@@ -106,12 +131,13 @@ export async function syncOnce(token: string): Promise<SyncReport> {
         });
         report.pulled += 1;
       }
-      // **한 페이지를 다 반영한 뒤에만 옮긴다.** 먼저 옮기고 실패하면
-      // 그 사이 변경을 영영 못 받는다
-      if (page.nextSince) await repo.setSetting(SETTINGS.syncSince, page.nextSince);
-      cursor = page.nextCursor;
+      // **한 페이지를 다 반영한 뒤에만 옮기고, 둘을 한 번에 쓴다.** 먼저 옮기고 실패하면
+      // 그 사이 변경을 영영 못 받는다. 서버가 nextSince를 안 주면 위치를 건드리지 않는다
+      if (!page.nextSince) break;
+      position = { since: page.nextSince, cursor: page.nextCursor };
+      await repo.setSetting(SETTINGS.syncPosition, JSON.stringify(position));
       guard += 1;
-      if (!page.hasMore || !cursor || guard >= 50) break;
+      if (!page.hasMore || guard >= 50) break;
     }
   } catch (e) {
     report.error = isApiError(e) ? e.message : '동기화에 실패했습니다';
