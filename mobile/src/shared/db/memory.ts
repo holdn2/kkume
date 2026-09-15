@@ -100,13 +100,14 @@ export function createMemoryRepo(): DreamRepo {
 
     async upsertFromServer(d: ServerDream) {
       const version = toMillisIso(d.clientUpdatedAt);
+      // 날짜 칸도 기기 모양으로 맞춘다. SQLite 구현과 같다(재현 테스트 F)
       const fields = {
-        recordedAt: d.recordedAt,
+        recordedAt: toMillisIso(d.recordedAt),
         title: d.title,
         text: d.text,
         durationMs: d.durationMs,
-        reviewedAt: d.reviewedAt,
-        deletedAt: d.deletedAt,
+        reviewedAt: d.reviewedAt == null ? null : toMillisIso(d.reviewedAt),
+        deletedAt: d.deletedAt == null ? null : toMillisIso(d.deletedAt),
         updatedAt: version,
         syncedAt: version,
       };

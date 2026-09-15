@@ -249,14 +249,16 @@ export function createSqliteRepo(db: Db): DreamRepo {
           'OR excluded.updated_at > dreams.updated_at',
         [
           d.id,
-          d.recordedAt,
+          // 날짜 칸도 기기 모양(밀리초 3자리)으로 맞춘다. 서버는 "…57.000Z"를 "…57Z"로
+          // 돌려주는데, 목록이 recorded_at을 문자열로 정렬해서 같은 초 안 순서가 뒤집힌다(재현 테스트 F)
+          toMillisIso(d.recordedAt),
           d.title,
           d.text,
           d.durationMs,
-          d.reviewedAt,
+          d.reviewedAt == null ? null : toMillisIso(d.reviewedAt),
           d.createdAt,
           version,
-          d.deletedAt,
+          d.deletedAt == null ? null : toMillisIso(d.deletedAt),
           version,
         ],
       );
