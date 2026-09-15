@@ -1,6 +1,6 @@
 /**
  * 동기화 재현 시나리오. 서버 세션이 코드를 읽고 짚은 A · B · C · D(문서 032 03장)와,
- * 이 테스트를 짜다 발견한 E를 **수정하지 않은 코드**로 돌린다.
+ * 이 테스트를 짜다 발견한 E, 서버가 035에서 짚은 F를 **수정하지 않은 코드**로 돌린다.
  *
  * 각 시나리오는 "제대로 동작하면 참이어야 하는 것"을 확인한다.
  * 그게 거짓이면 **재현됨**이다. 고친 뒤에는 같은 시나리오가 **재현 안 됨**으로 바뀌어야 한다.
@@ -248,6 +248,41 @@ const scenarios = [
       return {
         reproduced: got < 150,
         detail: `서버 150건 중 로컬 ${got}건 · 받기 요청 ${server.pullCalls}번 · 보고된 받은 수 ${r.pulled}`,
+      };
+    },
+  },
+  {
+    key: 'F',
+    title: '[서버 035] 같은 초에 기록한 꿈 둘 · 밀리초가 000인 쪽이 목록에서 위로 뜬다',
+    async run(repo) {
+      // 실제 서버는 시각을 Instant로 읽었다 다시 써서 "…57.000Z"를 "…57Z"로 돌려준다(문서 035).
+      // 가짜 서버는 recordedAt을 받은 문자열 그대로 돌려주므로, 실제 서버가 줄 모양을 직접 넣는다.
+      // 목록은 recorded_at을 문자열로 정렬한다 — "…57Z" > "…57.300Z"('Z' > '.')라 순서가 뒤집힌다
+      server.seed(2);
+      const [first, second] = [...server.rows.values()];
+      first.recordedAt = '2026-09-14T06:40:57Z';
+      second.recordedAt = '2026-09-14T06:40:57.300Z';
+      await syncOnce(TOKEN);
+      const list = await repo.list({ includeDeleted: true });
+      return {
+        reproduced: list[0]?.id !== second.id,
+        detail: `목록 순서 ${list.map((d) => `${d.recordedAt}`).join(' → ')} (늦게 기록한 …57.300Z가 위여야 한다)`,
+      };
+    },
+  },
+  {
+    key: 'F0',
+    title: '[대조군] 둘 다 소수부가 있으면 F는 안 생긴다',
+    async run(repo) {
+      server.seed(2);
+      const [first, second] = [...server.rows.values()];
+      first.recordedAt = '2026-09-14T06:40:57.100Z';
+      second.recordedAt = '2026-09-14T06:40:57.300Z';
+      await syncOnce(TOKEN);
+      const list = await repo.list({ includeDeleted: true });
+      return {
+        reproduced: list[0]?.id !== second.id,
+        detail: `목록 순서 ${list.map((d) => `${d.recordedAt}`).join(' → ')}`,
       };
     },
   },
