@@ -1,7 +1,7 @@
 import { HAS_API, isApiError } from '@shared/api/client';
-import { MAX_BATCH, pullDreams, pushDreams, type DreamPayload } from '@shared/api/sync';
+import { MAX_BATCH, pullDreams, pushDreams, type DreamPayload, type DreamView } from '@shared/api/sync';
 import { isExpired, loadSession } from '@shared/auth/session';
-import { getDreamRepo, SETTINGS, type Dream, type SentVersion } from '@shared/db';
+import { getDreamRepo, SETTINGS, toMillisIso, type Dream, type SentVersion } from '@shared/db';
 
 /**
  * 동기화는 **올리고 나서 받는다.**
@@ -180,4 +180,78 @@ export function syncIfSignedIn(opts: { force?: boolean } = {}): Promise<SyncRepo
     }
   })();
   return inFlight;
+}
+
+export type SyncDiagnosis = {
+  /** 돌리지 못했거나 서버를 세지 못한 이유 */
+  note: string | null;
+  report: SyncReport | null;
+  local: { count: number; pending: number } | null;
+  server: {
+    count: number;
+    deleted: number;
+    latest: { title: string | null } | null;
+    truncated: boolean;
+  } | null;
+};
+
+/** 서버를 세다 멈추는 페이지 수. 100건씩이라 2,000건이다 */
+const DIAG_MAX_PAGES = 20;
+
+/**
+ * 진단 화면의 「동기화 확인」. **기기에서 동기화가 실제로 돌았는지 눈으로 보려고 둔다** —
+ * 평소 동기화는 조용히 돌아서 결과가 화면 어디에도 안 남는다.
+ *
+ * 한 번 돌린 뒤 서버를 처음부터 훑어 개수를 센다. **받기만 하고 로컬에 쓰지 않으며
+ * 받기 위치도 건드리지 않는다** — 올린 것이 서버에 들어갔는지를 동기화 경로와 따로 본다.
+ * 같은 경로로 확인하면 그 경로의 실수를 그대로 믿게 된다.
+ */
+export async function diagnoseSync(): Promise<SyncDiagnosis> {
+  const none = { report: null, local: null, server: null };
+  if (!HAS_API) return { ...none, note: '서버 주소가 없습니다' };
+  const s = await loadSession();
+  if (!s || isExpired(s)) return { ...none, note: '로그인이 필요합니다' };
+
+  const report = await syncIfSignedIn({ force: true });
+  const repo = await getDreamRepo();
+  const local = {
+    count: (await repo.list()).length,
+    pending: (await repo.listUnsynced(1000)).length,
+  };
+
+  let count = 0;
+  let deleted = 0;
+  let latest: DreamView | null = null;
+  let since: string | null = null;
+  let cursor: string | null = null;
+  let truncated = false;
+  try {
+    for (let page = 0; ; page += 1) {
+      if (page >= DIAG_MAX_PAGES) {
+        truncated = true;
+        break;
+      }
+      const res = await pullDreams(s.accessToken, { since, cursor });
+      for (const v of res.dreams) {
+        if (v.deletedAt) {
+          deleted += 1;
+          continue;
+        }
+        count += 1;
+        if (!latest || toMillisIso(v.clientUpdatedAt) > toMillisIso(latest.clientUpdatedAt)) latest = v;
+      }
+      if (!res.hasMore || !res.nextSince) break;
+      since = res.nextSince;
+      cursor = res.nextCursor;
+    }
+  } catch (e) {
+    return { note: isApiError(e) ? e.message : '서버 기록을 세지 못했습니다', report, local, server: null };
+  }
+
+  return {
+    note: null,
+    report,
+    local,
+    server: { count, deleted, latest: latest ? { title: latest.title } : null, truncated },
+  };
 }

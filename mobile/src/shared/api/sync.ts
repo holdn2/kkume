@@ -39,8 +39,9 @@ export type DreamView = {
   createdAt: string;
   updatedAt: string;
   /**
-   * 그 버전을 만든 **기기의** 시각. 기기가 보낸 값 그대로 돌아온다.
-   * 운영 스키마에서 NOT NULL이다(서버 문서 032).
+   * 그 버전을 만든 **기기의** 시각. 운영 스키마에서 NOT NULL이다(서버 문서 032).
+   * **보낸 문자열 그대로 돌아오지는 않는다** — 서버가 Instant로 다시 써서 `…57.000Z`가
+   * `…57Z`로 온다(서버 문서 035). 로컬에 적을 때 `toMillisIso`로 모양을 맞춘다.
    * `updatedAt`은 서버 시계라 커서용이고, 로컬에 적는 것은 이 값이다
    */
   clientUpdatedAt: string;
