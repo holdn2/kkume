@@ -125,7 +125,14 @@ export default function DreamDetail() {
           </Row>
 
           <Stack gap={sp[3]}>
-            <Input placeholder="제목을 붙여 보세요" value={title} onChangeText={setTitle} />
+            {/* 서버가 255자를 넘는 제목을 거절한다(title_too_long). 거절된 수정은 폰에만 남아
+                다른 기기의 늦은 수정에 덮일 수 있어서, 입력에서 막아 그 경로를 없앤다(문서 035) */}
+            <Input
+              placeholder="제목을 붙여 보세요"
+              value={title}
+              onChangeText={setTitle}
+              maxLength={255}
+            />
             <Input
               multiline
               placeholder="기억나는 것을 적어 두세요"
