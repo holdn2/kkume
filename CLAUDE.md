@@ -123,6 +123,11 @@ PR과 이슈 본문은 `.github/`의 템플릿 구조를 그대로 따른다.
     빌드 한 번에 확인할 것을 쌓아 두지 않는 것이 중요하다.
     **비동기 실패도 잡아야 한다.** `impactAsync`처럼 Promise를 돌려주는 것은
     동기 `try/catch`에 안 걸리고 `Uncaught (in promise)`로 샌다.
+    **Expo 모듈이 아닌 네이티브 모듈은 `requireOptionalNativeModule`에 안 잡힌다.**
+    `@react-native-google-signin/google-signin`은 순수 RN TurboModule이라 Expo 레지스트리에
+    없고, 내부가 `TurboModuleRegistry.getEnforcing`을 써서 없으면 던진다.
+    **던지지 않는 `TurboModuleRegistry.get('RNGoogleSignin')`으로 묻고 있을 때만 `require`**
+    한다(`src/shared/auth/google.ts`). 새 네이티브 라이브러리를 들이면 어느 쪽인지부터 본다.
 
 ## STT 결과는 `text` 하나에 쓴다 (2026-09-07 결정)
 
@@ -212,13 +217,20 @@ EAS 무료 플랜을 쓴다. **iOS · Android 각각 월 15회**가 전부다.
 ```
 cd mobile
 $env:EXPO_PUBLIC_STORYBOOK_ENABLED = "false"
-npm exec -- eas update --branch=preview --environment=preview --message "무엇을 바꿨는지"
+eas update --branch=preview --environment=preview --non-interactive --message="english message"
 ```
 
+**`eas`는 전역에 깔려 있다. `npm exec --`로 부르지 않는다.** `npm exec`를 거치면
+뒤쪽 플래그가 삼켜진다 — `--message`와 `--non-interactive`가 무시돼 프롬프트가 뜨고,
+기본 메시지로 **커밋 메시지 전문**(세션 URL 포함)이 들어간다(2026-09-12). `npx`가 낡은
+shim을 타서 `npm exec`로 우회하던 습관이 여기서는 독이다.
+
 **PowerShell 문법이고, 플래그 값은 등호로 붙인다.** `VAR=x cmd`는 bash 것이라
-PowerShell에서는 파서 에러가 난다. 그리고 값을 띄어 쓰면 `npm exec`를 거치면서
-떨어져 나가 `Unexpected argument`가 난다 — `eas update:list --branch preview`가
-실제로 그렇게 실패했다(2026-09-06).
+PowerShell에서는 파서 에러가 난다. 값을 띄어 쓰면 떨어져 나가 `Unexpected argument`가
+난다. **`--message`는 영문으로 쓴다** — PowerShell에서 한글 인자가 깨져 무시됐다.
+
+**`hermesc.exe`가 가끔 죽는다**(종료 코드 `0xE06D7363` · `2147483651`). JS 오류가 아니라
+번들러 쪽 일시 실패라 **그대로 한 번 더 돌리면 통과한다.** 회귀로 오해하기 딱 좋다.
 
 **환경변수를 손으로 붙여야 한다.** `EXPO_PUBLIC_STORYBOOK_ENABLED=false`는
 `eas.json`의 **build 프로필 `env`**라 빌드에만 먹는다. `eas update`는 번들을
@@ -249,7 +261,7 @@ EAS Update는 무료 플랜에 포함된다(MAU 1,000 · 대역폭 100 GiB, 2026
 셋 다 로컬에서 끝나고, **실제로 빌드 실패를 잡아낸 적이 있다.**
 
 ```
-npx expo config --type introspect    # 플러그인 · entitlements · Info.plist 결과물
+npx expo config --type introspect    # 플러그인 · entitlements · 설정 병합 결과
 npx expo export --platform ios       # JS 번들링 · 모듈 해석 오류
 ```
 
@@ -268,6 +280,54 @@ MSYS_NO_PATHCONV=1 docker run --rm -v "<임시폴더>:/app" -w /app node:22-book
 
 `ios/ExpoWidgetsTarget/RecordBoth.swift`가 만들어지면 통과다.
 **Swift 컴파일과 CocoaPods만은 macOS 전용이라 EAS가 유일한 판정처다.**
+
+**`Info.plist`는 `introspect`가 아니라 이 산출물에서 본다.** 둘이 다른 값을 준다 —
+`introspect`는 개발 기본값을 섞어 보여주고, **빌드에 실제로 들어가는 것은
+`prebuild`가 만든 `ios/app/Info.plist`다.** 2026-09-12에 ATS를 `introspect`로만
+확인하고 `NSAllowsArbitraryLoads`가 `true`인 줄 알았는데, 산출물에는 `false`였다.
+평문 HTTP 서버로 나가지 못해 **빌드를 한 번 더 썼다.** 산출물은 이미 받아 놓고
+URL 스킴만 보고 넘어간 것이 원인이다.
+
+```
+grep -A8 "NSAppTransportSecurity" ios/app/Info.plist
+cat ios/app/*.entitlements
+```
+
+**ATS의 `NSExceptionDomains`는 도메인 이름만 받는다.** 서버 주소가 IP면 예외를
+걸 수 없어 `NSAllowsArbitraryLoads`로 통째로 여는 수밖에 없다.
+
+**`NSAllowsArbitraryLoads`는 옆 키가 있으면 무시된다.** `NSAllowsLocalNetworking` ·
+`NSAllowsArbitraryLoadsInWebContent` · `NSAllowsArbitraryLoadsForMedia` 중 하나라도
+함께 있으면 iOS 10 이상은 `NO`로 본다(Apple 문서). Expo 기본값이 `NSAllowsLocalNetworking:
+true`라, `NSAllowsArbitraryLoads`만 `true`로 바꾸고 옆 키를 그대로 두면 **산출물에는
+`true`로 찍혀도 실제로는 막힌다.** 2026-09-13에 산출물의 값만 보고 통과로 판정해
+빌드 한 번을 날렸다. **값 하나가 아니라 딕셔너리 전체를 읽는다.**
+지금 설치된 빌드(`63516cf3`)가 바로 그 상태라 평문 HTTP는 막혀 있다 — 서버가 HTTPS를
+주므로 영향은 없다.
+**도메인과 TLS를 붙이면 이 설정을 지울 수 있다. 다만 지우는 것은 빌드를 먹는다** —
+ATS 블록은 `Info.plist`에 들어가는 네이티브 설정이다. 서버가 HTTPS를 준 뒤에도
+**지우는 것은 다음 빌드에 묶는다.**
+
+### `app.json`은 통째로 지문에 들어간다 — `extra`도
+
+**`extra`에 값을 두면 OTA로 바꿀 수 있다고 생각하기 쉬운데, 틀렸다.**
+2026-09-15에 `extra.apiBaseUrl` 한 줄만 바꿔서 쟀더니 지문이 `ca744f5f`에서
+`42a17f0a`로 갈라졌다. 그대로 `eas update`를 냈으면 설치된 빌드로 안 갔다.
+이 문장이 한때 여기 반대로 적혀 있었고, 그걸 믿고 서버 쪽 문서(031·032)까지
+같은 전제로 쓰였다.
+
+**OTA로 바꿔야 할 값은 JS 상수로 둔다.** 서버 주소는 `src/shared/api/client.ts`의
+`BASE_URL`이다. JS 파일은 지문에 안 들어간다.
+
+**`app.json`을 건드린 커밋은 OTA를 막는다.** 설정 한 줄이라도 바꾸면 그 커밋 이후
+브랜치에서 내는 모든 OTA가 설치된 빌드와 갈라진다. 네이티브 변경은 **다음 빌드 직전에**
+모아서 넣는다. 쏘기 전에 지문을 재는 것으로 확인한다.
+
+```
+npm exec -- expo-updates fingerprint:generate --platform ios
+```
+
+출력의 `hash`가 설치된 빌드의 `runtime.version`과 같아야 한다.
 
 `storybook.requires.ts`가 EAS에서만 없어 빌드가 깨지는 것을
 `expo export`로 미리 잡았다. 그걸 몰랐으면 빌드 한 번을 날렸다.

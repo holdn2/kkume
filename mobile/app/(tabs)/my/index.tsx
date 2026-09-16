@@ -1,17 +1,69 @@
 import { useRouter } from 'expo-router';
 import { LayoutGrid } from 'lucide-react-native';
 
-import { ListRow, Screen, Stack, Title } from '@components';
+import { Button, Card, ListRow, Row, Screen, Stack, Title } from '@components';
+import { useAuth } from '@shared/auth';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 
 /** MY-1. 11주차에 실제로 채운다 */
 export default function MyScreen() {
   const router = useRouter();
+  const auth = useAuth();
 
   return (
     <Screen scroll>
       <Title>마이</Title>
+
+      {/* **로그인이 여기 있는 이유.** 새벽 흐름에는 로그인을 두지 않는다 —
+          위젯을 눌렀는데 로그인 화면이 뜨면 그 기록이 사라진다(절대 규칙 1).
+          로그인은 낮에 마이 탭에서 스스로 하는 일이고, 그 전까지 기록은
+          `user_id`가 빈 채로 로컬에 쌓인다. 로그인해야 동기화가 붙는다 */}
+      <Card>
+        {auth.loading ? (
+          <AppText size="caption" color={c.fgFaint}>
+            불러오는 중입니다
+          </AppText>
+        ) : auth.session ? (
+          <Stack gap={sp[3]}>
+            <Row gap={sp[2]}>
+              <AppText size="label" weight="semibold" style={{ flex: 1 }}>
+                {auth.session.user.nickname}
+              </AppText>
+            </Row>
+            <AppText size="caption" color={c.fgFaint}>
+              기록이 서버에 함께 보관됩니다
+            </AppText>
+            <Button
+              label="로그아웃"
+              variant="ghost"
+              size="sm"
+              loading={auth.busy}
+              onPress={() => void auth.signOut()}
+            />
+          </Stack>
+        ) : (
+          <Stack gap={sp[3]}>
+            <AppText size="label" weight="semibold">
+              로그인하지 않아도 기록은 됩니다
+            </AppText>
+            <AppText size="caption" color={c.fgFaint}>
+              로그인하면 기기를 바꿔도 기록이 따라옵니다.
+            </AppText>
+            <Button
+              label="구글로 계속하기"
+              loading={auth.busy}
+              onPress={() => void auth.signIn()}
+            />
+          </Stack>
+        )}
+
+        {!!auth.error && (
+          <AppText size="caption" color={c.danger} style={{ marginTop: sp[3] }}>
+            {auth.error}
+          </AppText>
+        )}
+      </Card>
 
       <Stack gap={sp[3]}>
         {/* 온보딩에서 건너뛴 사람이 돌아오는 자리다. ON-7은 최대 이탈 지점이라
