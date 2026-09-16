@@ -11,6 +11,19 @@ import { request } from './client';
 /** 한 번에 보낼 수 있는 최대. 서버의 `SyncService.MAX_BATCH`와 같아야 한다 */
 export const MAX_BATCH = 100;
 
+/** 제목 상한. 서버의 `SyncService.MAX_TITLE_LENGTH`와 같아야 한다 — 넘기면 `title_too_long`으로 거절된다 */
+export const MAX_TITLE_LENGTH = 255;
+
+/**
+ * 본문 상한. **서버에는 이 제한이 없다** — `text`는 길이 없는 `TEXT` 컬럼이고 검증도 없다.
+ * 그래도 앱에서 막는다: 한 번에 100건까지 올리므로 본문이 무제한이면 요청 하나가 수 MB가 되고,
+ * 서버가 t3.micro(1GiB)다.
+ *
+ * 5,000자는 넉넉하다 — 5분 녹음의 STT 결과가 1,000자 안팎이다.
+ * **이미 이보다 긴 기록은 잘리지 않는다.** `maxLength`는 새로 치는 것만 막는다
+ */
+export const MAX_TEXT_LENGTH = 5_000;
+
 export type DreamPayload = {
   id: string;
   recordedAt: string;

@@ -5,6 +5,7 @@ import { KeyboardAvoidingView, Platform, Pressable, StyleSheet } from 'react-nat
 
 import { Badge, Button, Input, Row, Screen, Sheet, Stack } from '@components';
 import { PlayerBar } from '@features/log/PlayerBar';
+import { MAX_TEXT_LENGTH, MAX_TITLE_LENGTH } from '@shared/api/sync';
 import { getDreamRepo, nowIso, type Dream } from '@shared/db';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
@@ -131,7 +132,7 @@ export default function DreamDetail() {
               placeholder="제목을 붙여 보세요"
               value={title}
               onChangeText={setTitle}
-              maxLength={255}
+              maxLength={MAX_TITLE_LENGTH}
               counter
             />
             <Input
@@ -139,6 +140,8 @@ export default function DreamDetail() {
               placeholder="기억나는 것을 적어 두세요"
               value={text}
               onChangeText={setText}
+              maxLength={MAX_TEXT_LENGTH}
+              counter
             />
             <AppText size="caption" color={error ? c.danger : c.fgFaint}>
               {error ?? (dirty ? '나가면 저장됩니다' : '저장됨')}
