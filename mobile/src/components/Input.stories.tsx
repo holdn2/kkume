@@ -34,8 +34,16 @@ export const 상태: Story = {
         <Input label="입력됨" value="바다 위를 걷는 꿈" onChangeText={() => {}} />
         <Input label="에러" value="ㄱ" onChangeText={setV} error="두 글자 이상 적어주세요" />
         <Input label="글자수" value={v} onChangeText={setV} maxLength={40} counter />
+        <Input
+          label="글자수 · 한계"
+          value={'가'.repeat(12)}
+          onChangeText={() => {}}
+          maxLength={12}
+          counter
+        />
         <AppText size="caption" color={c.fgFaint}>
-          탭했을 때 흰 테두리가 생기고 레이아웃이 밀리지 않아야 한다
+          탭했을 때 흰 테두리가 생기고 레이아웃이 밀리지 않아야 한다.
+          한계에 닿은 줄은 숫자가 경고색이어야 한다 — 더 쳐도 안 들어가는 이유가 보여야 한다
         </AppText>
       </Stack>
     );

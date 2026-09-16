@@ -132,6 +132,7 @@ export default function DreamDetail() {
               value={title}
               onChangeText={setTitle}
               maxLength={255}
+              counter
             />
             <Input
               multiline
