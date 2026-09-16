@@ -9,6 +9,9 @@ import {
   type DreamPatch,
   type DreamRepo,
   type ListOptions,
+  type SentVersion,
+  type ServerDream,
+  toMillisIso,
 } from './types';
 
 /** DB 파일 이름. 바꾸면 기존 기록을 못 찾는다 — 절대 바꾸지 않는다 */
@@ -189,6 +192,76 @@ export function createSqliteRepo(db: Db): DreamRepo {
 
     async clear() {
       await db.runAsync('DELETE FROM dreams');
+    },
+
+    async listUnsynced(limit = 100) {
+      // `idx_dreams_unsynced`는 `synced_at IS NULL`만 덮는 부분 인덱스라
+      // 뒤쪽 조건은 인덱스를 못 탄다. 그래도 조건을 뺄 수 없다 —
+      // **올린 뒤에 고친 기록**이 빠지면 그 수정이 영영 안 올라간다.
+      // 오래된 것부터 보낸다. 배치가 잘려도 앞의 것이 먼저 반영된다
+      const rows = await db.getAllAsync<Row>(
+        `SELECT ${COLS} FROM dreams WHERE synced_at IS NULL OR updated_at > synced_at ` +
+          'ORDER BY updated_at ASC LIMIT ?',
+        [limit],
+      );
+      return rows.map(toDream);
+    },
+
+    async markSynced(sent: SentVersion[]) {
+      // **보낸 그 버전일 때만 표시한다.** 요청이 떠 있는 동안 고쳤으면 updated_at이 달라져
+      // 조건에 안 맞고, 다음 회차에 다시 나간다. synced_at에는 보낸 updatedAt을 넣어
+      // "깨끗하다"가 updated_at = synced_at 이 되게 한다(재현 테스트 A)
+      for (const v of sent) {
+        await db.runAsync('UPDATE dreams SET synced_at = ? WHERE id = ? AND updated_at = ?', [
+          v.updatedAt,
+          v.id,
+          v.updatedAt,
+        ]);
+      }
+    },
+
+    async upsertFromServer(d: ServerDream) {
+      // 시각은 한 모양으로 맞춘다. 로컬 두 칸은 문자열로 비교되기 때문이다(재현 테스트 C2)
+      const version = toMillisIso(d.clientUpdatedAt);
+      // `audio_path`와 `stt_status`를 목록에서 뺐다. 이유는 `DreamRepo`에 적어 뒀다 —
+      // 서버의 `audioUrl`은 S3 주소라 로컬 파일 경로와 같은 자리가 아니다.
+      //
+      // **덮는 조건은 둘 중 하나다**(WHERE).
+      //  1. 로컬이 깨끗하다 — 올릴 것이 없으니 서버 내용을 그대로 받는다
+      //  2. 서버 쪽 버전이 로컬 수정보다 늦다 — 서버의 올리기 판정과 **같은 규칙**이다.
+      //     clientUpdatedAt이 늦은 쪽이 이긴다
+      // 1만 두면 기기 둘에서 서버 쪽이 이겼을 때 영영 안 맞춰진다. 로컬을 남겨 두면 다음
+      // 올리기가 skipped로 깨끗해지는데, 그 행은 이미 since를 지나 다시 내려오지 않는다
+      // (재현 테스트 B4). 조건 없이 덮으면 로컬이 이긴 수정이 사라진다(B1 · B2 · B3).
+      // 두 칸은 같은 형식이라 문자열 비교가 시각 비교와 같다.
+      // updated_at · synced_at 둘 다 그 버전을 만든 기기의 시각이다 — 서버 시계를 섞지
+      // 않는다(재현 테스트 C)
+      await db.runAsync(
+        'INSERT INTO dreams (id, recorded_at, title, text, duration_ms, reviewed_at, ' +
+          'created_at, updated_at, deleted_at, synced_at) ' +
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ' +
+          'ON CONFLICT(id) DO UPDATE SET ' +
+          'recorded_at = excluded.recorded_at, title = excluded.title, text = excluded.text, ' +
+          'duration_ms = excluded.duration_ms, reviewed_at = excluded.reviewed_at, ' +
+          'updated_at = excluded.updated_at, deleted_at = excluded.deleted_at, ' +
+          'synced_at = excluded.synced_at ' +
+          'WHERE (dreams.synced_at IS NOT NULL AND dreams.updated_at <= dreams.synced_at) ' +
+          'OR excluded.updated_at > dreams.updated_at',
+        [
+          d.id,
+          // 날짜 칸도 기기 모양(밀리초 3자리)으로 맞춘다. 서버는 "…57.000Z"를 "…57Z"로
+          // 돌려주는데, 목록이 recorded_at을 문자열로 정렬해서 같은 초 안 순서가 뒤집힌다(재현 테스트 F)
+          toMillisIso(d.recordedAt),
+          d.title,
+          d.text,
+          d.durationMs,
+          d.reviewedAt == null ? null : toMillisIso(d.reviewedAt),
+          d.createdAt,
+          version,
+          d.deletedAt == null ? null : toMillisIso(d.deletedAt),
+          version,
+        ],
+      );
     },
 
     async getSetting(key: string) {

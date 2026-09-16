@@ -13,6 +13,7 @@ import {
 
 import { Input, Row, Screen } from '@components';
 import { Waveform } from '@features/record/Waveform';
+import { MAX_TEXT_LENGTH } from '@shared/api/sync';
 import { mmss, useRecorder, type RecordingResult } from '@shared/audio';
 import { getDreamRepo } from '@shared/db';
 import { savedFeedback, startFeedback } from '@shared/haptics';
@@ -326,7 +327,16 @@ export default function RecordModal() {
               </Pressable>
             </Row>
 
-            <Input multiline autoFocus value={text} onChangeText={setText} placeholder="기억나는 것부터" />
+            {/* 상한은 걸되 글자수는 **보여주지 않는다.** 새벽 화면에 숫자가 하나 더 붙으면
+                그것도 읽을 것이 되고, 5,000자에 닿는 일은 새벽에 일어나지 않는다(절대 규칙 7) */}
+            <Input
+              multiline
+              autoFocus
+              value={text}
+              onChangeText={setText}
+              placeholder="기억나는 것부터"
+              maxLength={MAX_TEXT_LENGTH}
+            />
 
             <AppText size="caption" color={error ? c.danger : c.fgFaint}>
               {error ?? (saved ? '저장됨' : '나가면 저장됩니다')}

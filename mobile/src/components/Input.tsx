@@ -38,6 +38,9 @@ export function Input({
 }: Props) {
   const [focused, setFocused] = useState(false);
   const showCounter = counter && !!maxLength;
+  // 한계에 닿으면 숫자를 경고색으로 바꾼다. `maxLength`가 더 치는 것을 조용히 막기 때문에,
+  // 표시가 없으면 사용자는 **키보드가 먹통이 된 것으로** 읽는다
+  const atLimit = showCounter && (value?.length ?? 0) >= (maxLength ?? 0);
 
   return (
     <View style={{ gap: sp[2] }}>
@@ -80,7 +83,7 @@ export function Input({
           )}
           <Spacer />
           {showCounter && (
-            <AppText size="caption" color={c.fgFaint}>
+            <AppText size="caption" color={atLimit ? c.danger : c.fgFaint}>
               {(value?.length ?? 0) + ' / ' + maxLength}
             </AppText>
           )}

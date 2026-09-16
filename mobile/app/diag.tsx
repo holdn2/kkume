@@ -8,9 +8,35 @@ import { updateInfo } from '@shared/updates';
 import { API_BASE_URL, HAS_API, ping } from '@shared/api/client';
 import { googleBackend, sessionBackend } from '@shared/auth';
 import { AUTH_CONFIGURED } from '@shared/auth/google';
+import { diagnoseSync, type SyncDiagnosis } from '@shared/sync';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 import { ensureWidgetSnapshot, widgetBackend } from '@features/widget';
+
+/** 기기에서 읽고 판정하기 쉽게 한 줄에 하나씩 */
+function formatDiagnosis(d: SyncDiagnosis): string {
+  const lines: string[] = [];
+  if (d.report) {
+    const r = d.report;
+    lines.push(`올림 ${r.pushed} · 건너뜀 ${r.skipped} · 거절 ${r.rejected.length} · 받음 ${r.pulled}`);
+    if (r.morePending) lines.push('올릴 것이 더 남았습니다 — 한 번 더 누르세요');
+    for (const x of r.rejected) lines.push(`거절 ${x.id} · ${x.reason ?? '이유 없음'}`);
+    if (r.error) lines.push(`동기화 오류 · ${r.error}`);
+  }
+  if (d.local) lines.push(`폰 기록 ${d.local.count}건 · 올릴 것 ${d.local.pending}건`);
+  if (d.server) {
+    const extra = [
+      d.server.deleted > 0 ? `지운 것 ${d.server.deleted}건 따로` : null,
+      d.server.truncated ? '2,000건에서 세기를 멈춤' : null,
+    ].filter(Boolean);
+    lines.push(`서버 기록 ${d.server.count}건${extra.length ? ` (${extra.join(' · ')})` : ''}`);
+    lines.push(
+      `서버의 가장 최근 수정 · ${d.server.latest ? (d.server.latest.title ?? '(제목 없음)') : '없음'}`,
+    );
+  }
+  if (d.note) lines.push(d.note);
+  return lines.join('\n');
+}
 
 /**
  * 빌드 진단 화면.
@@ -76,11 +102,23 @@ export default function DiagScreen() {
 
   const upd = updateInfo();
   const [pinged, setPinged] = useState<string | null>(null);
+  const [synced, setSynced] = useState<string | null>(null);
 
   /** 서버에 닿는지만 따로 잰다. 로그인 흐름과 섞이면 어디서 끊겼는지 못 가린다 */
   const doPing = () => {
     setPinged('확인 중입니다');
     void ping().then(setPinged);
+  };
+
+  /** 동기화를 한 번 돌리고 서버를 따로 센다. 평소 동기화는 조용히 돌아 결과가 안 남는다 */
+  const doSync = () => {
+    setSynced('동기화 중입니다');
+    void diagnoseSync()
+      .then((d) => {
+        setSynced(formatDiagnosis(d));
+        refresh();
+      })
+      .catch((e) => setSynced(`실패 · ${String(e)}`));
   };
 
   return (
@@ -201,6 +239,7 @@ export default function DiagScreen() {
         <Button label="마이그레이션 v2 확인" size="sm" onPress={probe} disabled={busy} />
         <Button label="위젯 스냅샷 다시 그리기" size="sm" variant="secondary" onPress={ensureWidgetSnapshot} />
         <Button label="서버 연결 확인" size="sm" variant="secondary" onPress={doPing} />
+        <Button label="동기화 확인" size="sm" variant="secondary" onPress={doSync} />
         <Button label="새로고침" size="sm" variant="ghost" onPress={refresh} />
       </Stack>
 
@@ -211,6 +250,17 @@ export default function DiagScreen() {
               {API_BASE_URL || '(주소 없음)'}
             </AppText>
             <AppText size="caption">{pinged}</AppText>
+          </Stack>
+        </Card>
+      )}
+
+      {!!synced && (
+        <Card>
+          <Stack gap={sp[2]}>
+            <AppText size="caption" color={c.fgFaint}>
+              동기화 확인
+            </AppText>
+            <AppText size="caption">{synced}</AppText>
           </Stack>
         </Card>
       )}

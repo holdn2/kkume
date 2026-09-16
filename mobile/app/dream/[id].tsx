@@ -5,6 +5,7 @@ import { KeyboardAvoidingView, Platform, Pressable, StyleSheet } from 'react-nat
 
 import { Badge, Button, Input, Row, Screen, Sheet, Stack } from '@components';
 import { PlayerBar } from '@features/log/PlayerBar';
+import { MAX_TEXT_LENGTH, MAX_TITLE_LENGTH } from '@shared/api/sync';
 import { getDreamRepo, nowIso, type Dream } from '@shared/db';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
@@ -125,12 +126,22 @@ export default function DreamDetail() {
           </Row>
 
           <Stack gap={sp[3]}>
-            <Input placeholder="제목을 붙여 보세요" value={title} onChangeText={setTitle} />
+            {/* 서버가 255자를 넘는 제목을 거절한다(title_too_long). 거절된 수정은 폰에만 남아
+                다른 기기의 늦은 수정에 덮일 수 있어서, 입력에서 막아 그 경로를 없앤다(문서 035) */}
+            <Input
+              placeholder="제목을 붙여 보세요"
+              value={title}
+              onChangeText={setTitle}
+              maxLength={MAX_TITLE_LENGTH}
+              counter
+            />
             <Input
               multiline
               placeholder="기억나는 것을 적어 두세요"
               value={text}
               onChangeText={setText}
+              maxLength={MAX_TEXT_LENGTH}
+              counter
             />
             <AppText size="caption" color={error ? c.danger : c.fgFaint}>
               {error ?? (dirty ? '나가면 저장됩니다' : '저장됨')}

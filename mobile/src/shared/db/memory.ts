@@ -6,6 +6,9 @@ import {
   type DreamPatch,
   type DreamRepo,
   type ListOptions,
+  type SentVersion,
+  type ServerDream,
+  toMillisIso,
 } from './types';
 
 /**
@@ -77,6 +80,62 @@ export function createMemoryRepo(): DreamRepo {
     async clear() {
       rows = [];
       settings = {};
+    },
+
+    async listUnsynced(limit = 100) {
+      return rows
+        .filter((r) => !r.syncedAt || r.updatedAt > r.syncedAt)
+        .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+        .slice(0, limit);
+    },
+
+    async markSynced(sent: SentVersion[]) {
+      // SQLite 구현과 같은 규칙이다 — 보낸 그 버전일 때만, 보낸 updatedAt으로
+      const byId = new Map(sent.map((v) => [v.id, v.updatedAt]));
+      rows = rows.map((r) => {
+        const v = byId.get(r.id);
+        return v !== undefined && r.updatedAt === v ? { ...r, syncedAt: v } : r;
+      });
+    },
+
+    async upsertFromServer(d: ServerDream) {
+      const version = toMillisIso(d.clientUpdatedAt);
+      // 날짜 칸도 기기 모양으로 맞춘다. SQLite 구현과 같다(재현 테스트 F)
+      const fields = {
+        recordedAt: toMillisIso(d.recordedAt),
+        title: d.title,
+        text: d.text,
+        durationMs: d.durationMs,
+        reviewedAt: d.reviewedAt == null ? null : toMillisIso(d.reviewedAt),
+        deletedAt: d.deletedAt == null ? null : toMillisIso(d.deletedAt),
+        updatedAt: version,
+        syncedAt: version,
+      };
+      const found = rows.find((r) => r.id === d.id);
+      if (found) {
+        // 로컬이 깨끗하거나, 서버 쪽 버전이 로컬 수정보다 늦을 때만 덮는다.
+        // SQLite 구현의 WHERE와 같다. audioPath와 sttStatus는 그대로 둔다.
+        // 이유는 DreamRepo에 적어 뒀다
+        const clean = found.syncedAt != null && found.updatedAt <= found.syncedAt;
+        const serverNewer = version > found.updatedAt;
+        if (!clean && !serverNewer) return;
+        rows = rows.map((r) => (r.id === d.id ? { ...r, ...fields } : r));
+        return;
+      }
+      rows = [
+        ...rows,
+        {
+          id: d.id,
+          createdAt: d.createdAt,
+          ...fields,
+          userId: null,
+          audioPath: null,
+          sttStatus: 'pending',
+          emotion: null,
+          keywords: null,
+          characters: null,
+        },
+      ];
     },
 
     async getSetting(key: string) {
