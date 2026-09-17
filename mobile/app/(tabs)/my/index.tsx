@@ -3,6 +3,7 @@ import { LayoutGrid } from 'lucide-react-native';
 
 import { Button, Card, ListRow, Row, Screen, Stack, Title } from '@components';
 import { useAuth } from '@shared/auth';
+import { STORYBOOK_ENABLED } from '@shared/storybook';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 
@@ -87,7 +88,11 @@ export default function MyScreen() {
         <AppText size="caption" color={c.fgFaint}>
           개발용
         </AppText>
-        <ListRow label="스토리북 열기" onPress={() => router.push('/storybook')} />
+        {/* 스토리북을 뺀 번들(preview 빌드 · OTA)에서는 줄 자체를 숨긴다.
+            누르면 갈 곳이 없는 버튼을 두지 않는다 */}
+        {STORYBOOK_ENABLED && (
+          <ListRow label="스토리북 열기" onPress={() => router.push('/storybook')} />
+        )}
         {/* 스토리북은 preview 빌드에서 꺼진다. 정작 판정이 필요한 빌드라 진단은 따로 둔다 */}
         <ListRow label="빌드 진단" onPress={() => router.push('/diag')} />
       </Stack>
