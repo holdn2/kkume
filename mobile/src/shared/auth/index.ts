@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { loginWithGoogle } from '@shared/api/auth';
 import { isApiError } from '@shared/api/client';
-import { syncIfSignedIn } from '@shared/sync';
+import { resetSyncPosition, syncIfSignedIn } from '@shared/sync';
 
 import { signInWithGoogle, signOutFromGoogle } from './google';
 import { clearSession, isExpired, loadSession, saveSession, toSession, type Session } from './session';
@@ -105,6 +105,8 @@ export function useAuth(): AuthState {
     try {
       await signOutFromGoogle();
       await clearSession();
+      // 받기 위치를 지운다. 다음에 다른 계정이 로그인하면 그 계정 기록을 처음부터 받아야 한다
+      await resetSyncPosition();
       setSession(null);
     } finally {
       setBusy(false);

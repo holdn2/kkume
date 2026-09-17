@@ -240,6 +240,21 @@ PowerShell에서는 파서 에러가 난다. 값을 띄어 쓰면 떨어져 나�
 주석에 적힌 대로 번들이 2.4MB에서 7.1MB로 불어난다.
 `--environment`도 `--non-interactive`에서는 필수다.
 
+**값을 붙여도 스토리북이 완전히 빠지지는 않는다 — Windows 번들이라서.**
+`withStorybook`은 꺼졌을 때 `.rnstorybook/index.ts`를 안내 화면으로 바꿔 끼우는데,
+그 판정이 경로를 `/`로 비교하는 정규식이다. **EAS 빌드(리눅스·맥)에서는 맞고,
+`eas update`가 번들을 만드는 이 Windows PC에서는 경로가 `\`라 안 맞는다.**
+그러면 진짜 스토리북이 들어가고, 그 모듈은 불러오는 순간 빈 모듈의 `start()`를 불러 던진다.
+빌드에서는 멀쩡하던 「스토리북 열기」가 **OTA를 받은 뒤부터 누르면 앱이 꺼졌다**(2026-09-17).
+그래서 `app/storybook.tsx`와 마이 탭이 `src/shared/storybook.ts`의 `STORYBOOK_ENABLED`를
+직접 보고, 꺼졌으면 `.rnstorybook`을 **부르지 않는다.** 라이브러리의 바꿔치기에 기대지 않는다.
+확인은 이렇게 한다 — 스토리북을 끄고 번들을 뽑아 진짜 스토리북 코드가 실행 경로에 있는지 본다.
+
+```
+$env:EXPO_PUBLIC_STORYBOOK_ENABLED = "false"
+npm exec -- expo export --platform ios --output-dir <임시폴더> --no-bytecode
+```
+
 쏘고 나면 출력의 **`Runtime version`이 기기에 깔린 빌드의 `runtime.version`과
 같은지 확인한다.** 다르면 그 기기에는 안 간다. 빌드 쪽 값은 이렇게 본다.
 

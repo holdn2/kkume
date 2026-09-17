@@ -255,3 +255,22 @@ export async function diagnoseSync(): Promise<SyncDiagnosis> {
     server: { count, deleted, latest: latest ? { title: latest.title } : null, truncated },
   };
 }
+
+/**
+ * 로그아웃할 때 부른다. 받기 위치(`sync_position`)를 지운다.
+ *
+ * 안 지우면 **다음에 로그인한 계정이 앞 계정의 위치를 물려받아**, 그 계정이 예전에 남긴
+ * 서버 기록을 영영 못 받는다 — `since`를 이미 지나 있기 때문이다(재현 테스트 G).
+ * 지우면 처음부터 다시 받고, 이미 있는 행은 `upsertFromServer`가 흡수한다.
+ *
+ * **로그아웃 중에 남긴 기록이 다음 계정으로 올라가는 것은 막지 않는다**(재현 테스트 G2, 문서 038).
+ * 기록에 주인을 적어야 풀리는 문제라 커뮤니티(7~8주차) 때 함께 본다.
+ *
+ * 돌던 동기화가 있으면 끝나길 기다린다 — 그 동기화가 끝나면서 위치를 다시 써,
+ * 방금 지운 것이 되살아나지 않게
+ */
+export async function resetSyncPosition(): Promise<void> {
+  if (inFlight) await inFlight.catch(() => null);
+  const repo = await getDreamRepo();
+  await repo.setSetting(SETTINGS.syncPosition, '');
+}

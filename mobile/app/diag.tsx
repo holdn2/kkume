@@ -12,6 +12,26 @@ import { diagnoseSync, type SyncDiagnosis } from '@shared/sync';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 import { ensureWidgetSnapshot, widgetBackend } from '@features/widget';
+import { requireOptionalNativeModule } from 'expo-modules-core';
+
+/**
+ * 6주차 오디오 업로드가 빌드를 먹는지 여기서 갈린다.
+ *
+ * `expo-file-system`은 `package.json`에 없는데 `expo` 패키지를 따라 들어와 있다.
+ * Expo는 전이 의존성도 자동 링크하므로 **빌드에 들어 있을 가능성이 높지만,
+ * 들어 있는지는 기기에서만 확정된다**(절대 규칙 10).
+ *
+ * 이름이 둘이다 — 새 API는 `FileSystem`, **업로드 함수가 있는 옛 API는 `ExponentFileSystem`**이다.
+ * 업로드가 필요한 쪽은 옛 API라 둘을 갈라서 본다.
+ */
+function fileSystemBackend() {
+  const next = requireOptionalNativeModule('FileSystem') != null;
+  const legacy = requireOptionalNativeModule('ExponentFileSystem') != null;
+  if (next && legacy) return 'FileSystem + 옛 API';
+  if (next) return 'FileSystem만 — 옛 업로드 API 없음';
+  if (legacy) return 'ExponentFileSystem만';
+  return 'none';
+}
 
 /** 기기에서 읽고 판정하기 쉽게 한 줄에 하나씩 */
 function formatDiagnosis(d: SyncDiagnosis): string {
@@ -204,6 +224,17 @@ export default function DiagScreen() {
             <Badge label="설정됨" tone="neutral" />
           ) : (
             <Badge label="없음 — 동기화 불가" tone="warning" />
+          )}
+        </Row>
+        {/* 6주차 오디오 업로드를 OTA로 붙일 수 있는지, 아니면 빌드를 써야 하는지가 이 줄에서 갈린다 */}
+        <Row>
+          <AppText size="label" style={{ flex: 1 }}>
+            파일
+          </AppText>
+          {fileSystemBackend() === 'none' ? (
+            <Badge label="없음 — 빌드에 안 들어감" tone="warning" />
+          ) : (
+            <Badge label={fileSystemBackend()} tone="neutral" />
           )}
         </Row>
       </Stack>

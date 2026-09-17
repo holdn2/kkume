@@ -15,7 +15,11 @@
 
 export const MAX_BATCH = 100;
 const MAX_PAGE = 100;
-const USER = 'u1';
+/**
+ * 지금 로그인한 계정. 서버는 토큰에서 소유자를 정하므로, 계정이 바뀌면 같은 주소가
+ * 다른 사람의 기록을 답한다. **`server.setUser`로 바꾼다**(재현 테스트 G)
+ */
+let USER = 'u1';
 
 const state = {
   rows: new Map(),
@@ -155,7 +159,12 @@ export async function pullDreams(_token, opts = {}) {
 
 /** 테스트가 서버를 조작하는 손잡이 */
 export const server = {
+  /** 다른 계정으로 로그인한 상황을 만든다. 서버가 그 계정으로 답하게 된다(재현 테스트 G) */
+  setUser(id) {
+    USER = id;
+  },
   reset() {
+    USER = 'u1';
     state.rows = new Map();
     state.skewMs = 0;
     state.lastMicros = 0n;

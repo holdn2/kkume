@@ -10,7 +10,7 @@
 import { createMemoryRepo } from '@shared/db/memory';
 import { createSqliteRepo } from '@shared/db/sqlite';
 import { formatInstant, server } from '@shared/api/sync';
-import { syncOnce } from '@shared/sync';
+import { resetSyncPosition, syncOnce } from '@shared/sync';
 
 import { openNodeDb } from './support.mjs';
 
@@ -267,6 +267,61 @@ const scenarios = [
       return {
         reproduced: list[0]?.id !== second.id,
         detail: `목록 순서 ${list.map((d) => `${d.recordedAt}`).join(' → ')} (늦게 기록한 …57.300Z가 위여야 한다)`,
+      };
+    },
+  },
+  {
+    key: 'G',
+    title: '로그아웃하고 다른 계정으로 로그인하면 그 계정의 예전 기록을 못 받는다',
+    async run(repo) {
+      // 로그아웃이 받기 위치(sync_position)를 안 지우면, 다음 계정이 앞 계정의 위치를 물려받아
+      // 그 계정이 예전에 남긴 서버 기록은 since를 이미 지나 안 내려온다.
+      // 앱의 로그아웃(useAuth().signOut)이 부르는 resetSyncPosition을 같은 자리에서 부른다.
+      // **수정 전(1b9bd8c)에는 이 호출이 없었고, 같은 순서에서 B의 기록 2건 중 0건이 왔다**
+      server.setUser('u2');
+      server.seed(2, { prefix: 'b' }); // B가 전에 다른 기기에서 남긴 기록
+      server.setUser('u1');
+
+      await repo.create({ title: 'A의 기록 1', text: 'x' });
+      await repo.create({ title: 'A의 기록 2', text: 'x' });
+      await syncOnce('토큰A');
+
+      await resetSyncPosition(); // 로그아웃
+
+      server.setUser('u2'); // 계정 B로 로그인
+      await syncOnce('토큰B');
+
+      // 이미 올린 A의 기록은 동기화됨으로 표시돼 있어 B 계정으로 올라가면 안 된다
+      const leakedSynced = [...server.rows.values()].filter(
+        (r) => r.userId === 'u2' && (r.title ?? '').startsWith('A의 기록'),
+      ).length;
+      const local = await repo.list({ includeDeleted: true });
+      const gotB = local.filter((d) => d.id.startsWith('b-')).length;
+      return {
+        reproduced: gotB < 2 || leakedSynced > 0,
+        detail: `B의 서버 기록 2건 중 로컬에 ${gotB}건 · 이미 올린 A 기록이 B 계정으로 ${leakedSynced}건 올라감`,
+      };
+    },
+  },
+  {
+    key: 'G2',
+    title: '[관찰] 로그아웃 중에 남긴 기록은 다음에 로그인한 계정으로 올라간다',
+    observe: true,
+    async run(repo) {
+      // 로그인 없이도 기록은 된다(절대 규칙 1). 로그아웃 중 기록은 안 올라간 상태로 남고,
+      // 소유자는 서버가 토큰에서 정하므로 다음에 로그인한 계정 것이 된다.
+      // 받기 위치를 지우는 것(G)으로는 안 풀린다 — 기록에 주인을 적어야 한다(문서 038 05장 2번).
+      // 사용자 결정으로 커뮤니티(7~8주차) 때 본다
+      await repo.create({ title: 'A의 기록', text: 'x' });
+      await syncOnce('토큰A');
+      await resetSyncPosition(); // 로그아웃
+      const orphan = await repo.create({ title: '로그아웃 중에 남긴 기록', text: 'x' });
+      server.setUser('u2'); // 계정 B로 로그인
+      await syncOnce('토큰B');
+      const leaked = [...server.rows.values()].some((r) => r.userId === 'u2' && r.id === orphan.id);
+      return {
+        reproduced: false,
+        detail: `로그아웃 중 남긴 기록이 B 계정으로 ${leaked ? '올라감' : '안 올라감'}`,
       };
     },
   },
