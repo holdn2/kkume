@@ -11,6 +11,8 @@ source .env
 : "${DB_HOST:?}" "${DB_NAME:?}" "${DB_USER:?}" "${DB_PASSWORD:?}"
 # 없으면 서버가 임시 키를 만들고, 배포할 때마다 로그인이 전부 풀린다.
 : "${JWT_SECRET:?}"
+# 없으면 서버가 오디오 업로드를 받지 않는다(503 audio_unavailable). 모르고 그렇게 배포되지 않게 막는다.
+: "${AUDIO_BUCKET:?}"
 HOST_PORT="${HOST_PORT:-80}"
 # 바깥 확인은 HTTPS 입구로 한다. 평문 80 은 보안그룹에서 닫았다(#42).
 HTTPS_HOST="${HTTPS_HOST:-${EC2_HOST}.nip.io}"
@@ -22,7 +24,7 @@ echo "== ${EC2_USER}@${EC2_HOST} 로 배포"
 # 스크립트를 파일로 두지 않고 stdin으로 밀어넣는다. EC2에 사본이 쌓이지 않는다.
 ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=accept-new \
   "${EC2_USER}@${EC2_HOST}" \
-  "bash -s -- '${REGISTRY}' '${ECR_REPO}' '${HOST_PORT}' '${AWS_REGION}' '${DB_URL}' '${DB_USER}' '${DB_PASSWORD}' '${JWT_SECRET}'" \
+  "bash -s -- '${REGISTRY}' '${ECR_REPO}' '${HOST_PORT}' '${AWS_REGION}' '${DB_URL}' '${DB_USER}' '${DB_PASSWORD}' '${JWT_SECRET}' '${AUDIO_BUCKET}'" \
   < ec2-run.sh
 
 echo "== 바깥에서 확인"

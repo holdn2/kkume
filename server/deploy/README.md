@@ -214,6 +214,54 @@ aws rds modify-db-instance --db-instance-identifier kkume-db \
   --master-user-password "$(openssl rand -hex 24)" --apply-immediately
 ```
 
+### 5-2. S3 오디오 버킷
+
+녹음 원본을 둔다(절대 규칙 2). **앱이 서버를 거치지 않고 presigned URL 로 직접 PUT 한다** —
+느린 모바일 업로드를 t3.micro 가 붙잡고 있지 않게 하기 위해서다(문서 039).
+
+조직 SCP 는 **시드니에서만** S3 를 허락한다. 권한 시뮬레이션은 `aws:RequestedRegion` 을 넘기지 않으면
+전부 `explicitDeny` 로 나오니, S3 가 막혔다고 오해하지 않는다.
+
+```bash
+BUCKET=kkume-audio-341860778310     # 버킷 이름은 전 세계에서 유일해야 해서 계정 번호를 붙였다
+
+aws s3api create-bucket --bucket "$BUCKET" --region ap-southeast-2 \
+  --create-bucket-configuration LocationConstraint=ap-southeast-2
+aws s3api put-public-access-block --bucket "$BUCKET" \
+  --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+aws s3api put-bucket-encryption --bucket "$BUCKET" \
+  --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+```
+
+**EC2 역할에 이 버킷만 쓰는 권한을 붙인다.** 서버가 URL 에 서명하는 자격증명이 이 역할이라,
+여기에 `PutObject` 가 없으면 앱의 PUT 이 403 이 된다.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::kkume-audio-341860778310/audio/*" },
+    { "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::kkume-audio-341860778310" }
+  ]
+}
+```
+
+```bash
+aws iam put-role-policy --role-name kkume-ec2-ecr --policy-name kkume-audio \
+  --policy-document "file://C:\경로\kkume-audio-policy.json"
+```
+
+> **`s3:ListBucket` 을 빼면 "파일 없음"이 404 가 아니라 403 으로 온다.** S3 는 목록 권한이 없는 쪽에
+> 없는 키를 알려 주지 않는다. 서버는 404 만 "앱이 안 올렸다"(`422 upload_missing`)로 보고 403 은
+> 설정 오류로 던지므로, 빼면 업로드 확인이 전부 500 이 된다. **여기에 prefix 조건을 걸면 안 된다** —
+> `HeadObject` 에는 `s3:prefix` 가 없어 조건이 늘 거짓이 되고 같은 403 이 난다.
+
+`.env` 의 `AUDIO_BUCKET` 에 버킷 이름을 넣는다. 비어 있으면 `deploy.sh` 가 멈춘다.
+
 ### 6. 준비 확인
 
 `user-data.sh`가 도는 데 1~2분 걸린다. 접속해서 세 가지를 확인한다.

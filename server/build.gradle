@@ -29,6 +29,11 @@ dependencies {
 	implementation 'org.flywaydb:flyway-database-postgresql'
 	runtimeOnly 'org.postgresql:postgresql'
 
+	// 오디오 원본 보관(S3). 앱이 서버를 거치지 않고 S3에 직접 올리도록 presigned URL 을 발급한다.
+	// 자격증명은 EC2 인스턴스 프로파일에서 온다 — 서버에 액세스 키를 두지 않는다.
+	implementation platform('software.amazon.awssdk:bom:2.54.20')
+	implementation 'software.amazon.awssdk:s3'
+
 	// bootRun 이 compose.yaml 의 PostgreSQL 을 자동으로 띄우고 접속 정보를 넣어준다.
 	// developmentOnly 라 배포 이미지에는 들어가지 않는다.
 	developmentOnly 'org.springframework.boot:spring-boot-docker-compose'
