@@ -96,7 +96,7 @@ chmod 400 ~/.ssh/kkume-deploy.pem
 
 ### 3. 보안그룹
 
-SSH는 **내 IP만** 연다. 80은 발표 시연을 위해 열어 둔다.
+SSH는 **내 IP만** 연다. 바깥에는 **443(HTTPS)만** 연다 — 앱의 80 은 Caddy 가 서버 안에서만 쓴다(HTTPS 절).
 
 ```bash
 MYIP=$(curl -s https://checkip.amazonaws.com)
@@ -106,7 +106,7 @@ aws ec2 create-security-group --group-name kkume-server-sg \
 aws ec2 authorize-security-group-ingress --group-id sg-xxxx \
   --protocol tcp --port 22 --cidr "${MYIP}/32"
 aws ec2 authorize-security-group-ingress --group-id sg-xxxx \
-  --protocol tcp --port 80 --cidr 0.0.0.0/0
+  --protocol tcp --port 443 --cidr 0.0.0.0/0
 ```
 
 ### 4. EC2가 ECR을 읽을 수 있게 (인스턴스 프로파일)
@@ -235,8 +235,8 @@ swapon --show        # /swapfile 2G 가 보여야 한다
 ## HTTPS
 
 ```
-https://13.239.58.251.nip.io  ->  Caddy(443)  ->  앱(호스트 80)
-http://13.239.58.251          ->  앱(호스트 80)
+https://13.239.58.251.nip.io  ->  Caddy(443)  ->  앱(EC2 안의 127.0.0.1:80)
+http://13.239.58.251          ->  닫힘 (2026-09-17, 보안그룹에서 80 회수)
 ```
 
 **iOS 가 평문 HTTP 를 막아서 붙였다.** ATS 예외(`NSExceptionDomains`)는 도메인 이름만 받고
@@ -254,7 +254,9 @@ IP 는 받지 않아서, IP 주소로는 앱 쪽에서 좁게 열 방법이 없�
 
 - 인증서 검증을 80 대신 **443 으로 받는다**(`tls-alpn-01`). HTTP 검증을 켜 두면
   Let's Encrypt 가 80 으로 와서 앱에 닿고 실패하는데, **그 실패도 발급 한도에 잡힌다**
-- HTTP -> HTTPS 리다이렉트를 끈다. 기존 `http://` 주소가 그대로 살아 있다
+- HTTP -> HTTPS 리다이렉트를 끈다. 모바일이 옮겨 가는 동안 기존 `http://` 주소를 살려 두기 위해서였다.
+  **모바일이 옮긴 뒤 보안그룹에서 80 을 닫았다**(2026-09-17, #42). Caddy 는 서버 안에서 `127.0.0.1:80` 으로
+  앱에 닿으므로 보안그룹과 무관하게 동작한다
 
 그래서 `https.sh` 는 **배포가 아니다.** 앱 컨테이너 · RDS 를 건드리지 않는다.
 
@@ -302,7 +304,8 @@ cd server/deploy
 | **`Migration checksum mismatch`** (로컬) | 남의 compose 스택에 붙은 것이다. `compose.yaml` 의 `name:` 확인 |
 | `ecr-push.sh`가 로그인에서 실패 | `aws sts get-caller-identity`로 자격증명부터 확인 |
 | EC2에서 pull이 403 | 인스턴스 프로파일이 붙었는지 확인 (4번). 붙인 직후면 잠시 기다린다 |
-| 컨테이너는 떴는데 바깥에서 안 됨 | 보안그룹 인바운드 80 (3번). SSH가 안 되면 내 공인 IP가 바뀐 것이다 |
+| 컨테이너는 떴는데 바깥에서 안 됨 | 보안그룹 인바운드 443 (3번)과 `sudo docker ps` 의 `kkume-caddy`. SSH가 안 되면 내 공인 IP가 바뀐 것이다 |
+| `http://<IP>` 가 안 됨 | **정상이다.** 80 은 닫았다. 앱은 `https://<IP>.nip.io` 로 붙는다 |
 | `/health`가 502·연결 거부 | `sudo docker logs kkume-server` |
 | **`/health` 는 200 인데 `/health/ready` 가 아님** | **RDS 쪽이다.** `kkume-db-sg` 가 EC2 보안그룹에서 5432 를 열어 주는지, `.env` 의 `DB_*` 가 맞는지 본다 |
 | 컨테이너가 재시작만 반복 | Flyway 가 DB 에 못 닿는 것이다. 로그의 `Database: jdbc:postgresql://...` 줄을 본다 |
@@ -317,7 +320,7 @@ cd server/deploy
 | --- | --- |
 | 리전 | `ap-southeast-2` |
 | ECR | `341860778310.dkr.ecr.ap-southeast-2.amazonaws.com/kkume-server` |
-| 보안그룹 | `kkume-server-sg` — 22는 개발 PC IP만, 80·443은 공개 |
+| 보안그룹 | `kkume-server-sg` — 22는 개발 PC IP만, **443만 공개**(80은 2026-09-17에 닫음) |
 | HTTPS | `https://13.239.58.251.nip.io` — Caddy `2.11.4`, Let's Encrypt, 메모리 상한 128m |
 | 인스턴스 프로파일 | `kkume-ec2-ecr` (ECR 읽기 전용) |
 | 인스턴스 | `t3.micro`, Amazon Linux 2023, EBS 8GiB |

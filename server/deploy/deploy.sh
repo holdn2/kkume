@@ -12,6 +12,8 @@ source .env
 # 없으면 서버가 임시 키를 만들고, 배포할 때마다 로그인이 전부 풀린다.
 : "${JWT_SECRET:?}"
 HOST_PORT="${HOST_PORT:-80}"
+# 바깥 확인은 HTTPS 입구로 한다. 평문 80 은 보안그룹에서 닫았다(#42).
+HTTPS_HOST="${HTTPS_HOST:-${EC2_HOST}.nip.io}"
 
 REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 DB_URL="jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}"
@@ -26,13 +28,14 @@ ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=accept-new \
 echo "== 바깥에서 확인"
 fail=0
 for path in /health /health/ready; do
-  code=$(curl -s -o /dev/null -w '%{http_code}' "http://${EC2_HOST}:${HOST_PORT}${path}" || true)
-  echo "http://${EC2_HOST}:${HOST_PORT}${path} -> ${code}"
+  code=$(curl -sS -o /dev/null -w '%{http_code}' "https://${HTTPS_HOST}${path}" || true)
+  echo "https://${HTTPS_HOST}${path} -> ${code}"
   [ "$code" = "200" ] || fail=1
 done
 
 if [ "$fail" -ne 0 ]; then
-  echo "컨테이너는 떴는데 바깥에서 안 되면 EC2 보안그룹의 인바운드 80 을 본다." >&2
+  echo "컨테이너는 떴는데 바깥에서 안 되면 보안그룹의 인바운드 443 과 Caddy(sudo docker ps)를 본다." >&2
+  echo "서버 안의 기동 확인(ec2-run.sh)은 통과했으므로 앱보다 입구 쪽일 가능성이 크다." >&2
   echo "/health 는 200 인데 /health/ready 가 아니면 RDS 쪽이다 —" >&2
   echo "DB 보안그룹이 EC2 보안그룹에서 5432 를 열어 주는지 확인한다." >&2
   exit 1
