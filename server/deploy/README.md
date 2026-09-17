@@ -370,6 +370,9 @@ cd server/deploy
 | ECR | `341860778310.dkr.ecr.ap-southeast-2.amazonaws.com/kkume-server` |
 | 보안그룹 | `kkume-server-sg` — 22는 개발 PC IP만, **443만 공개**(80은 2026-09-17에 닫음) |
 | HTTPS | `https://13.239.58.251.nip.io` — Caddy `2.11.4`, Let's Encrypt, 메모리 상한 128m |
+| 오디오 버킷 | `kkume-audio-341860778310` — 시드니, 공개 차단 4개 전부, AES256, ACL 비활성(2026-09-17) |
+| EC2 역할의 버킷 권한 | `kkume-ec2-ecr` 인라인 `kkume-audio` — `audio/*` 읽기·쓰기·삭제 + 버킷 목록. **`audio/` 밖에는 쓰지 못한다** |
+| 배포 사용자의 버킷 권한 | `kkume-deploy` 인라인 `kkume-audio-bucket-admin` — 이 버킷의 생성·설정만. **파일은 읽고 쓰지 못한다** |
 | 인스턴스 프로파일 | `kkume-ec2-ecr` (ECR 읽기 전용) |
 | 인스턴스 | `t3.micro`, Amazon Linux 2023, EBS 8GiB |
 | DB | `kkume-db` — PostgreSQL 17.11, db.t3.micro, gp3 20GiB, 암호화 켬, 퍼블릭 차단 |
