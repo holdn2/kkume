@@ -138,7 +138,7 @@ POST /api/sync/dreams
 | **충돌** | `updatedAt` 이 더 새로운 쪽이 이긴다. 같으면 서버를 유지한다 |
 | **삭제** | 양쪽 다 소프트 삭제. 지워진 행도 응답에 담는다 |
 | **배치** | 한 번에 **100건**. 넘으면 `400 too_many` — 기기가 나눠 보낸다 |
-| **오디오** | 이 API 는 손대지 않는다. `audioUrl` 은 업로드 쪽에서만 바뀐다 |
+| **오디오** | 이 API 는 손대지 않는다. `audioUrl` 은 업로드 쪽에서만 바뀐다(아래 "오디오와 변환") |
 
 **`updatedAt` 과 `clientUpdatedAt` 은 다른 시계다.** `updatedAt` 은 서버가 쓴 시각이라
 커서가 이것을 따라가고, `clientUpdatedAt` 은 기기가 고친 시각이라 충돌 판정에만 쓴다.
@@ -146,6 +146,53 @@ POST /api/sync/dreams
 
 **서버가 기기의 값을 받지 않는 것들** — `audioUrl` · `sttStatus` · `userId`.
 사용자는 토큰에서만 읽는다. 본문으로 받으면 남의 id 를 적어 넣는 순간 남의 기록에 닿는다.
+
+**본문(`text`)에 길이 제한이 없다.** 앱은 키보드 입력만 5,000자로 막고, 변환 결과를 합칠 때는
+자르지 않는다(문서 040). 서버는 길이로 거절하지 않는다.
+
+### 오디오와 변환
+
+계약은 문서 039(모바일 040에서 그대로 수용)다. **변환 서비스는 아직 붙지 않았다** —
+그동안 작업은 줄에 쌓이기만 하고 `sttStatus` 는 `pending` 으로 남는다.
+
+```
+① 기록 행을 동기화로 올린다                   (위의 "동기화")
+② POST /api/dreams/{id}/audio/upload        → { uploadUrl, method, headers, key, expiresAt }
+③ 앱이 uploadUrl 에 파일을 PUT               (headers 를 그대로 붙인다)
+④ POST /api/dreams/{id}/audio/complete {key} → { sttStatus: "pending" }
+⑤ 서버가 변환                                 (끝나면 기록의 updated_at 이 올라 받기에 다시 내려온다)
+⑦ GET  /api/dreams/{id}/stt                  → { status, text, error, attempts, updatedAt }
+   POST /api/dreams/{id}/stt/retry           → failed 일 때만 pending 으로
+```
+
+**서버는 `text` 와 `clientUpdatedAt` 을 쓰지 않는다.** 변환 원문은 ⑦의 `text` 로만 주고,
+앱이 `[녹음 변환]` 규칙대로 로컬 `text` 에 합쳐 평소처럼 올린다. 서버가 `text` 에 쓰면
+변환 도중 사용자가 고친 글과 부딪혀 둘 중 하나가 사라진다(039 C1).
+서버가 기록에 쓰는 것은 `audio_url` · `stt_status` · `updated_at` 뿐이다.
+
+- **①이 ②보다 먼저다.** 서버에 없는 기록에는 업로드 자리를 주지 않는다
+- **②의 `headers` 를 그대로 붙여 PUT 한다.** `Content-Type` 이 서명에 들어가 있어 다르면 S3 가 403 으로 거절한다. URL 은 15분짜리다
+- **④는 두 번 보내도 된다.** 응답이 유실돼 다시 보내면 같은 결과를 준다
+- **`audioUrl` 은 URL 이 아니다.** `s3://…` 모양의 저장 위치다. 앱은 `null` 인지만 본다
+- **`sttStatus` 는 `audioUrl` 이 있을 때만 뜻이 있다.** 음성 없는 기록도 기본값이 `pending` 이다
+- **⑦의 원문은 서버에 남는다.** 합치기 전에 폰을 잃어도 새 폰에서 다시 받는다
+- 서버는 실패하면 스스로 3번까지 다시 시도하고, 그 동안 ⑦은 `pending` 이다. 파일 한도 25MB · 자동 재시도 3번은 **가안**이다
+
+| 응답 | 언제 | 앱이 할 일 |
+| --- | --- | --- |
+| `404 dream_not_found` | 서버에 그 기록이 없음 — 동기화 전이거나 남의 기록 | 다음 동기화 뒤에 다시 |
+| `409 recording_unfinished` | 서버의 `durationMs` 가 비어 있음 | 올리지 않는다 |
+| `409 dream_deleted` | 지운 기록 | 올리지 않는다 |
+| `409 audio_exists` | 이미 다른 파일로 끝난 기록 | 올라간 것으로 본다 |
+| `400 key_mismatch` | ④의 `key` 가 이 기록의 것이 아님 | 앱 버그 |
+| `422 upload_missing` | ④를 받았는데 파일이 없음 | ②부터 다시 |
+| `413 audio_too_large` | 25MB 초과. 서버가 지운다 | 다시 보내도 같다. 폰 원본은 남는다 |
+| `404 no_audio` | ⑦ · 재시도인데 올라간 오디오가 없음 | STT 대상이 아니다 |
+| `409 already_done` | 끝난 변환을 다시 하라고 함 | 하지 않는다 |
+| `503 audio_unavailable` | 버킷이 설정되지 않은 서버(로컬 등) | — |
+
+`404 dream_not_found` 는 남의 기록에도 같은 답을 준다. 동기화의 `not_owned` 와 일부러 다르다 —
+여기는 기록 하나를 경로로 가리키는 자리라, 구분해 주면 그 id 가 있는지 떠볼 수 있다.
 
 ### 인증이 필요 없는 경로
 
@@ -169,6 +216,8 @@ POST /api/sync/dreams
 | `kkume.auth.google.client-ids` | — | **기동하지 않는다.** 비어 있으면 다른 앱의 구글 토큰도 통과한다 |
 | `kkume.auth.jwt.secret` | `KKUME_JWT_SECRET` | 임시 키를 만들고 경고한다. 재시작하면 로그인이 전부 풀린다 |
 | 데이터소스 | `SPRING_DATASOURCE_URL` 등 | 로컬은 compose 가 채운다 |
+| `kkume.audio.bucket` | `KKUME_AUDIO_BUCKET` | 오디오를 받지 않는다(`503 audio_unavailable`). 로컬은 비워 둬도 뜬다 |
+| `kkume.stt.*` | — | 작업 큐 설정. 변환기가 없으면 작업을 받아 두기만 한다 |
 
 **client id 는 앱에 박히는 공개 값**이라 저장소에 둔다. **client secret 은 쓰지 않는다.**
 서명 키는 저장소에 두지 않는다 — 두면 그것을 읽은 누구나 남의 토큰을 위조할 수 있다.

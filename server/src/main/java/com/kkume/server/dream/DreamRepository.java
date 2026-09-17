@@ -2,10 +2,14 @@ package com.kkume.server.dream;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+
+import jakarta.persistence.LockModeType;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -39,4 +43,14 @@ public interface DreamRepository extends JpaRepository<Dream, String> {
 			""")
 	List<Dream> findChangedSince(@Param("userId") UUID userId, @Param("since") Instant since,
 			@Param("cursor") String cursor, Pageable pageable);
+
+	/**
+	 * 행을 잠그고 읽는다. 오디오 {@code complete}와 변환 재시도가 쓴다.
+	 *
+	 * <p>응답이 유실돼 앱이 같은 {@code complete}를 거의 동시에 두 번 보내면, 잠그지 않을 때 둘 다
+	 * "아직 오디오 없음"을 보고 작업을 두 번 만들려다 한쪽이 유일 제약에 걸려 500 이 된다.
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select d from Dream d where d.id = :id")
+	Optional<Dream> findForUpdate(@Param("id") String id);
 }
