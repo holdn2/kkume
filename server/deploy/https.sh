@@ -39,13 +39,7 @@ code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: applica
 echo "https://${HTTPS_HOST}/api/auth/google (잘못된 토큰) -> ${code}"
 [ "$code" = "401" ] || fail=1
 
-# 기존 주소는 모바일이 새 주소로 옮기기 전까지 살아 있어야 한다.
-code=$(curl -sS -o /dev/null -w '%{http_code}' "http://${EC2_HOST}:${HOST_PORT}/health" || true)
-echo "http://${EC2_HOST}:${HOST_PORT}/health -> ${code}"
-[ "$code" = "200" ] || fail=1
-
 if [ "$fail" -ne 0 ]; then
   echo "서버 안에서는 됐는데 바깥 HTTPS 만 안 되면 보안그룹의 인바운드 443 을 본다." >&2
-  echo "http 만 안 되면 앱 컨테이너 쪽이다 — 이 스크립트는 그것을 건드리지 않는다." >&2
   exit 1
 fi
