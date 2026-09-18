@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 
 import { Badge, Button, Card, Row, Screen, Stack, Title } from '@components';
-import { audioBackend, mmss } from '@shared/audio';
+import { audioBackend, mmss, probeAudioUpload } from '@shared/audio';
 import { getDreamRepo, storageBackend, type Dream } from '@shared/db';
 import { updateInfo } from '@shared/updates';
 import { API_BASE_URL, HAS_API, ping } from '@shared/api/client';
@@ -141,6 +141,21 @@ export default function DiagScreen() {
       .catch((e) => setSynced(`실패 · ${String(e)}`));
   };
 
+  const [uploaded, setUploaded] = useState<string | null>(null);
+
+  /**
+   * 오디오 업로드를 기기에서 처음 확인한다(문서 042 02장).
+   *
+   * **실제 녹음 하나를 서버에 올린다.** 폰의 원본은 그대로 두고 사본만 올라가며,
+   * 변환 서비스가 붙는 날 그 녹음이 실제로 변환된다
+   */
+  const doUpload = () => {
+    setUploaded('업로드 확인 중입니다');
+    void probeAudioUpload()
+      .then((r) => setUploaded(r.lines.join('\n')))
+      .catch((e) => setUploaded(`실패 · ${String(e)}`));
+  };
+
   return (
     <Screen scroll>
       <Title sub="preview 빌드에서 네이티브가 실제로 붙었는지 본다">빌드 진단</Title>
@@ -271,6 +286,9 @@ export default function DiagScreen() {
         <Button label="위젯 스냅샷 다시 그리기" size="sm" variant="secondary" onPress={ensureWidgetSnapshot} />
         <Button label="서버 연결 확인" size="sm" variant="secondary" onPress={doPing} />
         <Button label="동기화 확인" size="sm" variant="secondary" onPress={doSync} />
+        {/* 누르면 실제 녹음 하나가 서버로 올라간다. 되돌리는 버튼은 두지 않는다 —
+            어차피 업로드가 붙으면 올라갈 파일이고, 지우는 자리는 서버에도 아직 없다 */}
+        <Button label="오디오 업로드 확인" size="sm" variant="secondary" onPress={doUpload} />
         <Button label="새로고침" size="sm" variant="ghost" onPress={refresh} />
       </Stack>
 
@@ -292,6 +310,18 @@ export default function DiagScreen() {
               동기화 확인
             </AppText>
             <AppText size="caption">{synced}</AppText>
+          </Stack>
+        </Card>
+      )}
+
+      {!!uploaded && (
+        <Card>
+          <Stack gap={sp[2]}>
+            <AppText size="caption" color={c.fgFaint}>
+              오디오 업로드 확인
+            </AppText>
+            {/* 막힌 자리의 응답 전문을 그대로 서버에 전해야 해서 줄여 보여주지 않는다 */}
+            <AppText size="caption">{uploaded}</AppText>
           </Stack>
         </Card>
       )}

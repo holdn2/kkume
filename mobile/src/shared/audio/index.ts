@@ -43,3 +43,6 @@ export function usePlayer(uri: string | null, fallbackMs?: number | null): Playe
 export function audioBackend() {
   return HAS_NATIVE_AUDIO ? 'expo-audio' : 'fake';
 }
+
+export { fileSize, putFile, uploadBackend } from './upload';
+export { probeAudioUpload, type ProbeResult } from './probe';
