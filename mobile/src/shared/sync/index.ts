@@ -1,7 +1,12 @@
+import { completeUpload, fetchStt, requestUploadSlot } from '@shared/api/audio';
 import { HAS_API, isApiError } from '@shared/api/client';
 import { MAX_BATCH, pullDreams, pushDreams, type DreamPayload, type DreamView } from '@shared/api/sync';
+// 배럴(`@shared/audio`)이 아니라 파일을 직접 부른다 — 배럴은 녹음 훅과 네이티브 오디오 모듈을
+// 같이 끌고 와서, 동기화가 그것들에 묶일 이유가 없다. `@shared/auth/session`과 같은 이유다
+import { putFile, uploadBackend } from '@shared/audio/upload';
 import { isExpired, loadSession } from '@shared/auth/session';
-import { getDreamRepo, SETTINGS, toMillisIso, type Dream, type SentVersion } from '@shared/db';
+import { getDreamRepo, nowIso, SETTINGS, toMillisIso, type Dream, type SentVersion } from '@shared/db';
+import { decideMerge, mergeTranscript } from '@shared/stt/merge';
 
 /**
  * 동기화는 **올리고 나서 받는다.**
@@ -18,6 +23,12 @@ export type SyncReport = {
   skipped: number;
   rejected: { id: string; reason: string | null }[];
   pulled: number;
+  /** 받기에서 변환문을 본문에 합친 수 */
+  merged: number;
+  /** 이번 회차에 서버로 올린 녹음 파일 수 */
+  uploaded: number;
+  /** 올리지 못한 녹음. 다음 회차에 다시 시도하는 것과 포기한 것이 섞여 있다 — `reason` 으로 가른다 */
+  uploadIssues: { id: string; reason: string }[];
   /** 더 올릴 것이 남았는가. 한 번에 100건까지라 여러 번 부를 수 있다 */
   morePending: boolean;
   error: string | null;
@@ -28,9 +39,18 @@ const EMPTY: SyncReport = {
   skipped: 0,
   rejected: [],
   pulled: 0,
+  merged: 0,
+  uploaded: 0,
+  uploadIssues: [],
   morePending: false,
   error: null,
 };
+
+/**
+ * 한 회차에 올리는 녹음 파일 수의 상한. 파일 하나가 분당 약 1MB 라 회차가 길어지는 것을 막는다.
+ * 남으면 `morePending` 으로 알리고 다음 회차가 이어받는다
+ */
+const MAX_UPLOADS_PER_ROUND = 3;
 
 function toPayload(d: Dream): DreamPayload {
   return {
@@ -74,7 +94,7 @@ async function readPosition(repo: Repo): Promise<PullPosition> {
  */
 export async function syncOnce(token: string): Promise<SyncReport> {
   const repo = await getDreamRepo();
-  const report: SyncReport = { ...EMPTY, rejected: [] };
+  const report: SyncReport = { ...EMPTY, rejected: [], uploadIssues: [] };
 
   try {
     // 1. 올린다
@@ -130,6 +150,12 @@ export async function syncOnce(token: string): Promise<SyncReport> {
           clientUpdatedAt: v.clientUpdatedAt,
         });
         report.pulled += 1;
+        // 녹음 파일이 서버에 있는가 · 변환이 끝났는가는 **행을 덮었는지와 따로** 본다(문서 040 03장).
+        // 안 올린 수정이 있어 행을 안 덮었어도 변환은 끝났을 수 있다
+        if (v.audioUrl != null) {
+          await repo.markAudioUploaded(v.id, nowIso());
+          if (v.sttStatus === 'done') report.merged += await mergeIfNeeded(repo, token, v);
+        }
       }
       // **한 페이지를 다 반영한 뒤에만 옮기고, 둘을 한 번에 쓴다.** 먼저 옮기고 실패하면
       // 그 사이 변경을 영영 못 받는다. 서버가 nextSince를 안 주면 위치를 건드리지 않는다
@@ -139,11 +165,112 @@ export async function syncOnce(token: string): Promise<SyncReport> {
       guard += 1;
       if (!page.hasMore || guard >= 50) break;
     }
+
+    // 3. 녹음 파일을 올린다 — **행이 서버에 있는 것만**(①이 ② 앞, 문서 039), 회차당 상한까지.
+    // 올리기 · 받기 뒤에 두는 이유: 방금 올린 행이 서버에 있어야 하고, 다른 기기가 이미 올린 것을
+    // 받기에서 표시한 뒤라야 같은 파일을 두 번 올리지 않는다
+    if (uploadBackend() !== 'none') {
+      const files = await repo.listAudioPending(MAX_UPLOADS_PER_ROUND);
+      for (const d of files) {
+        const outcome = await uploadOne(repo, token, d);
+        if (outcome === 'uploaded') report.uploaded += 1;
+        else if (outcome !== 'already') report.uploadIssues.push({ id: d.id, reason: outcome });
+        // 망이 끊겼으면 이번 회차는 여기까지. 나머지는 다음 회차가 이어받는다
+        if (outcome === 'network') break;
+      }
+      if (files.length === MAX_UPLOADS_PER_ROUND) report.morePending = true;
+    }
   } catch (e) {
     report.error = isApiError(e) ? e.message : '동기화에 실패했습니다';
   }
 
   return report;
+}
+
+/**
+ * 서버 변환이 끝난 행의 원문을 받아 로컬 본문에 합친다. 합쳤으면 1.
+ *
+ * 합칠지는 `decideMerge`(문서 039 C3 · C4)가 정한다. **합치는 기준은 지금 로컬 본문이다** —
+ * 받기가 덮었든 안 덮었든 그 위에 얹고, 결과를 기기 시각으로 올린다(`update`가 `updatedAt`을
+ * 올려 다음 회차에 나간다). 원문 조회가 실패하면 그냥 둔다 — 로컬 `sttStatus`가 `done`이 아니라
+ * 다음 회차에 다시 온다
+ */
+async function mergeIfNeeded(repo: Repo, token: string, v: DreamView): Promise<number> {
+  const local = await repo.get(v.id);
+  if (!local) return 0;
+  const decision = decideMerge({
+    audioUrl: v.audioUrl,
+    serverSttStatus: v.sttStatus,
+    localSttStatus: local.sttStatus,
+    serverText: v.text,
+  });
+  if (decision === 'skip') return 0;
+  if (decision === 'mark-done') {
+    // 다른 기기가 이미 합친 본문이다. 다시 합치지 않고 "합쳤음"만 표시한다(C4 완화)
+    await repo.setSttStatus(v.id, 'done');
+    return 0;
+  }
+  let transcript: string | null;
+  try {
+    const stt = await fetchStt(token, v.id);
+    transcript = stt.status === 'done' ? stt.text : null;
+  } catch {
+    return 0;
+  }
+  if (transcript == null) return 0;
+  // 조회하는 동안 사용자가 고쳤을 수 있다 — 다시 읽은 로컬 위에 합친다
+  const fresh = await repo.get(v.id);
+  if (!fresh) return 0;
+  await repo.update(v.id, { text: mergeTranscript(fresh.text, transcript), sttStatus: 'done' });
+  return 1;
+}
+
+/**
+ * 녹음 파일 하나를 올린다(문서 039 ② → ③ → ④). 결과는 `uploaded` · `already`(서버에 이미 있음) ·
+ * 그 밖의 문자열(못 올린 이유. `network` 면 회차를 멈춘다).
+ *
+ * 오류 코드별 처리는 `server/README.md` 의 표를 따른다.
+ * - `audio_exists` → 올라간 것으로 본다(녹음은 기록당 한 번)
+ * - `dream_not_found` · `recording_unfinished` · `upload_missing` → 표시하지 않고 다음 회차에 ②부터
+ * - `audio_too_large` → **표시한다.** 다시 보내도 같고, 매 회차 25MB 를 다시 올리게 둘 수 없다.
+ *   원본은 폰에 남는다(절대 규칙 2). `uploadIssues` 에 이유가 남는다
+ * - PUT 이 2xx 가 아니면 표시하지 않는다. 403 이면 Content-Type 이 서명과 다른 것이다
+ */
+async function uploadOne(repo: Repo, token: string, d: Dream): Promise<string> {
+  if (!d.audioPath) return 'no_file';
+  const isNetwork = (e: unknown) => !isApiError(e) || e.status === 0;
+
+  let slot;
+  try {
+    slot = await requestUploadSlot(token, d.id);
+  } catch (e) {
+    if (isNetwork(e)) return 'network';
+    const code = (e as { code: string }).code;
+    if (code === 'audio_exists') {
+      await repo.markAudioUploaded(d.id, nowIso());
+      return 'already';
+    }
+    return code;
+  }
+
+  let status: number;
+  try {
+    status = (await putFile(slot.uploadUrl, d.audioPath, slot.headers)).status;
+  } catch {
+    return 'network';
+  }
+  if (status < 200 || status >= 300) return `put_${status}`;
+
+  try {
+    await completeUpload(token, d.id, slot.key);
+  } catch (e) {
+    if (isNetwork(e)) return 'network';
+    const code = (e as { code: string }).code;
+    if (code === 'audio_too_large') await repo.markAudioUploaded(d.id, nowIso());
+    return code;
+  }
+  await repo.markAudioUploaded(d.id, nowIso());
+  return 'uploaded';
 }
 
 /** 목록 탭을 오갈 때마다 서버를 두드리지 않는다 */

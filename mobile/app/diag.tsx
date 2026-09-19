@@ -41,6 +41,8 @@ function formatDiagnosis(d: SyncDiagnosis): string {
     lines.push(`올림 ${r.pushed} · 건너뜀 ${r.skipped} · 거절 ${r.rejected.length} · 받음 ${r.pulled}`);
     if (r.morePending) lines.push('올릴 것이 더 남았습니다 — 한 번 더 누르세요');
     for (const x of r.rejected) lines.push(`거절 ${x.id} · ${x.reason ?? '이유 없음'}`);
+    lines.push(`녹음 올림 ${r.uploaded} · 변환문 합침 ${r.merged}`);
+    for (const x of r.uploadIssues) lines.push(`녹음 못 올림 ${x.id} · ${x.reason}`);
     if (r.error) lines.push(`동기화 오류 · ${r.error}`);
   }
   if (d.local) lines.push(`폰 기록 ${d.local.count}건 · 올릴 것 ${d.local.pending}건`);
