@@ -33,6 +33,9 @@ export default function DreamDetail() {
   const [saved, setSaved] = useState<{ title: string; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [askDelete, setAskDelete] = useState(false);
+  // 화면을 연 시점의 본문 길이. 본문 입력칸 상한을 정하는 데만 쓴다(아래 Input 주석).
+  // **`saved.text`로 대신하면 안 된다** — 저장할 때마다 갱신돼 상한이 계속 올라간다
+  const [openedTextLength, setOpenedTextLength] = useState(0);
 
   const dirty = saved !== null && (saved.title !== title || saved.text !== text);
 
@@ -46,6 +49,7 @@ export default function DreamDetail() {
         setTitle(d?.title ?? '');
         setText(d?.text ?? '');
         setSaved({ title: d?.title ?? '', text: d?.text ?? '' });
+        setOpenedTextLength((d?.text ?? '').length);
       })
       .catch((e) => alive && setError(String(e)));
     return () => {
@@ -140,7 +144,12 @@ export default function DreamDetail() {
               placeholder="기억나는 것을 적어 두세요"
               value={text}
               onChangeText={setText}
-              maxLength={MAX_TEXT_LENGTH}
+              // **상한은 5,000자와 연 시점 본문 길이 중 큰 값이다.** 녹음 변환문을 합치면 본문이
+              // 5,000자를 넘을 수 있는데(합칠 때는 자르지 않는다, 문서 039 C5), 입력칸 상한이 그보다
+              // 작으면 iOS(Fabric)가 **입력뿐 아니라 한 글자 지우기도 거부해** 본문을 고칠 수 없게 된다
+              // (RCTTextInputComponentView.mm, 문서 040 04장). 연 시점 길이를 쓰므로 새로 치는 글은
+              // 여전히 막힌다
+              maxLength={Math.max(MAX_TEXT_LENGTH, openedTextLength)}
               counter
             />
             <AppText size="caption" color={error ? c.danger : c.fgFaint}>
