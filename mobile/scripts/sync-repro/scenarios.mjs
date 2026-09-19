@@ -11,7 +11,9 @@ import { createMemoryRepo } from '@shared/db/memory';
 import { createSqliteRepo } from '@shared/db/sqlite';
 import { formatInstant, server } from '@shared/api/sync';
 import { resetSyncPosition, syncOnce } from '@shared/sync';
+import { TRANSCRIPT_MARKER } from '@shared/stt/merge';
 
+import { resetUpload, uploadControl } from './fake-upload.mjs';
 import { openNodeDb } from './support.mjs';
 
 const TOKEN = 'test-token';
@@ -22,8 +24,13 @@ async function freshRepo(kind) {
   await repo.init();
   globalThis.__reproRepo = repo;
   server.reset();
+  resetUpload();
   return repo;
 }
+
+/** 끝난 음성 기록. 길이가 있어야 서버가 업로드 자리를 준다 */
+const voiceDream = (repo, extra = {}) =>
+  repo.create({ title: '음성 기록', audioPath: 'file:///rec.m4a', durationMs: 3000, ...extra });
 
 const pendingIds = async (repo) => (await repo.listUnsynced(1000)).map((d) => d.id);
 
@@ -322,6 +329,160 @@ const scenarios = [
       return {
         reproduced: false,
         detail: `로그아웃 중 남긴 기록이 B 계정으로 ${leaked ? '올라감' : '안 올라감'}`,
+      };
+    },
+  },
+  // ---- H: 녹음 파일 업로드와 변환문 합치기 (문서 039 · 040 · 044, 이슈 #48) ----
+  {
+    key: 'H1',
+    title: '끝난 음성 기록은 동기화 회차에서 올라가고, 다음 회차에 다시 올리지 않는다',
+    async run(repo) {
+      const d = await voiceDream(repo);
+      const r1 = await syncOnce(TOKEN);
+      const local = await repo.get(d.id);
+      const serverUrl = server.rows.get(d.id)?.audioUrl ?? null;
+      const slotsAfter1 = server.uploadSlots;
+      await syncOnce(TOKEN);
+      return {
+        reproduced: !(r1.uploaded === 1 && local.audioUploadedAt && serverUrl && server.uploadSlots === slotsAfter1),
+        detail: `1회차 올린 파일 ${r1.uploaded} · 로컬 표시 ${local.audioUploadedAt ? '있음' : '없음'} · 서버 audioUrl ${serverUrl ?? '없음'} · 2회차 업로드 자리 요청 ${server.uploadSlots - slotsAfter1}건`,
+      };
+    },
+  },
+  {
+    key: 'H2',
+    title: '끝나지 않은 녹음(길이 없음)은 올리지 않는다',
+    async run(repo) {
+      await voiceDream(repo, { durationMs: null });
+      const r = await syncOnce(TOKEN);
+      return {
+        reproduced: r.uploaded !== 0 || server.uploadSlots !== 0 || r.uploadIssues.length !== 0,
+        detail: `올린 파일 ${r.uploaded} · 업로드 자리 요청 ${server.uploadSlots}건 · 문제 ${r.uploadIssues.length}건`,
+      };
+    },
+  },
+  {
+    key: 'H3',
+    title: '행이 아직 서버에 없으면(올리기 거절) 파일을 안 올리고, 행이 올라간 다음 회차에 올린다',
+    async run(repo) {
+      const d = await voiceDream(repo, { title: '가'.repeat(300) }); // 서버가 title_too_long 으로 거절
+      const r1 = await syncOnce(TOKEN);
+      const slots1 = server.uploadSlots;
+      await repo.update(d.id, { title: '고친 제목' });
+      const r2 = await syncOnce(TOKEN);
+      return {
+        reproduced: !(r1.rejected.length === 1 && slots1 === 0 && r2.uploaded === 1),
+        detail: `1회차 거절 ${r1.rejected.length} · 업로드 자리 요청 ${slots1}건 → 2회차 올린 파일 ${r2.uploaded}`,
+      };
+    },
+  },
+  {
+    key: 'H4',
+    title: '다른 기기가 이미 올린 녹음은 받기에서 표시만 하고 PUT 하지 않는다',
+    async run(repo) {
+      const d = await voiceDream(repo);
+      // 이 기기의 업로드가 먼저 돌지 않게, 행만 올리고 파일은 아직인 상태를 만든다
+      uploadControl.putStatus = 500;
+      await syncOnce(TOKEN);
+      uploadControl.putStatus = 200;
+      const putsBefore = uploadControl.putCalls;
+      server.attachAudio(d.id); // 다른 기기가 올림 → updatedAt 이 올라 받기에 내려온다
+      const r = await syncOnce(TOKEN);
+      const local = await repo.get(d.id);
+      return {
+        reproduced: !(local.audioUploadedAt && uploadControl.putCalls === putsBefore && r.uploaded === 0),
+        detail: `로컬 표시 ${local.audioUploadedAt ? '있음' : '없음'} · 이번 회차 PUT ${uploadControl.putCalls - putsBefore}건 · 올린 파일 ${r.uploaded}`,
+      };
+    },
+  },
+  {
+    key: 'H4b',
+    title: '서버에 이미 있는데 받기에 안 내려온 경우, 409 audio_exists 를 올라간 것으로 본다',
+    async run(repo) {
+      const d = await voiceDream(repo);
+      uploadControl.putStatus = 500;
+      await syncOnce(TOKEN);
+      uploadControl.putStatus = 200;
+      server.attachAudio(d.id, { bump: false });
+      const putsBefore = uploadControl.putCalls;
+      const r = await syncOnce(TOKEN);
+      const local = await repo.get(d.id);
+      return {
+        reproduced: !(local.audioUploadedAt && uploadControl.putCalls === putsBefore && r.uploadIssues.length === 0),
+        detail: `로컬 표시 ${local.audioUploadedAt ? '있음' : '없음'} · PUT ${uploadControl.putCalls - putsBefore}건 · 문제 ${r.uploadIssues.map((i) => i.reason).join(',') || '없음'}`,
+      };
+    },
+  },
+  {
+    key: 'H5',
+    title: 'PUT 이 거절되면(403) 표시하지 않고 다음 회차에 다시 올린다',
+    async run(repo) {
+      const d = await voiceDream(repo);
+      uploadControl.putStatus = 403;
+      const r1 = await syncOnce(TOKEN);
+      const local1 = await repo.get(d.id);
+      uploadControl.putStatus = 200;
+      const r2 = await syncOnce(TOKEN);
+      return {
+        reproduced: !(r1.uploaded === 0 && r1.uploadIssues[0]?.reason === 'put_403' && !local1.audioUploadedAt && r2.uploaded === 1),
+        detail: `1회차 ${r1.uploadIssues[0]?.reason ?? '문제 없음'} · 표시 ${local1.audioUploadedAt ? '있음' : '없음'} → 2회차 올린 파일 ${r2.uploaded}`,
+      };
+    },
+  },
+  {
+    key: 'H6',
+    title: '변환이 끝나면 받기에서 [녹음 변환] 규칙대로 본문에 합치고, 합친 본문이 다음 회차에 올라간다',
+    async run(repo) {
+      const d = await voiceDream(repo, { text: '내가 적은 메모' });
+      await syncOnce(TOKEN); // 행 + 파일
+      server.finishStt(d.id, '바다 위를 걸었다');
+      const r2 = await syncOnce(TOKEN);
+      const local = await repo.get(d.id);
+      const want = `내가 적은 메모\n\n${TRANSCRIPT_MARKER}\n바다 위를 걸었다`;
+      const callsAfter2 = server.sttCalls;
+      const pendingBefore3 = (await pendingIds(repo)).includes(d.id);
+      const r3 = await syncOnce(TOKEN);
+      const serverText = server.rows.get(d.id)?.text;
+      return {
+        reproduced: !(r2.merged === 1 && local.text === want && local.sttStatus === 'done' && r3.pushed === 1 && serverText === want && server.sttCalls === callsAfter2),
+        detail:
+          `합침 ${r2.merged} · 로컬 ${local.text === want ? '기대대로' : JSON.stringify(local.text)} · 로컬 stt ${local.sttStatus} · ` +
+          `3회차 전 대기열 ${pendingBefore3 ? '있음' : '없음'}(updated ${local.updatedAt} / synced ${local.syncedAt}) · ` +
+          `3회차 올림 ${r3.pushed} 건너뜀 ${r3.skipped} 거절 ${r3.rejected.length} · 서버 본문 ${serverText === want ? '같음' : '다름'} · 3회차 원문 조회 ${server.sttCalls - callsAfter2}번`,
+      };
+    },
+  },
+  {
+    key: 'H7',
+    title: '받은 본문에 마커가 이미 있으면(다른 기기가 합침) 다시 합치지 않고 done 만 표시한다',
+    async run(repo) {
+      const d = await voiceDream(repo, { text: '메모' });
+      await syncOnce(TOKEN);
+      const mergedElsewhere = `메모\n\n${TRANSCRIPT_MARKER}\n바다`;
+      server.editAsOtherDevice(d.id, { text: mergedElsewhere }, new Date(Date.now() + 60_000).toISOString());
+      server.finishStt(d.id, '바다');
+      const r = await syncOnce(TOKEN);
+      const local = await repo.get(d.id);
+      return {
+        reproduced: !(r.merged === 0 && local.text === mergedElsewhere && local.sttStatus === 'done' && server.sttCalls === 0),
+        detail: `합침 ${r.merged} · 로컬 본문 ${local.text === mergedElsewhere ? '그대로' : JSON.stringify(local.text)} · 로컬 stt ${local.sttStatus} · 원문 조회 ${server.sttCalls}번`,
+      };
+    },
+  },
+  {
+    key: 'H8',
+    title: '변환이 pending · failed 인 동안은 원문을 조회하지 않고 로컬 stt 도 그대로다',
+    async run(repo) {
+      const a = await voiceDream(repo, { text: 'a' });
+      const b = await voiceDream(repo, { text: 'b' });
+      await syncOnce(TOKEN);
+      server.failStt(b.id);
+      await syncOnce(TOKEN);
+      const la = await repo.get(a.id);
+      const lb = await repo.get(b.id);
+      return {
+        reproduced: !(server.sttCalls === 0 && la.sttStatus === 'pending' && lb.sttStatus === 'pending' && la.text === 'a' && lb.text === 'b'),
+        detail: `원문 조회 ${server.sttCalls}번 · 로컬 stt ${la.sttStatus}/${lb.sttStatus}`,
       };
     },
   },

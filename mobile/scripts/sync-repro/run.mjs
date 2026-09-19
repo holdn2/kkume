@@ -32,6 +32,9 @@ const swap = {
   setup(b) {
     // 가짜 서버는 테스트와 앱 코드가 **같은 경로로** 불러야 한 벌만 생긴다
     b.onResolve({ filter: /^@shared\/api\/sync$/ }, () => ({ path: path.join(here, 'fake-server.mjs') }));
+    // 오디오 업로드 엔드포인트도 같은 가짜 서버가 답한다. 파일 PUT 은 네이티브라 따로 바꿔 끼운다
+    b.onResolve({ filter: /^@shared\/api\/audio$/ }, () => ({ path: path.join(here, 'fake-server.mjs') }));
+    b.onResolve({ filter: /^@shared\/audio\/upload$/ }, () => ({ path: path.join(here, 'fake-upload.mjs') }));
     b.onResolve({ filter: /^@shared\/db$/ }, () => ({ path: path.join(here, 'db-shim.mjs') }));
     b.onResolve({ filter: /^expo-modules-core$/ }, () => ({ path: path.join(here, 'stub-expo-modules-core.mjs') }));
     b.onResolve({ filter: /^@shared\// }, (args) => {
