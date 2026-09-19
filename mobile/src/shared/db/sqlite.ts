@@ -2,6 +2,7 @@ import { requireOptionalNativeModule } from 'expo-modules-core';
 
 import { LATEST_VERSION, MIGRATIONS } from './migrations';
 import {
+  afterIso,
   newId,
   nowIso,
   type Dream,
@@ -34,6 +35,7 @@ type Row = {
   updated_at: string;
   deleted_at: string | null;
   synced_at: string | null;
+  audio_uploaded_at: string | null;
 };
 
 function toDream(r: Row): Dream {
@@ -54,12 +56,13 @@ function toDream(r: Row): Dream {
     updatedAt: r.updated_at,
     deletedAt: r.deleted_at,
     syncedAt: r.synced_at,
+    audioUploadedAt: r.audio_uploaded_at,
   };
 }
 
 /** 컬럼 이름은 한 곳에서만 쓴다. 여기가 SQL과 타입이 만나는 유일한 지점이다 */
 const COLS =
-  'id, user_id, recorded_at, title, text, audio_path, duration_ms, stt_status, reviewed_at, emotion, keywords, characters, created_at, updated_at, deleted_at, synced_at';
+  'id, user_id, recorded_at, title, text, audio_path, duration_ms, stt_status, reviewed_at, emotion, keywords, characters, created_at, updated_at, deleted_at, synced_at, audio_uploaded_at';
 
 const FIELD_TO_COL: Record<string, string> = {
   userId: 'user_id',
@@ -76,6 +79,7 @@ const FIELD_TO_COL: Record<string, string> = {
   updatedAt: 'updated_at',
   deletedAt: 'deleted_at',
   syncedAt: 'synced_at',
+  audioUploadedAt: 'audio_uploaded_at',
 };
 
 type Db = {
@@ -146,24 +150,29 @@ export function createSqliteRepo(db: Db): DreamRepo {
         updatedAt: ts,
         deletedAt: null,
         syncedAt: null,
+        audioUploadedAt: null,
       };
       await db.runAsync(
-        `INSERT INTO dreams (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO dreams (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           d.id, d.userId, d.recordedAt, d.title, d.text, d.audioPath, d.durationMs, d.sttStatus,
           d.reviewedAt, d.emotion, d.keywords, d.characters, d.createdAt, d.updatedAt, d.deletedAt, d.syncedAt,
+          d.audioUploadedAt,
         ],
       );
       return d;
     },
 
     async update(id: string, patch: DreamPatch) {
+      // 직전 버전보다 반드시 뒤인 시각을 쓴다 — 같은 밀리초에 고치면 동기화가 못 본다(afterIso 주석)
+      const current = await this.get(id);
+      if (!current) return null;
       const entries = Object.entries(patch).filter(([k]) => k in FIELD_TO_COL);
       const sets = entries.map(([k]) => `${FIELD_TO_COL[k]} = ?`);
       const values = entries.map(([, v]) => v as unknown);
 
       sets.push('updated_at = ?');
-      values.push(nowIso());
+      values.push(afterIso(nowIso(), current.updatedAt, current.syncedAt));
       values.push(id);
 
       await db.runAsync(`UPDATE dreams SET ${sets.join(', ')} WHERE id = ?`, values);
@@ -186,7 +195,10 @@ export function createSqliteRepo(db: Db): DreamRepo {
     },
 
     async softDelete(id: string) {
-      const ts = nowIso();
+      const current = await this.get(id);
+      if (!current) return;
+      // 지우는 것도 서버에 가야 하는 변경이라 update 와 같은 시각 규칙을 쓴다
+      const ts = afterIso(nowIso(), current.updatedAt, current.syncedAt);
       await db.runAsync('UPDATE dreams SET deleted_at = ?, updated_at = ? WHERE id = ?', [ts, ts, id]);
     },
 
@@ -262,6 +274,27 @@ export function createSqliteRepo(db: Db): DreamRepo {
           version,
         ],
       );
+    },
+
+    async listAudioPending(limit = 3) {
+      // 네 조건 — 녹음이 있고 · 끝났고 · 안 지웠고 · 행이 서버에 있고 · 아직 안 올렸다(DreamRepo 주석)
+      const rows = await db.getAllAsync<Row>(
+        `SELECT ${COLS} FROM dreams ` +
+          'WHERE audio_path IS NOT NULL AND duration_ms IS NOT NULL AND deleted_at IS NULL ' +
+          'AND synced_at IS NOT NULL AND audio_uploaded_at IS NULL ' +
+          'ORDER BY recorded_at ASC LIMIT ?',
+        [limit],
+      );
+      return rows.map(toDream);
+    },
+
+    async markAudioUploaded(id: string, at: string) {
+      await db.runAsync('UPDATE dreams SET audio_uploaded_at = ? WHERE id = ?', [at, id]);
+    },
+
+    async setSttStatus(id: string, status: Dream['sttStatus']) {
+      // updated_at 은 그대로 둔다. 서버로 올릴 변경이 아니다(DreamRepo 주석)
+      await db.runAsync('UPDATE dreams SET stt_status = ? WHERE id = ?', [status, id]);
     },
 
     async getSetting(key: string) {

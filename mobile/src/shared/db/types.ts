@@ -48,6 +48,11 @@ export type Dream = {
   deletedAt: string | null;
   /** null이면 아직 서버에 안 올라갔다는 뜻이다 */
   syncedAt: string | null;
+  /**
+   * 녹음 파일을 서버(S3)에 올린 시각. null이면 아직이다.
+   * 서버 `audioUrl`을 받아 적는 대신 "올렸는가"만 둔다 — 저쪽은 S3 위치, 이쪽은 기기 경로다
+   */
+  audioUploadedAt: string | null;
 };
 
 export type DreamDraft = {
@@ -163,6 +168,24 @@ export interface DreamRepo {
   upsertFromServer(d: ServerDream): Promise<void>;
 
   /**
+   * 녹음 파일을 아직 서버에 안 올린 기록. **네 조건을 모두** 만족해야 한다 —
+   * 녹음이 있고(`audioPath`), 끝난 녹음이고(`durationMs`, 없으면 서버가 `recording_unfinished`),
+   * 지워지지 않았고, **행이 서버에 이미 올라가 있어야** 한다(`syncedAt` — 없으면 `dream_not_found`).
+   * 문서 039 ②는 ①(행 올리기) 뒤에만 된다.
+   */
+  listAudioPending(limit?: number): Promise<Dream[]>;
+
+  /** 녹음 파일이 서버에 있다고 표시한다. 이 기기가 올렸든 받기에서 `audioUrl`을 봤든 같다 */
+  markAudioUploaded(id: string, at: string): Promise<void>;
+
+  /**
+   * 변환 상태만 바꾼다. **`updatedAt`을 올리지 않는다** — 로컬 `sttStatus`는 "이 폰에서
+   * 합쳤음" 표시라 서버로 올릴 변경이 아니다(문서 039 C3). 본문을 합친 경우는 `update`로
+   * 올려서 다음 회차에 나가게 한다
+   */
+  setSttStatus(id: string, status: SttStatus): Promise<void>;
+
+  /**
    * 한 줄짜리 설정. 없으면 null.
    *
    * 꿈 기록과 같은 저장소에 두는 이유는 하나다 — **네이티브 모듈을 늘리지 않으려고.**
@@ -201,6 +224,22 @@ export function newId() {
 
 export function nowIso() {
   return new Date().toISOString();
+}
+
+/**
+ * `now`가 `floors`의 어느 것보다도 뒤가 아니면 그 뒤로 1ms씩 민다.
+ *
+ * **같은 밀리초 안의 수정도 "더 늦다"가 되게 한다.** 동기화가 `updated_at ≤ synced_at`을
+ * "깨끗하다"로 읽는데, 받기가 `synced_at`을 쓴 직후 같은 밀리초에 고치면(변환문 합치기가
+ * 정확히 그렇다) 두 값이 같아져 그 수정이 올릴 목록에서 빠진다. 메모리 저장소로 돌린
+ * 재현 테스트 H6에서 잡혔고, SQLite는 4ms 차이로 지나갔을 뿐이었다(2026-09-19)
+ */
+export function afterIso(now: string, ...floors: (string | null | undefined)[]): string {
+  let t = now;
+  for (const f of floors) {
+    if (f != null && t <= f) t = new Date(Date.parse(f) + 1).toISOString();
+  }
+  return t;
 }
 
 /**
