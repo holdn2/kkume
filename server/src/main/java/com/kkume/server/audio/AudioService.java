@@ -54,9 +54,7 @@ public class AudioService {
 	/** ② 업로드 자리를 준다 */
 	public UploadTicket prepareUpload(UUID userId, String dreamId) {
 		Dream dream = this.transactions.execute(status -> owned(userId, this.dreams.findById(dreamId).orElse(null)));
-		if (dream.isDeleted()) {
-			throw new AudioApiException(HttpStatus.CONFLICT, "dream_deleted", "지운 기록입니다");
-		}
+		notDeleted(dream);
 		if (dream.getDurationMs() == null) {
 			// audio_path 는 있는데 duration_ms 가 없으면 stop() 전에 죽은 녹음이다. 변환도 실패한다
 			throw new AudioApiException(HttpStatus.CONFLICT, "recording_unfinished", "끝나지 않은 녹음입니다");
@@ -102,9 +100,7 @@ public class AudioService {
 			if (location.equals(dream.getAudioUrl())) {
 				return dream.getSttStatus().code();
 			}
-			if (dream.isDeleted()) {
-				throw new AudioApiException(HttpStatus.CONFLICT, "dream_deleted", "지운 기록입니다");
-			}
+			notDeleted(dream);
 			if (dream.getAudioUrl() != null) {
 				throw new AudioApiException(HttpStatus.CONFLICT, "audio_exists", "이미 올라간 오디오가 있습니다");
 			}
@@ -136,6 +132,7 @@ public class AudioService {
 	public String retry(UUID userId, String dreamId) {
 		return this.transactions.execute(status -> {
 			Dream dream = withAudio(owned(userId, this.dreams.findForUpdate(dreamId).orElse(null)));
+			notDeleted(dream);
 			SttStatus stt = dream.getSttStatus();
 			if (stt == SttStatus.DONE) {
 				throw new AudioApiException(HttpStatus.CONFLICT, "already_done", "이미 변환이 끝났습니다");
@@ -168,6 +165,16 @@ public class AudioService {
 			throw new AudioApiException(HttpStatus.NOT_FOUND, "no_audio", "올라간 오디오가 없습니다");
 		}
 		return dream;
+	}
+
+	/**
+	 * 지운 기록에는 자리를 주지도, 줄을 세우지도 않는다. 이미 줄에 있는 작업은 일꾼이 건너뛴다
+	 * ({@link com.kkume.server.job.JobRepository#lockNext}) — 되살리면 그때 잡힌다.
+	 */
+	private static void notDeleted(Dream dream) {
+		if (dream.isDeleted()) {
+			throw new AudioApiException(HttpStatus.CONFLICT, "dream_deleted", "지운 기록입니다");
+		}
 	}
 
 	/**

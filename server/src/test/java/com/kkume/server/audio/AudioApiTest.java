@@ -167,6 +167,21 @@ class AudioApiTest {
 		return id;
 	}
 
+	/**
+	 * 이미 올라간 기록을 앱에서 지우거나(deletedAt) 되살린다(null). 동기화로 같은 행을 다시 올리는 것이라
+	 * {@code updatedAt} 이 앞선 것(01:00:05)보다 뒤여야 받아들여진다. {@code audioUrl} 은 이 경로에서 바뀌지 않는다
+	 */
+	private void pushDeletedAt(String token, String id, Instant deletedAt, String updatedAt) throws Exception {
+		String body = """
+				{"dreams":[{"id":"%s","recordedAt":"2026-09-17T01:00:00.000Z","title":"고래 꿈","text":"사용자가 적은 글",
+				"durationMs":60000,"deletedAt":%s,"updatedAt":"%s"}]}"""
+			.formatted(id, deletedAt == null ? "null" : "\"" + deletedAt + "\"", updatedAt);
+		this.mockMvc.perform(post("/api/sync/dreams").header("Authorization", "Bearer " + token)
+			.contentType(MediaType.APPLICATION_JSON).content(body))
+			.andExpect(status().isOk());
+		assertThat(this.dreams.findById(id).orElseThrow().isDeleted()).isEqualTo(deletedAt != null);
+	}
+
 	private ResultActions upload(String token, String id) throws Exception {
 		return this.mockMvc.perform(post("/api/dreams/" + id + "/audio/upload").header("Authorization", "Bearer " + token));
 	}
@@ -404,6 +419,48 @@ class AudioApiTest {
 	void 지운_기록은_받지_않는다() throws Exception {
 		String id = pushDream(this.token, 60_000, Instant.parse("2026-09-17T02:00:00Z"));
 		ResultActions r = upload(this.token, id).andExpect(status().isConflict());
+		assertThat(JsonPath.<String>read(json(r), "$.code")).isEqualTo("dream_deleted");
+	}
+
+	/** 변환기에 답을 넣어 두지 않았으므로, 잘못 불리면 FakeTranscriber 가 AssertionError 로 테스트를 깨뜨린다 */
+	@Test
+	void 올린_뒤_지운_기록의_작업은_잡지_않는다() throws Exception {
+		String id = pushDream(this.token, 60_000, null);
+		uploadAndComplete(id);
+		pushDeletedAt(this.token, id, Instant.parse("2026-09-17T02:00:00Z"), "2026-09-17T03:00:00.000Z");
+
+		assertThat(this.worker.runOnce()).isFalse();
+
+		// 작업은 줄에 그대로다 — 되살리면 그때 잡히도록. 기록도 pending 그대로다
+		assertThat(this.jobs.findByDreamIdAndType(id, JobType.STT).orElseThrow().getStatus()).isEqualTo(JobStatus.QUEUED);
+		String r = json(stt(this.token, id));
+		assertThat(JsonPath.<String>read(r, "$.status")).isEqualTo("pending");
+		assertThat(JsonPath.<Integer>read(r, "$.attempts")).isZero();
+	}
+
+	@Test
+	void 되살리면_남아_있던_작업이_변환된다() throws Exception {
+		String id = pushDream(this.token, 60_000, null);
+		uploadAndComplete(id);
+		pushDeletedAt(this.token, id, Instant.parse("2026-09-17T02:00:00Z"), "2026-09-17T03:00:00.000Z");
+		assertThat(this.worker.runOnce()).isFalse();
+
+		pushDeletedAt(this.token, id, null, "2026-09-17T04:00:00.000Z");
+		this.transcriber.willReturn("되살린 뒤 변환");
+		assertThat(this.worker.runOnce()).isTrue();
+
+		String r = json(stt(this.token, id));
+		assertThat(JsonPath.<String>read(r, "$.status")).isEqualTo("done");
+		assertThat(JsonPath.<String>read(r, "$.text")).isEqualTo("되살린 뒤 변환");
+	}
+
+	@Test
+	void 지운_기록은_다시_하기도_거절한다() throws Exception {
+		String id = pushDream(this.token, 60_000, null);
+		uploadAndComplete(id);
+		pushDeletedAt(this.token, id, Instant.parse("2026-09-17T02:00:00Z"), "2026-09-17T03:00:00.000Z");
+
+		ResultActions r = retry(this.token, id).andExpect(status().isConflict());
 		assertThat(JsonPath.<String>read(json(r), "$.code")).isEqualTo("dream_deleted");
 	}
 
