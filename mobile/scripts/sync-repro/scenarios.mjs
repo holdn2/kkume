@@ -506,6 +506,25 @@ const scenarios = [
     },
   },
   {
+    key: 'H10',
+    title: '사라진 옛 녹음이 회차 상한(3건)만큼 있어도 새 녹음이 올라간다',
+    async run(repo) {
+      // 2026-09-22 기기: 녹음 못 올림 3건 전부 file_missing · 녹음 올림 0 · "올릴 것이 더 남았습니다".
+      // 가장 오래된 3건만 집는데 그 셋이 전부 사라진 파일이라 새 녹음이 영영 차례를 못 받았다
+      for (let i = 0; i < 3; i += 1) {
+        await voiceDream(repo, { recordedAt: `2026-09-16T0${i}:00:00.000Z`, audioPath: `file:///gone-${i}.m4a` });
+        uploadControl.missingFiles.add(`file:///gone-${i}.m4a`);
+      }
+      const fresh = await voiceDream(repo, { recordedAt: '2026-09-21T15:43:38.000Z' });
+      const r = await syncOnce(TOKEN);
+      const freshLocal = await repo.get(fresh.id);
+      return {
+        reproduced: !(r.uploaded === 1 && freshLocal.audioUploadedAt && !r.morePending),
+        detail: `올린 파일 ${r.uploaded} · 새 녹음 표시 ${freshLocal.audioUploadedAt ? '있음' : '없음'} · 더 남음 ${r.morePending} · 못 올림 ${r.uploadIssues.map((i) => i.reason).join(',')}`,
+      };
+    },
+  },
+  {
     key: 'F0',
     title: '[대조군] 둘 다 소수부가 있으면 F는 안 생긴다',
     async run(repo) {

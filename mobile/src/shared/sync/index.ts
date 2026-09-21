@@ -52,6 +52,12 @@ const EMPTY: SyncReport = {
  */
 const MAX_UPLOADS_PER_ROUND = 3;
 
+/**
+ * 한 회차에 살펴보는 후보 수. 상한(3건)보다 훨씬 크게 잡는 이유는 사라진 파일이 앞자리를
+ * 차지해도 뒤의 새 녹음까지 닿게 하려는 것이다. 후보가 이만큼 차면 `morePending` 으로 알린다
+ */
+const MAX_UPLOAD_CANDIDATES = 50;
+
 function toPayload(d: Dream): DreamPayload {
   return {
     id: d.id,
@@ -170,15 +176,32 @@ export async function syncOnce(token: string): Promise<SyncReport> {
     // 올리기 · 받기 뒤에 두는 이유: 방금 올린 행이 서버에 있어야 하고, 다른 기기가 이미 올린 것을
     // 받기에서 표시한 뒤라야 같은 파일을 두 번 올리지 않는다
     if (uploadBackend() !== 'none') {
-      const files = await repo.listAudioPending(MAX_UPLOADS_PER_ROUND);
-      for (const d of files) {
+      // 후보는 넉넉히 집고 **회차 상한은 실제로 시도한 것만 센다.** 사라진 파일은 자리를 쓰지 않는다 —
+      // 가장 오래된 3건만 집었더니 그 셋이 전부 사라진 파일이라 새 녹음이 영영 차례를 못 받았다
+      // (2026-09-22 기기, 재현 테스트 H10)
+      const candidates = await repo.listAudioPending(MAX_UPLOAD_CANDIDATES);
+      let attempted = 0;
+      for (const d of candidates) {
+        if (attempted >= MAX_UPLOADS_PER_ROUND) {
+          report.morePending = true;
+          break;
+        }
         const outcome = await uploadOne(repo, token, d);
-        if (outcome === 'uploaded') report.uploaded += 1;
-        else if (outcome !== 'already') report.uploadIssues.push({ id: d.id, reason: outcome });
-        // 망이 끊겼으면 이번 회차는 여기까지. 나머지는 다음 회차가 이어받는다
-        if (outcome === 'network') break;
+        if (outcome === 'uploaded') {
+          report.uploaded += 1;
+          attempted += 1;
+        } else if (outcome === 'already') {
+          // 서버에 이미 있어 표시만 했다. 요청 하나뿐이라 자리를 쓰지 않는다
+        } else {
+          report.uploadIssues.push({ id: d.id, reason: outcome });
+          // 파일이 없는 것은 크기만 재고 끝나 자리를 쓰지 않는다. 그 밖의 실패는 시도한 것이라 센다 —
+          // 안 세면 계속 실패하는 파일들이 한 회차에 끝없이 돈다
+          if (outcome !== 'file_missing') attempted += 1;
+          // 망이 끊겼으면 이번 회차는 여기까지. 나머지는 다음 회차가 이어받는다
+          if (outcome === 'network') break;
+        }
       }
-      if (files.length === MAX_UPLOADS_PER_ROUND) report.morePending = true;
+      if (candidates.length === MAX_UPLOAD_CANDIDATES) report.morePending = true;
     }
   } catch (e) {
     report.error = isApiError(e) ? e.message : '동기화에 실패했습니다';
