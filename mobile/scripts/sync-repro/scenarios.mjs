@@ -487,6 +487,25 @@ const scenarios = [
     },
   },
   {
+    key: 'H9',
+    title: '파일이 사라진 옛 녹음 하나가 뒤의 녹음 업로드를 막지 않고, 이유가 network 로 뭉뚱그려지지 않는다',
+    async run(repo) {
+      // 2026-09-21 기기에서 본 것: 녹음 올림 0 · 녹음 못 올림 mu3o… network. 옛 기록부터 올리다
+      // 그 파일에서 막히자 회차가 멈춰 새 녹음까지 못 올라갔다. 원본이 없는 파일은 올릴 수 없으니
+      // 건너뛰되 이유를 그대로 남기고, 다음 파일은 올라가야 한다
+      const gone = await voiceDream(repo, { recordedAt: '2026-09-15T00:00:00.000Z', audioPath: 'file:///gone.m4a' });
+      const fresh = await voiceDream(repo, { recordedAt: '2026-09-21T00:00:00.000Z' });
+      uploadControl.missingFiles.add('file:///gone.m4a');
+      const r = await syncOnce(TOKEN);
+      const freshLocal = await repo.get(fresh.id);
+      const goneIssue = r.uploadIssues.find((i) => i.id === gone.id);
+      return {
+        reproduced: !(r.uploaded === 1 && freshLocal.audioUploadedAt && goneIssue && goneIssue.reason !== 'network'),
+        detail: `올린 파일 ${r.uploaded} · 새 녹음 표시 ${freshLocal.audioUploadedAt ? '있음' : '없음'} · 옛 녹음 이유 "${goneIssue?.reason ?? '없음'}"`,
+      };
+    },
+  },
+  {
     key: 'F0',
     title: '[대조군] 둘 다 소수부가 있으면 F는 안 생긴다',
     async run(repo) {

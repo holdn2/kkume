@@ -10,11 +10,14 @@ export const uploadControl = {
   /** 200 이 아니면 PUT 이 그 상태로 실패한다 */
   putStatus: 200,
   putCalls: 0,
+  /** 여기 든 경로는 폰에서 사라진 파일이다 — 크기를 못 재고, PUT 은 던진다(expo-file-system 과 같다) */
+  missingFiles: new Set(),
 };
 
 export function resetUpload() {
   uploadControl.putStatus = 200;
   uploadControl.putCalls = 0;
+  uploadControl.missingFiles.clear();
   s3.clear();
 }
 
@@ -22,12 +25,15 @@ export function uploadBackend() {
   return 'expo-file-system';
 }
 
-export async function fileSize() {
-  return 1024;
+export async function fileSize(filePath) {
+  return uploadControl.missingFiles.has(filePath) ? null : 1024;
 }
 
 export async function putFile(uploadUrl, filePath, headers) {
   uploadControl.putCalls += 1;
+  if (uploadControl.missingFiles.has(filePath)) {
+    throw new Error(`File '${filePath}' could not be read`);
+  }
   const key = uploadUrl.replace(/^https:\/\/fake-s3\//, '').split('?')[0];
   if (headers?.['Content-Type'] !== 'audio/mp4') {
     return { status: 403, body: '<Error><Code>SignatureDoesNotMatch</Code></Error>' };

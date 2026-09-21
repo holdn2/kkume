@@ -3,7 +3,7 @@ import { HAS_API, isApiError } from '@shared/api/client';
 import { MAX_BATCH, pullDreams, pushDreams, type DreamPayload, type DreamView } from '@shared/api/sync';
 // 배럴(`@shared/audio`)이 아니라 파일을 직접 부른다 — 배럴은 녹음 훅과 네이티브 오디오 모듈을
 // 같이 끌고 와서, 동기화가 그것들에 묶일 이유가 없다. `@shared/auth/session`과 같은 이유다
-import { putFile, uploadBackend } from '@shared/audio/upload';
+import { fileSize, putFile, uploadBackend } from '@shared/audio/upload';
 import { isExpired, loadSession } from '@shared/auth/session';
 import { getDreamRepo, nowIso, SETTINGS, toMillisIso, type Dream, type SentVersion } from '@shared/db';
 import { decideMerge, mergeTranscript } from '@shared/stt/merge';
@@ -240,6 +240,12 @@ async function uploadOne(repo: Repo, token: string, d: Dream): Promise<string> {
   if (!d.audioPath) return 'no_file';
   const isNetwork = (e: unknown) => !isApiError(e) || e.status === 0;
 
+  // **파일이 폰에 없으면 올릴 수 없다.** 표시하지 않고 건너뛴다 — 매 회차 크기만 재는 값싼 확인이고,
+  // 이유가 uploadIssues 에 남는다. 2026-09-21 기기에서 옛 녹음(캐시 폴더) 하나가 사라져 있었는데
+  // 그걸 network 로 적고 회차를 멈춰 새 녹음까지 못 올렸다(재현 테스트 H9). 업로드 자리를 받기
+  // 전에 보는 이유: 없는 파일로 자리를 받으면 서버에 쓰지 않을 key 가 남는다
+  if ((await fileSize(d.audioPath)) == null) return 'file_missing';
+
   let slot;
   try {
     slot = await requestUploadSlot(token, d.id);
@@ -256,8 +262,11 @@ async function uploadOne(repo: Repo, token: string, d: Dream): Promise<string> {
   let status: number;
   try {
     status = (await putFile(slot.uploadUrl, d.audioPath, slot.headers)).status;
-  } catch {
-    return 'network';
+  } catch (e) {
+    // **이유를 뭉뚱그리지 않는다.** 파일을 못 읽은 것과 망이 끊긴 것은 원인이 정반대인데
+    // 한 단어로 묶으면 기기에서 갈릴 근거가 없다(2026-09-21). 이 파일만 건너뛰고 다음으로 간다
+    const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    return `put_failed · ${detail.slice(0, 160)}`;
   }
   if (status < 200 || status >= 300) return `put_${status}`;
 
