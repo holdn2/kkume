@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { Badge, Button, Card, Row, Screen, Stack, Title } from '@components';
 import { audioBackend, mmss, probeAudioUpload } from '@shared/audio';
+import { repairRecordingPaths } from '@shared/audio/paths';
 import { getDreamRepo, storageBackend, type Dream } from '@shared/db';
 import { updateInfo } from '@shared/updates';
 import { API_BASE_URL, HAS_API, ping } from '@shared/api/client';
@@ -135,9 +136,16 @@ export default function DiagScreen() {
   /** 동기화를 한 번 돌리고 서버를 따로 센다. 평소 동기화는 조용히 돌아 결과가 안 남는다 */
   const doSync = () => {
     setSynced('동기화 중입니다');
-    void diagnoseSync()
-      .then((d) => {
-        setSynced(formatDiagnosis(d));
+    // 꿈 로그 탭과 같은 순서 — 녹음 경로 정리가 먼저다
+    void repairRecordingPaths()
+      .then(async (rel) => ({ rel, d: await diagnoseSync() }))
+      .then(({ rel, d }) => {
+        const relLine =
+          rel == null
+            ? '녹음 경로 정리 · 파일 모듈 없음'
+            : `녹음 경로 정리 · 옮김 ${rel.moved} · 경로 고침 ${rel.repointed} · 사라짐 ${rel.missing} · 실패 ${rel.failed}` +
+              (rel.other > 0 ? ` · 모양 다른 경로 ${rel.other}` : '');
+        setSynced(`${relLine}\n${formatDiagnosis(d)}`);
         refresh();
       })
       .catch((e) => setSynced(`실패 · ${String(e)}`));
