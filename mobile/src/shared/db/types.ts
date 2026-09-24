@@ -218,6 +218,11 @@ export const SETTINGS = {
    * **한 페이지를 다 반영한 뒤에만** 옮긴다.
    */
   syncPosition: 'sync_position',
+  /**
+   * 커뮤니티에서 차단한 사람. `[{ id, nickname }]` JSON. 앱에서 그들의 글 · 댓글을 거른다
+   * (계획서 001). 닉네임을 같이 두는 이유는 차단 목록 화면에서 서버 없이 이름을 보이려는 것이다
+   */
+  blockedUsers: 'blocked_users',
 } as const;
 
 /**

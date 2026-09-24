@@ -164,6 +164,12 @@ export default function DreamDetail() {
 
           <Stack gap={sp[2]}>
             {unread && <Button label="확인함으로 표시" onPress={review} />}
+            {/* COM-3 진입점(계획서 003 — LOG-2에서 들어가면 꿈이 미리 골라져 있다) */}
+            <Button
+              label="해몽 요청하기"
+              variant="secondary"
+              onPress={() => router.push(`/community/new?dreamId=${dream.id}`)}
+            />
             <Pressable
               onPress={() => setAskDelete(true)}
               accessibilityRole="button"
