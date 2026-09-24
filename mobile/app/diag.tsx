@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 
 import { Badge, Button, Card, Row, Screen, Stack, Title } from '@components';
-import { audioBackend, mmss } from '@shared/audio';
+import { audioBackend, mmss, probeAudioUpload } from '@shared/audio';
 import { getDreamRepo, storageBackend, type Dream } from '@shared/db';
 import { updateInfo } from '@shared/updates';
 import { API_BASE_URL, HAS_API, ping } from '@shared/api/client';
@@ -41,6 +41,8 @@ function formatDiagnosis(d: SyncDiagnosis): string {
     lines.push(`올림 ${r.pushed} · 건너뜀 ${r.skipped} · 거절 ${r.rejected.length} · 받음 ${r.pulled}`);
     if (r.morePending) lines.push('올릴 것이 더 남았습니다 — 한 번 더 누르세요');
     for (const x of r.rejected) lines.push(`거절 ${x.id} · ${x.reason ?? '이유 없음'}`);
+    lines.push(`녹음 올림 ${r.uploaded} · 변환문 합침 ${r.merged}`);
+    for (const x of r.uploadIssues) lines.push(`녹음 못 올림 ${x.id} · ${x.reason}`);
     if (r.error) lines.push(`동기화 오류 · ${r.error}`);
   }
   if (d.local) lines.push(`폰 기록 ${d.local.count}건 · 올릴 것 ${d.local.pending}건`);
@@ -139,6 +141,21 @@ export default function DiagScreen() {
         refresh();
       })
       .catch((e) => setSynced(`실패 · ${String(e)}`));
+  };
+
+  const [uploaded, setUploaded] = useState<string | null>(null);
+
+  /**
+   * 오디오 업로드를 기기에서 처음 확인한다(문서 042 02장).
+   *
+   * **실제 녹음 하나를 서버에 올린다.** 폰의 원본은 그대로 두고 사본만 올라가며,
+   * 변환 서비스가 붙는 날 그 녹음이 실제로 변환된다
+   */
+  const doUpload = () => {
+    setUploaded('업로드 확인 중입니다');
+    void probeAudioUpload()
+      .then((r) => setUploaded(r.lines.join('\n')))
+      .catch((e) => setUploaded(`실패 · ${String(e)}`));
   };
 
   return (
@@ -271,6 +288,9 @@ export default function DiagScreen() {
         <Button label="위젯 스냅샷 다시 그리기" size="sm" variant="secondary" onPress={ensureWidgetSnapshot} />
         <Button label="서버 연결 확인" size="sm" variant="secondary" onPress={doPing} />
         <Button label="동기화 확인" size="sm" variant="secondary" onPress={doSync} />
+        {/* 누르면 실제 녹음 하나가 서버로 올라간다. 되돌리는 버튼은 두지 않는다 —
+            어차피 업로드가 붙으면 올라갈 파일이고, 지우는 자리는 서버에도 아직 없다 */}
+        <Button label="오디오 업로드 확인" size="sm" variant="secondary" onPress={doUpload} />
         <Button label="새로고침" size="sm" variant="ghost" onPress={refresh} />
       </Stack>
 
@@ -292,6 +312,18 @@ export default function DiagScreen() {
               동기화 확인
             </AppText>
             <AppText size="caption">{synced}</AppText>
+          </Stack>
+        </Card>
+      )}
+
+      {!!uploaded && (
+        <Card>
+          <Stack gap={sp[2]}>
+            <AppText size="caption" color={c.fgFaint}>
+              오디오 업로드 확인
+            </AppText>
+            {/* 막힌 자리의 응답 전문을 그대로 서버에 전해야 해서 줄여 보여주지 않는다 */}
+            <AppText size="caption">{uploaded}</AppText>
           </Stack>
         </Card>
       )}

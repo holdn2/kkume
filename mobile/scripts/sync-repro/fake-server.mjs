@@ -30,6 +30,10 @@ const state = {
   failPullOnCall: null,
   pullCalls: 0,
   pushLog: [],
+  /** 발급한 업로드 자리 수. key 를 매번 새로 만드는 데도 쓴다 */
+  uploadSlots: 0,
+  /** GET /stt 를 부른 횟수. pending 인 동안은 부르지 않아야 한다(재현 테스트 H) */
+  sttCalls: 0,
 };
 
 /** ISO-8601 → 마이크로초(BigInt). 기기의 3자리와 서버의 6자리를 같은 눈금으로 비교하려고 */
@@ -85,8 +89,9 @@ function view(r) {
     recordedAt: r.recordedAt,
     title: r.title,
     text: r.text,
-    audioUrl: null,
-    sttStatus: 'pending',
+    // 업로드(④ complete)가 끝난 행만 값이 있다. sttStatus 는 audioUrl 이 있을 때만 뜻이 있다(039 04장)
+    audioUrl: r.audioUrl ?? null,
+    sttStatus: r.sttStatus ?? 'pending',
     durationMs: r.durationMs,
     reviewedAt: r.reviewedAt,
     deletedAt: r.deletedAt,
@@ -157,14 +162,108 @@ export async function pullDreams(_token, opts = {}) {
   return { dreams: page.map(view), nextSince: formatInstant(last.updatedAt), nextCursor: last.id, hasMore };
 }
 
+// ---- 오디오 업로드 · 변환 상태 (문서 039 · server/README.md "오디오와 변환") ----
+//
+// 규칙을 README 의 오류 표 그대로 옮겼다. 여기가 서버와 다르면 재현이 거짓이 된다.
+//   upload:   없음 → 404 dream_not_found · 지움 → 409 dream_deleted ·
+//             duration 없음 → 409 recording_unfinished · 이미 올림 → 409 audio_exists
+//   complete: 발급한 key 아님 → 400 key_mismatch · S3 에 없음 → 422 upload_missing ·
+//             두 번 보내도 같은 답
+//   stt:      오디오 없음 → 404 no_audio
+
+const apiError = (status, code) => ({ code, message: `서버 ${status} ${code}`, status });
+
+/** "S3". PUT 이 성공한 key 만 들어 있다. 가짜 업로드(fake-upload.mjs)가 넣는다 */
+export const s3 = new Map();
+/** 발급한 업로드 자리. dreamId → key */
+const issued = new Map();
+
+export async function requestUploadSlot(_token, dreamId) {
+  const r = state.rows.get(dreamId);
+  if (!r || r.userId !== USER) throw apiError(404, 'dream_not_found');
+  if (r.deletedAt) throw apiError(409, 'dream_deleted');
+  if (r.durationMs == null) throw apiError(409, 'recording_unfinished');
+  if (r.audioUrl) throw apiError(409, 'audio_exists');
+  state.uploadSlots += 1;
+  const key = `audio/${USER}/${dreamId}/${state.uploadSlots}.m4a`;
+  issued.set(dreamId, key);
+  return {
+    uploadUrl: `https://fake-s3/${key}?X-Amz-Signature=fake`,
+    method: 'PUT',
+    headers: { 'Content-Type': 'audio/mp4' },
+    key,
+    expiresAt: formatInstant(serverNow() + 15n * 60n * 1_000_000n),
+  };
+}
+
+export async function completeUpload(_token, dreamId, key) {
+  const r = state.rows.get(dreamId);
+  if (!r || r.userId !== USER) throw apiError(404, 'dream_not_found');
+  // 이미 같은 key 로 끝났으면 같은 답 — 응답이 유실돼 다시 보내는 경우
+  if (r.audioUrl === `s3://fake/${key}`) return { sttStatus: r.sttStatus ?? 'pending' };
+  if (issued.get(dreamId) !== key) throw apiError(400, 'key_mismatch');
+  if (!s3.has(key)) throw apiError(422, 'upload_missing');
+  r.audioUrl = `s3://fake/${key}`;
+  r.sttStatus = 'pending';
+  r.sttText = null;
+  r.updatedAt = serverNow(); // 받기에 다시 내려오게
+  return { sttStatus: 'pending' };
+}
+
+export async function fetchStt(_token, dreamId) {
+  state.sttCalls += 1;
+  const r = state.rows.get(dreamId);
+  if (!r || r.userId !== USER) throw apiError(404, 'dream_not_found');
+  if (!r.audioUrl) throw apiError(404, 'no_audio');
+  return {
+    status: r.sttStatus ?? 'pending',
+    text: r.sttStatus === 'done' ? (r.sttText ?? null) : null,
+    error: r.sttStatus === 'failed' ? 'no_speech' : null,
+    attempts: r.sttStatus === 'pending' ? 0 : 1,
+    updatedAt: formatInstant(r.updatedAt),
+  };
+}
+
 /** 테스트가 서버를 조작하는 손잡이 */
 export const server = {
   /** 다른 계정으로 로그인한 상황을 만든다. 서버가 그 계정으로 답하게 된다(재현 테스트 G) */
   setUser(id) {
     USER = id;
   },
+  /** 변환이 끝난 것처럼 만든다. 서버는 text · clientUpdatedAt 을 안 건드리고 updatedAt 만 올린다(039) */
+  finishStt(id, transcript) {
+    const r = state.rows.get(id);
+    r.sttStatus = 'done';
+    r.sttText = transcript;
+    r.updatedAt = serverNow();
+  },
+  failStt(id) {
+    const r = state.rows.get(id);
+    r.sttStatus = 'failed';
+    r.updatedAt = serverNow();
+  },
+  /**
+   * 다른 기기가 이미 올린 것처럼 audioUrl 을 채운다.
+   * `bump: false` 면 updatedAt 을 안 올려 받기에 안 내려온다 — 앱이 ②에서 409 audio_exists 를 받는 경로
+   */
+  attachAudio(id, { bump = true } = {}) {
+    const r = state.rows.get(id);
+    r.audioUrl = `s3://fake/other-device/${id}.m4a`;
+    r.sttStatus = 'pending';
+    if (bump) r.updatedAt = serverNow();
+  },
+  get sttCalls() {
+    return state.sttCalls;
+  },
+  get uploadSlots() {
+    return state.uploadSlots;
+  },
   reset() {
     USER = 'u1';
+    issued.clear();
+    s3.clear();
+    state.uploadSlots = 0;
+    state.sttCalls = 0;
     state.rows = new Map();
     state.skewMs = 0;
     state.lastMicros = 0n;

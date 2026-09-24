@@ -1,4 +1,5 @@
 import {
+  afterIso,
   newId,
   nowIso,
   type Dream,
@@ -47,6 +48,7 @@ export function createMemoryRepo(): DreamRepo {
         updatedAt: ts,
         deletedAt: null,
         syncedAt: null,
+        audioUploadedAt: null,
       };
       rows = [d, ...rows];
       return d;
@@ -55,7 +57,8 @@ export function createMemoryRepo(): DreamRepo {
     async update(id: string, patch: DreamPatch) {
       const i = rows.findIndex((r) => r.id === id);
       if (i < 0) return null;
-      const next = { ...rows[i], ...patch, updatedAt: nowIso() };
+      // 직전 버전보다 반드시 뒤인 시각 — SQLite 구현과 같다(afterIso 주석)
+      const next = { ...rows[i], ...patch, updatedAt: afterIso(nowIso(), rows[i].updatedAt, rows[i].syncedAt) };
       rows = [...rows.slice(0, i), next, ...rows.slice(i + 1)];
       return next;
     },
@@ -73,8 +76,12 @@ export function createMemoryRepo(): DreamRepo {
     },
 
     async softDelete(id: string) {
-      const ts = nowIso();
-      rows = rows.map((r) => (r.id === id ? { ...r, deletedAt: ts, updatedAt: ts } : r));
+      // 지우는 것도 서버에 가야 하는 변경이라 update 와 같은 시각 규칙을 쓴다
+      rows = rows.map((r) => {
+        if (r.id !== id) return r;
+        const ts = afterIso(nowIso(), r.updatedAt, r.syncedAt);
+        return { ...r, deletedAt: ts, updatedAt: ts };
+      });
     },
 
     async clear() {
@@ -134,8 +141,32 @@ export function createMemoryRepo(): DreamRepo {
           emotion: null,
           keywords: null,
           characters: null,
+          audioUploadedAt: null,
         },
       ];
+    },
+
+    async listAudioPending(limit = 3) {
+      return rows
+        .filter(
+          (r) =>
+            r.audioPath != null &&
+            r.durationMs != null &&
+            r.deletedAt == null &&
+            r.syncedAt != null &&
+            r.audioUploadedAt == null,
+        )
+        .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt))
+        .slice(0, limit);
+    },
+
+    async markAudioUploaded(id: string, at: string) {
+      rows = rows.map((r) => (r.id === id ? { ...r, audioUploadedAt: at } : r));
+    },
+
+    async setSttStatus(id: string, status: Dream['sttStatus']) {
+      // updatedAt 은 그대로 둔다. 서버로 올릴 변경이 아니다(DreamRepo 주석)
+      rows = rows.map((r) => (r.id === id ? { ...r, sttStatus: status } : r));
     },
 
     async getSetting(key: string) {

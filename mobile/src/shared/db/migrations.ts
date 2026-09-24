@@ -83,6 +83,18 @@ export const MIGRATIONS: Migration[] = [
         ON dreams (reviewed_at) WHERE reviewed_at IS NULL;
     `,
   },
+  {
+    version: 5,
+    up: `
+      -- 녹음 파일을 서버(S3)에 올린 시각. NULL이면 아직 안 올렸다.
+      --
+      -- **서버의 audio_url을 받아 적지 않는다.** 저쪽은 S3 위치이고 이쪽 audio_path는
+      -- 이 기기의 파일 경로라 같은 자리가 아니다(절대 규칙 2). 앱이 알아야 하는 것은
+      -- "올렸는가" 하나라 시각만 둔다. 받기에서 서버 audioUrl이 비어 있지 않으면 채운다 —
+      -- 다른 기기가 올린 것도 올린 것이다(문서 040 03장).
+      ALTER TABLE dreams ADD COLUMN audio_uploaded_at TEXT;
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

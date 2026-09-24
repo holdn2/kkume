@@ -16,8 +16,13 @@ import { dbToLevel, type Player, type Recorder, type RecordingResult } from './t
  * 이 파일을 읽으면 앱이 통째로 죽는다. 판별은 `index.ts`가 한다.
  */
 
-// 프리셋에는 metering이 꺼져 있다. 파형에 쓸 값이 이것뿐이라 켜 준다
-const OPTIONS = { ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true };
+// 프리셋에는 metering이 꺼져 있다. 파형에 쓸 값이 이것뿐이라 켜 준다.
+//
+// **녹음 파일은 document 폴더에 만든다.** 기본값 `cache`는 iOS가 공간이 부족하면 지울 수 있는
+// 곳이라(expo-audio 타입 주석), 원본 오디오가 사라진다(절대 규칙 2). 2026-09-21에 9/16 녹음
+// 하나가 폰에서 사라져 있었다. 이 옵션 전에 만든 기록은 여전히 캐시에 있다 — 그 파일들은 있을 때
+// 서버로 올라가고, 없으면 동기화가 file_missing 으로 건너뛴다
+const OPTIONS = { ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true, directory: 'document' as const };
 
 /** 상태를 100ms마다 읽는다. 파형이 12칸쯤 흐르는 속도라 눈에 자연스럽다 */
 const POLL_MS = 100;
