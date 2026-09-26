@@ -197,7 +197,15 @@ export function createDictationSession(deps: SessionDeps, view: SessionView) {
     });
 
   const finishWith = (kind: 'stop' | 'abort'): Promise<DictationEnd> => {
-    if (finishing) return finishing;
+    if (finishing) {
+      // 정지 중에 abort 가 오면(정지 직후 잠금 · 홈) 마지막 결과를 기다리지 않고 곧바로 끊는다.
+      // 앱이 정지되면 유예 타이머도 돌지 않아 WAV 헤더를 못 쓴다(052 T7, 검증 레인 C 2차 B-1 · S21)
+      if (kind === 'abort') {
+        if (phase === 'open') M.abort();
+        else if (phase === 'starting') pending = 'abort';
+      }
+      return finishing;
+    }
     if (phase === 'idle' || phase === 'ended') return wrapUp();
     finishing = new Promise<DictationEnd>((resolve) => {
       let done = false;

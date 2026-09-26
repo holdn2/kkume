@@ -147,25 +147,28 @@ export default function RecordModal() {
     (kind: 'stop' | 'abort' = 'stop'): Promise<Taken> => {
       stopRequested.current = true;
       if (pendingAudio.current) return Promise.resolve(pendingAudio.current);
-      if (!taking.current) {
-        taking.current = (async () => {
-          let out: Taken;
-          if (engine.current === 'dictation') {
-            // 파일이 열리기 전이면 세션이 열리는 순간 끊고 그 경로로 끝낸다(session.ts)
-            const end: DictationEnd = kind === 'abort' ? await dict.abort() : await dict.stop();
-            out = end;
-          } else if (engine.current === 'audio') {
-            out = await rec.stop();
-          } else {
-            // 아직 어느 녹음기로 할지도 정하지 않았다. 시작하지 않고 끝낸다
-            out = { uri: null, durationMs: 0 };
-          }
-          pendingAudio.current = out;
-          return out;
-        })().finally(() => {
-          taking.current = null;
-        });
+      if (taking.current) {
+        // 정지 중에 백그라운드로 가면 abort 로 올려 곧바로 끊는다(세션이 같은 약속을 돌려준다, S21)
+        if (kind === 'abort' && engine.current === 'dictation') void dict.abort();
+        return taking.current;
       }
+      taking.current = (async () => {
+        let out: Taken;
+        if (engine.current === 'dictation') {
+          // 파일이 열리기 전이면 세션이 열리는 순간 끊고 그 경로로 끝낸다(session.ts)
+          const end: DictationEnd = kind === 'abort' ? await dict.abort() : await dict.stop();
+          out = end;
+        } else if (engine.current === 'audio') {
+          out = await rec.stop();
+        } else {
+          // 아직 어느 녹음기로 할지도 정하지 않았다. 시작하지 않고 끝낸다
+          out = { uri: null, durationMs: 0 };
+        }
+        pendingAudio.current = out;
+        return out;
+      })().finally(() => {
+        taking.current = null;
+      });
       return taking.current;
     },
     [dict, rec],
@@ -214,15 +217,33 @@ export default function RecordModal() {
     return patch;
   }, []);
 
+  /**
+   * 멈춘 녹음을 기록에 붙인다. **파일도 글도 없으면 아무것도 쓰지 않는다** — 시작하기 전에 멈춘 경우라,
+   * 쓰면 원본도 글도 없는 빈 기록이 목록과 서버에 남는다(검증 레인 C 2차 B-3)
+   */
+  const saveTaken = useCallback(
+    (out: Taken) => (out.uri || out.text ? persist(audioPatch(out)) : Promise.resolve(null)),
+    [persist, audioPatch],
+  );
+
   /** 지금의 녹음기로 녹음만 한다. 받아쓰기를 못 하는 기기 · 권한이 없는 폰, 그리고 받아쓰기가 시작 직후 실패했을 때 */
   const startAudio = useCallback(async () => {
     engine.current = 'audio';
     setEngineOn('audio');
     const uri = await rec.start();
-    startFeedback();
     // 경로를 못 받는 구현이면 그냥 넘어간다. 여기서 막으면 녹음 자체가 안 된다
     if (uri) void persist({ audioPath: uri });
-  }, [rec, persist]);
+    // 시작하는 사이에 이미 정지 · 적기 · 백그라운드가 왔으면, 켜진 녹음을 곧바로 멈춰 파일을 마무리한다.
+    // 그 요청의 stop()은 녹음기가 켜지기 전에 돌아 아무것도 멈추지 못했다(검증 레인 C 2차 6)
+    if (stopRequested.current) {
+      void rec
+        .stop()
+        .then((out) => saveTaken(out))
+        .catch(() => {});
+      return;
+    }
+    startFeedback();
+  }, [rec, persist, saveTaken]);
 
   /**
    * 받아쓴 글도 절대 규칙 1이다 — **확정 구간은 오는 즉시, 진행 중 구간은 1초에 한 번까지 저장한다.**
@@ -255,7 +276,7 @@ export default function RecordModal() {
       // 기록 하나에 파일 하나라 이어 녹음하지 않는다
       onEnded: (end) => {
         pendingAudio.current = end;
-        void persist(audioPatch(end))
+        void saveTaken(end)
           .catch(() => {})
           .then(() => {
             if (AppState.currentState === 'active') {
@@ -267,7 +288,7 @@ export default function RecordModal() {
           });
       },
     }),
-    [saveDictated, startAudio, persist, audioPatch, leave],
+    [saveDictated, startAudio, saveTaken, leave],
   );
 
   useEffect(() => () => {
@@ -340,12 +361,14 @@ export default function RecordModal() {
   useEffect(() => {
     if (resolved !== 'voice') return;
     const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'background' && active.isRecording) {
+      // 녹음 중이 아니어도 아직 끝나지 않았으면 마무리한다 — 받아쓰기 파일이 열리기 전(시작 중)에
+      // 나가면, 그 뒤에 열린 녹음이 백그라운드에서 계속 돌 수 있다(UIBackgroundModes에 audio가 있다)
+      if (next === 'background' && !pendingAudio.current) {
         void (async () => {
           try {
             if (engine.current === 'dictation') saveDictated();
             const out = await takeAudio('abort');
-            await persist(audioPatch(out));
+            await saveTaken(out);
           } catch {
             // 여기서는 화면에 남길 수 없다 — 이미 백그라운드다.
             // 시작할 때 넣어 둔 행이 있으니 경로까지 잃지는 않는다
@@ -369,7 +392,7 @@ export default function RecordModal() {
       }
     });
     return () => sub.remove();
-  }, [resolved, active.isRecording, takeAudio, persist, audioPatch, saveDictated, leave]);
+  }, [resolved, takeAudio, saveTaken, saveDictated, leave]);
 
   /**
    * 반대쪽으로 넘어간다. 넘어가기 전에 지금 것을 먼저 붙인다 — 잃는 것이 없어야 되돌리기다.
@@ -388,7 +411,7 @@ export default function RecordModal() {
         if (resolved === 'voice') {
           // 녹음을 멈추고 붙인 뒤 텍스트로. 정지가 곧 저장이라 따로 확인하지 않는다
           const out = await takeAudio();
-          await persist(audioPatch(out));
+          await saveTaken(out);
           pendingAudio.current = null;
           setResolved('text');
         } else {
@@ -436,7 +459,7 @@ export default function RecordModal() {
         const out = await takeAudio();
         // 길이를 여기서 같이 넣는다. 나중에 파일에서 다시 읽으면 되지 않느냐면,
         // 목록 한 화면을 그리려고 오디오 파일 수십 개를 여는 일이 된다
-        await persist(audioPatch(out));
+        await saveTaken(out);
         pendingAudio.current = null;
         savedFeedback();
         leave();

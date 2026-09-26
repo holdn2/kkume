@@ -56,7 +56,12 @@ export default function LogScreen() {
         // 뭔가 바뀌었을 때만 다시 읽는다. 매번 읽으면 목록이 한 번 깜빡인다
         if (r && (r.pulled > 0 || r.pushed > 0)) load();
       });
-    }, [load]),
+      // 화면을 떠나면 `from=record`를 지운다. 탭은 파라미터를 들고 있어서, 안 지우면 앱을 다시 켤 때까지
+      // 카드가 안 뜨고 — 이미 온보딩을 지난 폰은 받아쓰기 권한을 물을 곳이 없어진다(검증 레인 C 2차 B-2)
+      return () => {
+        if (from) router.setParams({ from: undefined });
+      };
+    }, [load, from, router]),
   );
 
   return (
