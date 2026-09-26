@@ -116,10 +116,20 @@ export default function RecordModal() {
   /** 녹음을 멈춰 결과를 얻는다. 이미 멈춰 있으면 그때 받아 둔 것을 그대로 쓴다 */
   // `from=record` — 새벽 흐름이 끝나 떨어지는 꿈 로그에는 받아쓰기 권한 카드를 띄우지 않는다.
   // 방금 녹음을 마친 화면에 누를 것을 두면 그것도 새벽의 결정이다(절대 규칙 7, 검증 레인 C 지적 3)
-  const leave = useCallback(
-    () => router.replace({ pathname: '/log', params: { from: 'record' } }),
-    [router],
-  );
+  //
+  // **한 번만 떠난다.** 정지 · 예기치 않은 끝 · 백그라운드 마무리가 겹치면 이동과 햅틱이 두 번 돌았다(검증 레인 C 4차)
+  const left = useRef(false);
+  const leave = useCallback(() => {
+    if (left.current) return;
+    left.current = true;
+    router.replace({ pathname: '/log', params: { from: 'record' } });
+  }, [router]);
+  /**
+   * 사용자가 정지 · 적기를 눌러 이 녹음을 스스로 끝내는 중이다. **누른 그 순간 동기로 켠다.**
+   * 그 사이에 끝난 백그라운드 마무리 · 예기치 않은 끝이 먼저 꿈 로그로 보내면, 적기로 바꾸려던
+   * 사람이 목록으로 튕겨 나간다(검증 레인 C 4차 B-1). 끝내는 쪽이 이동을 정한다
+   */
+  const userClosing = useRef(false);
 
   /**
    * 백그라운드에서 녹음을 마무리했다는 표시. 돌아왔을 때 목록으로 보낼지를 이걸로 정한다.
@@ -291,6 +301,7 @@ export default function RecordModal() {
         void saveTaken(end)
           .catch(() => {})
           .then(() => {
+            if (userClosing.current) return;
             if (AppState.currentState === 'active') {
               savedFeedback();
               leave();
@@ -388,6 +399,7 @@ export default function RecordModal() {
           // 실패했어도 표시한다. 돌아왔을 때 멈춘 화면에 세워 두는 것이 더 나쁘다.
           // 마무리가 늦게 끝나 그 사이 이미 돌아와 있으면(파일이 열리기를 기다린 경우) 지금 보낸다 —
           // 'active' 이벤트는 이미 지나가 다시 오지 않는다(검증 레인 C 3차 4)
+          if (userClosing.current) return;
           if (AppState.currentState === 'active') {
             savedFeedback();
             leave();
@@ -429,6 +441,7 @@ export default function RecordModal() {
       try {
         if (resolved === 'voice') {
           // 녹음을 멈추고 붙인 뒤 텍스트로. 정지가 곧 저장이라 따로 확인하지 않는다
+          userClosing.current = true;
           const out = await takeAudio();
           await saveTaken(out);
           closed.current = true;
@@ -445,6 +458,7 @@ export default function RecordModal() {
         // 넘어가지 못했으면 되돌리기를 다시 열어 준다. 여기서 막아버리면
         // 잘못 눌러 들어온 화면에 갇힌 채로 나갈 길이 하나뿐이 된다
         swapping.current = false;
+        userClosing.current = false;
         setSwapped(false);
         setError(String(e));
       }
@@ -474,6 +488,7 @@ export default function RecordModal() {
    * 방금 남긴 것이 어디 갔는지 알 수 없는 자리다. 목록은 저장됐다는 증거이기도 하다.
    */
   const finish = () => {
+    userClosing.current = true;
     void (async () => {
       try {
         const out = await takeAudio();
