@@ -46,7 +46,12 @@ export type SessionView = {
 /**
  * 시작 직후에 이 오류로 끝나면 받아쓰기를 못 하는 기기다 — 모델 없음(102) · 받아쓰기 꺼짐(201)은
  * `service-not-allowed`, 권한 거절은 `not-allowed`(`ExpoSpeechRecognitionModule.swift:576`).
- * **시작 직후로 한정한다.** 한참 말한 뒤의 오류에서 녹음기를 바꾸면 그 WAV가 기록에서 떨어진다
+ * **시작 직후로 한정한다.** 한참 말한 뒤의 오류에서 녹음기를 바꾸면 그 WAV가 기록에서 떨어진다.
+ *
+ * **넘어갈 때 그 짧은 WAV(최대 3초)는 기록에서 떨어진다** — 새 m4a가 `audio_path`를 차지한다.
+ * 파일은 폰에 남는다. 절대 규칙 2의 예외로 **사용자가 허용했다**(2026-09-26, 문서 052 06장 D):
+ * 기기 언어 · 기기 안 인식을 먼저 확인한 뒤에도 모델이 없을 때만 생기는 드문 경우이고,
+ * 대개 말하기 전의 소리다. 기록을 둘로 가르거나 녹음을 끊는 쪽보다 낫다고 판단했다
  */
 export const FALLBACK_ERRORS = new Set(['service-not-allowed', 'not-allowed', 'language-not-supported']);
 export const FALLBACK_WINDOW_MS = 3000;
