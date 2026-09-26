@@ -40,7 +40,7 @@ class AudioConfig {
 	static class Unavailable implements AudioStorage {
 
 		@Override
-		public Ticket presignUpload(String key) {
+		public Ticket presignUpload(String key, String contentType) {
 			throw unavailable();
 		}
 

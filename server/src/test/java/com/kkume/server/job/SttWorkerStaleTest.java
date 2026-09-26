@@ -56,7 +56,7 @@ class SttWorkerStaleTest {
 		factory.registerSingleton("transcriber", (SttTranscriber) location -> text);
 		ObjectProvider<SttTranscriber> provider = factory.getBeanProvider(SttTranscriber.class);
 		return new SttWorker(this.jobs, this.dreams, this.transactions, provider,
-				new SttProperties(false, Duration.ofSeconds(5), 3, Duration.ZERO, LEASE));
+				new SttProperties(false, Duration.ofSeconds(5), 3, Duration.ZERO, LEASE, true));
 	}
 
 	/** 기록 하나와, 그 기록의 작업을 {@code attempts}번째로 잡은 채 {@code lockedAgo} 전에 멈춘 상태를 만든다 */

@@ -28,9 +28,9 @@ public class FakeAudioStorage implements AudioStorage {
 	}
 
 	@Override
-	public Ticket presignUpload(String key) {
+	public Ticket presignUpload(String key, String contentType) {
 		return new Ticket("https://fake-bucket.example/" + key + "?X-Amz-Signature=fake",
-				Map.of("Content-Type", "audio/mp4"), Instant.now().plusSeconds(900));
+				Map.of("Content-Type", contentType), Instant.now().plusSeconds(900));
 	}
 
 	@Override

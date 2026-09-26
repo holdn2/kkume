@@ -12,7 +12,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param maxAttempts 자동으로 시도하는 최대 횟수. 넘으면 failed
  * @param backoff 실패한 뒤 다시 잡기까지 기다리는 시간의 단위. 시도 횟수만큼 곱한다
  * @param lease running 으로 이만큼 머물면 잡은 서버가 죽은 것으로 본다
+ * @param enqueue 업로드가 끝나면 변환 작업을 만들지. <b>지금은 끈다</b> — 받아쓰기를 기기가 녹음하면서 한다(문서 048).
+ *     서버 변환을 예비로 붙이는 날(한국어 모델이 없는 폰 · Android) 켠다
  */
 @ConfigurationProperties(prefix = "kkume.stt")
-public record SttProperties(boolean workerEnabled, Duration poll, int maxAttempts, Duration backoff, Duration lease) {
+public record SttProperties(boolean workerEnabled, Duration poll, int maxAttempts, Duration backoff, Duration lease,
+		boolean enqueue) {
 }

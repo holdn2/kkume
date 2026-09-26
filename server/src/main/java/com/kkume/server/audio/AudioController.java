@@ -28,10 +28,11 @@ public class AudioController {
 		this.audio = audio;
 	}
 
-	/** ② 업로드 자리 */
+	/** ② 업로드 자리. 본문이 없으면 m4a 다 */
 	@PostMapping("/audio/upload")
-	public AudioService.UploadTicket upload(@AuthenticationPrincipal Jwt jwt, @PathVariable String id) {
-		return this.audio.prepareUpload(user(jwt), id);
+	public AudioService.UploadTicket upload(@AuthenticationPrincipal Jwt jwt, @PathVariable String id,
+			@RequestBody(required = false) UploadRequest request) {
+		return this.audio.prepareUpload(user(jwt), id, request == null ? null : request.format());
 	}
 
 	/** ④ 다 올렸다. 같은 요청을 두 번 보내도 된다 */
@@ -60,6 +61,10 @@ public class AudioController {
 
 	private static UUID user(Jwt jwt) {
 		return UUID.fromString(jwt.getSubject());
+	}
+
+	/** {@code format}: {@code "m4a"} · {@code "wav"} */
+	public record UploadRequest(String format) {
 	}
 
 	public record CompleteRequest(String key) {

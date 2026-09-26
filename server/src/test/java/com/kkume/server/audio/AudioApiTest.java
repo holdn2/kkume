@@ -56,7 +56,7 @@ import com.kkume.server.user.Provider;
  * 실패 뒤 기다리는 시간도 0으로 둬서 곧바로 다시 잡히게 한다.
  */
 @Import({ TestcontainersConfiguration.class, AudioApiTest.Fakes.class })
-@SpringBootTest(properties = { "kkume.stt.worker-enabled=false", "kkume.stt.backoff=0s" })
+@SpringBootTest(properties = { "kkume.stt.worker-enabled=false", "kkume.stt.backoff=0s", "kkume.stt.enqueue=true" })
 @AutoConfigureMockMvc
 class AudioApiTest {
 
@@ -186,6 +186,11 @@ class AudioApiTest {
 		return this.mockMvc.perform(post("/api/dreams/" + id + "/audio/upload").header("Authorization", "Bearer " + token));
 	}
 
+	private ResultActions uploadAs(String token, String id, String format) throws Exception {
+		return this.mockMvc.perform(post("/api/dreams/" + id + "/audio/upload").header("Authorization", "Bearer " + token)
+			.contentType(MediaType.APPLICATION_JSON).content("{\"format\":\"" + format + "\"}"));
+	}
+
 	private ResultActions complete(String token, String id, String key) throws Exception {
 		return this.mockMvc.perform(post("/api/dreams/" + id + "/audio/complete").header("Authorization", "Bearer " + token)
 			.contentType(MediaType.APPLICATION_JSON).content("{\"key\":\"" + key + "\"}"));
@@ -223,6 +228,37 @@ class AudioApiTest {
 		assertThat(JsonPath.<String>read(r, "$.key")).startsWith("audio/").contains("/" + id + "/").endsWith(".m4a");
 		assertThat(JsonPath.<String>read(r, "$.uploadUrl")).isNotBlank();
 		assertThat(JsonPath.<String>read(r, "$.expiresAt")).isNotBlank();
+	}
+
+	/** 받아쓰기 녹음(문서 048)은 WAV 로만 남는다. 서명의 Content-Type 과 키의 확장자가 형식을 따라간다 */
+	@Test
+	void 형식을_WAV로_알리면_WAV로_서명하고_complete도_받는다() throws Exception {
+		String id = pushDream(this.token, 60_000, null);
+		String r = json(uploadAs(this.token, id, "wav").andExpect(status().isOk()));
+
+		assertThat(JsonPath.<String>read(r, "$.headers['Content-Type']")).isEqualTo("audio/wav");
+		String key = JsonPath.read(r, "$.key");
+		assertThat(key).endsWith(".wav");
+
+		this.storage.put(key, 1_000_000);
+		complete(this.token, id, key).andExpect(status().isOk());
+		assertThat(this.dreams.findById(id).orElseThrow().getAudioUrl()).endsWith(".wav");
+	}
+
+	@Test
+	void 형식을_m4a로_알려도_지금과_같다() throws Exception {
+		String id = pushDream(this.token, 60_000, null);
+		String r = json(uploadAs(this.token, id, "m4a").andExpect(status().isOk()));
+
+		assertThat(JsonPath.<String>read(r, "$.headers['Content-Type']")).isEqualTo("audio/mp4");
+		assertThat(JsonPath.<String>read(r, "$.key")).endsWith(".m4a");
+	}
+
+	@Test
+	void 모르는_형식은_거절한다() throws Exception {
+		String id = pushDream(this.token, 60_000, null);
+		ResultActions r = uploadAs(this.token, id, "mp3").andExpect(status().isBadRequest());
+		assertThat(JsonPath.<String>read(json(r), "$.code")).isEqualTo("unsupported_format");
 	}
 
 	@Test
