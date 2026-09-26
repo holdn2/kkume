@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Mic } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
@@ -23,6 +23,8 @@ import { c, hit, press, r, sp } from '@theme/token';
  */
 export default function LogScreen() {
   const router = useRouter();
+  // 새벽 녹음을 마치고 떨어진 것이면 권한 카드를 띄우지 않는다(record.tsx의 leave)
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const [rows, setRows] = useState<Dream[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +75,7 @@ export default function LogScreen() {
       </Pressable>
 
       {/* 받아쓰기 권한을 낮에 한 번 묻는다. 새벽 녹음 화면은 권한을 조회만 한다(절대 규칙 7) */}
-      <DictationPrompt />
+      {from !== 'record' && <DictationPrompt />}
 
       {!!error && (
         <Card>

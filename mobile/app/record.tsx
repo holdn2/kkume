@@ -114,7 +114,12 @@ export default function RecordModal() {
   const pendingAudio = useRef<Taken | null>(null);
 
   /** 녹음을 멈춰 결과를 얻는다. 이미 멈춰 있으면 그때 받아 둔 것을 그대로 쓴다 */
-  const leave = useCallback(() => router.replace('/log'), [router]);
+  // `from=record` — 새벽 흐름이 끝나 떨어지는 꿈 로그에는 받아쓰기 권한 카드를 띄우지 않는다.
+  // 방금 녹음을 마친 화면에 누를 것을 두면 그것도 새벽의 결정이다(절대 규칙 7, 검증 레인 C 지적 3)
+  const leave = useCallback(
+    () => router.replace({ pathname: '/log', params: { from: 'record' } }),
+    [router],
+  );
 
   /**
    * 백그라운드에서 녹음을 마무리했다는 표시. 돌아왔을 때 목록으로 보낼지를 이걸로 정한다.
@@ -127,17 +132,41 @@ export default function RecordModal() {
    * `abort`는 백그라운드용이다. 받아쓰기의 `stop()`은 마지막 결과를 기다린 뒤에 파일을 닫는데,
    * 그 사이에 앱이 정지되면 WAV 헤더를 못 쓴다(문서 052 T7). 받아쓴 글은 진행 중 구간까지 이미 저장했다
    */
+  /**
+   * **한 번 멈추기 시작하면 그 약속을 같이 쓴다.** `pendingAudio`는 멈춘 뒤에야 채워져서, 정지를 두 번
+   * 누르거나 정지 직후 적기를 누르면 멈추기가 두 번 돌았다(검증 레인 C 지적 4)
+   */
+  const taking = useRef<Promise<Taken> | null>(null);
+  /**
+   * 멈추라는 요청이 한 번이라도 있었는가. 녹음기가 아직 시작하는 중에 정지 · 적기를 누르면,
+   * 그 뒤에 시작이 실패해도 **녹음기로 넘어가 녹음을 새로 켜지 않는다**(검증 레인 C 지적 1)
+   */
+  const stopRequested = useRef(false);
+
   const takeAudio = useCallback(
-    async (kind: 'stop' | 'abort' = 'stop'): Promise<Taken> => {
-      if (!pendingAudio.current) {
-        if (engine.current === 'dictation') {
-          const end: DictationEnd = kind === 'abort' ? await dict.abort() : await dict.stop();
-          pendingAudio.current = end;
-        } else {
-          pendingAudio.current = await rec.stop();
-        }
+    (kind: 'stop' | 'abort' = 'stop'): Promise<Taken> => {
+      stopRequested.current = true;
+      if (pendingAudio.current) return Promise.resolve(pendingAudio.current);
+      if (!taking.current) {
+        taking.current = (async () => {
+          let out: Taken;
+          if (engine.current === 'dictation') {
+            // 파일이 열리기 전이면 세션이 열리는 순간 끊고 그 경로로 끝낸다(session.ts)
+            const end: DictationEnd = kind === 'abort' ? await dict.abort() : await dict.stop();
+            out = end;
+          } else if (engine.current === 'audio') {
+            out = await rec.stop();
+          } else {
+            // 아직 어느 녹음기로 할지도 정하지 않았다. 시작하지 않고 끝낸다
+            out = { uri: null, durationMs: 0 };
+          }
+          pendingAudio.current = out;
+          return out;
+        })().finally(() => {
+          taking.current = null;
+        });
       }
-      return pendingAudio.current;
+      return taking.current;
     },
     [dict, rec],
   );
@@ -219,6 +248,7 @@ export default function RecordModal() {
       },
       // 시작 직후 받아쓰기를 못 하는 기기로 드러났다. 같은 기록에 녹음만으로 넘어간다
       onFallback: () => {
+        if (stopRequested.current) return;
         void startAudio().catch((e) => setError(String(e)));
       },
       // 멈추지 않았는데 세션이 끝났다 — 백그라운드 마무리와 똑같이 저장하고 꿈 로그로(052 06장 B).
@@ -265,16 +295,20 @@ export default function RecordModal() {
     began.current = true;
     void (async () => {
       const choice = await chooseEngine();
+      // 고르는 사이에 이미 정지 · 적기를 눌렀으면 아무것도 켜지 않는다
+      if (stopRequested.current) return;
       if (choice.engine === 'dictation') {
         engine.current = 'dictation';
         setEngineOn('dictation');
         try {
           const uri = await dict.start(dictationHandlers());
-          startFeedback();
+          // 멈추라는 요청이 있었어도 파일은 생겼다 — 경로는 못 박는다(절대 규칙 2). 시작 햅틱만 건너뛴다
+          if (!stopRequested.current) startFeedback();
           void persist({ audioPath: uri });
           return;
         } catch {
-          // 아래에서 녹음기로 넘어간다
+          // 아래에서 녹음기로 넘어간다. 그 사이 멈추라고 했으면 새로 켜지 않는다
+          if (stopRequested.current) return;
         }
       }
       await startAudio();

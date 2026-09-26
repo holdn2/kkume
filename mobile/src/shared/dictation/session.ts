@@ -85,6 +85,16 @@ export function createDictationSession(deps: SessionDeps, view: SessionView) {
   let subs: Sub[] = [];
   /** 부르는 쪽이 멈춘 경우 `end`를 기다리는 자리. 없으면 예기치 않은 끝이다 */
   let waiter: ((end: DictationEnd) => void) | null = null;
+  /**
+   * `starting` = `start()`를 불렀고 파일이 아직 안 열렸다. **이 사이에 부른 stop · abort는 라이브러리에
+   * 닿지 않는다** — 라이브러리의 start는 여러 번 await 하는 Task라, 인식기가 아직 없으면 멈출 것이 없어
+   * 그냥 지나가고 그 뒤에 녹음이 시작된다(`ExpoSpeechRecognitionModule.swift:180~240 · :366~384`).
+   * 그래서 요청을 `pending`에 적어 두고 파일이 열리는 순간 끊는다(검증 레인 C 지적 1, 테스트 S16~S19)
+   */
+  let phase: 'idle' | 'starting' | 'open' | 'ended' = 'idle';
+  let pending: 'stop' | 'abort' | null = null;
+  /** 정지를 두 번 눌러도 같은 끝을 준다(S20) */
+  let finishing: Promise<DictationEnd> | null = null;
 
   const drop = () => {
     subs.forEach((s) => s.remove());
@@ -99,6 +109,18 @@ export function createDictationSession(deps: SessionDeps, view: SessionView) {
     return { uri, durationMs: wavDurationMs(bytes) || clock, text: dictatedText(text) };
   };
 
+  /** 돌고 있는 인식을 멈춘다. stop 은 마지막 결과를 기다리고, 오래 걸리면 abort 로 끊는다 */
+  const halt = (kind: 'stop' | 'abort') => {
+    if (kind === 'abort') {
+      M.abort();
+      return;
+    }
+    M.stop();
+    deps.setTimer(() => {
+      if (phase === 'open') M.abort();
+    }, STOP_GRACE_MS);
+  };
+
   const start = (handlers: DictationHandlers) =>
     new Promise<string>((resolve, reject) => {
       drop();
@@ -106,6 +128,9 @@ export function createDictationSession(deps: SessionDeps, view: SessionView) {
       uri = null;
       lastError = null;
       waiter = null;
+      pending = null;
+      finishing = null;
+      phase = 'starting';
       startedAt = deps.now();
       let opened = false;
       let failed = false;
@@ -126,8 +151,12 @@ export function createDictationSession(deps: SessionDeps, view: SessionView) {
           if (failed) return;
           opened = true;
           uri = e.uri;
+          phase = 'open';
           view.onRecording(true);
+          // 경로는 멈추라는 요청이 있었어도 돌려준다 — 파일은 이미 생겼고, 기록이 그것을 가리켜야 한다(절대 규칙 2)
           resolve(e.uri);
+          // 기다리는 쪽이 이미 시간이 다 돼 떠났으면 마지막 결과를 기다릴 이유가 없다 — 곧바로 끊는다
+          if (pending) halt(waiter ? pending : 'abort');
         }),
         M.addListener('result', (e: { isFinal: boolean; results: { transcript: string }[] }) => {
           text = applyResult(text, e.isFinal, e.results[0]?.transcript ?? '');
@@ -140,17 +169,17 @@ export function createDictationSession(deps: SessionDeps, view: SessionView) {
         }),
         M.addListener('end', () => {
           drop();
+          phase = 'ended';
           view.onRecording(false);
           view.onLevel(0);
-          if (!opened) {
-            // 파일도 오류도 없이 끝났다. 부르는 쪽이 녹음기로 넘어가도록 알린다
-            fail(new Error('받아쓰기가 시작되지 못했습니다'));
-            return;
-          }
+          // 파일도 오류도 없이 끝났으면 부르는 쪽이 녹음기로 넘어가도록 알린다
+          if (!opened) fail(new Error('받아쓰기가 시작되지 못했습니다'));
           void wrapUp().then((end) => {
             const w = waiter;
             waiter = null;
             if (w) return w(end);
+            // 멈추라고 해 둔 끝이다(기다리던 쪽은 시간이 다 돼 먼저 끝났다). 예기치 않은 끝이 아니다
+            if (!opened || pending) return;
             const early = deps.now() - startedAt < FALLBACK_WINDOW_MS;
             const reason = lastError ?? 'ended';
             if (early && !end.text && FALLBACK_ERRORS.has(reason)) handlers.onFallback(reason);
@@ -162,12 +191,10 @@ export function createDictationSession(deps: SessionDeps, view: SessionView) {
       M.start(startOptions(deps.documentDirectory));
     });
 
-  const finishWith = (kind: 'stop' | 'abort') =>
-    new Promise<DictationEnd>((resolve) => {
-      if (!uri || subs.length === 0) {
-        void wrapUp().then(resolve);
-        return;
-      }
+  const finishWith = (kind: 'stop' | 'abort'): Promise<DictationEnd> => {
+    if (finishing) return finishing;
+    if (phase === 'idle' || phase === 'ended') return wrapUp();
+    finishing = new Promise<DictationEnd>((resolve) => {
       let done = false;
       const once = (end: DictationEnd) => {
         if (done) return;
@@ -175,28 +202,33 @@ export function createDictationSession(deps: SessionDeps, view: SessionView) {
         resolve(end);
       };
       waiter = once;
-      if (kind === 'stop') {
-        M.stop();
-        deps.setTimer(() => {
-          if (!done) M.abort();
-        }, STOP_GRACE_MS);
-      } else {
-        M.abort();
-      }
+      if (phase === 'open') halt(kind);
+      else pending = kind;
+      // `end`가 끝내 안 오면 있는 것으로 끝낸다. 정지 버튼이 멈춘 채 남지 않게.
+      // 파일이 열리기 전이었으면 `pending`이 남아 있어, 나중에 열려도 그때 끊는다(S19)
       deps.setTimer(() => {
         if (done) return;
         waiter = null;
         void wrapUp().then(once);
       }, END_TIMEOUT_MS);
     });
+    return finishing;
+  };
 
   return {
     start,
     stop: () => finishWith('stop'),
     abort: () => finishWith('abort'),
-    /** 화면을 떠날 때. **아직 돌고 있으면 끊는다** — 시작이 끝나기 전에 나가면 마이크가 켜진 채 남는다 */
+    /**
+     * 화면을 떠날 때. **돌고 있으면 끊는다.** 파일이 열리기 전이면 듣기를 놓지 않고 남겨 두었다가
+     * 열리는 순간 끊는다 — 지금 놓으면 그 뒤에 시작된 녹음을 멈출 길이 없다(S17)
+     */
     dispose: () => {
-      const live = subs.length > 0;
+      if (phase === 'starting') {
+        pending = 'abort';
+        return;
+      }
+      const live = phase === 'open';
       drop();
       if (live) M.abort();
     },
