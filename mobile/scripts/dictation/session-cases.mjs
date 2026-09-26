@@ -251,10 +251,10 @@ export const sessionCases = [
   },
   {
     key: 'S14',
-    title: '돌고 있을 때 화면을 떠나면 끊는다 — 시작 중이어도(파일 열기 전)',
+    title: '열린 뒤 화면을 떠나면 곧바로 끊고, 이미 끝났으면 아무것도 안 한다(열리기 전은 S17)',
     run: async () => {
       const a = rig();
-      void a.session.start(a.handlers).catch(() => {});
+      await opened(a);
       a.session.dispose();
       const b = rig();
       await opened(b);
@@ -275,6 +275,94 @@ export const sessionCases = [
       r.emit('end');
       const end = await p;
       return { got: end.durationMs, want: 7000 };
+    },
+  },
+  // ---- 파일이 열리기 전에 멈추면(검증 레인 C 지적 1 · 4) ----
+  // 라이브러리 start()는 여러 번 await 하는 Task 라, 그 사이에 온 stop/abort 는 멈출 인식기가 없어 그냥 지나간다
+  // (ExpoSpeechRecognitionModule.swift:180~240 · :366~384). 가짜 모듈의 stop/abort 도 그때는 아무것도 안 한다.
+  // 그 뒤 audiostart 가 오면 인식기는 돌고 있다 — 세션이 그때 끊어야 한다
+  {
+    key: 'S16',
+    title: '파일이 열리기 전에 정지하면, 열리는 순간 끊고 그 파일 경로로 끝낸다 — 마이크가 켜진 채 남지 않는다',
+    run: async () => {
+      const r = rig();
+      const started = r.session.start(r.handlers);
+      const p = r.session.stop();
+      const early = await Promise.race([p.then(() => 'resolved'), r.flush().then(() => 'waiting')]);
+      r.emit('audiostart', { uri: WAV });
+      const uri = await Promise.race([started, r.flush().then(() => 'hanging')]);
+      const afterOpen = r.names().slice(1);
+      r.emit('error', { error: 'aborted', message: '' });
+      r.emit('end');
+      const end = await Promise.race([p, r.flush().then(() => ({ uri: 'hanging' }))]);
+      return {
+        got: [early, uri, afterOpen.includes('abort') || afterOpen.includes('stop'), end.uri, r.live(), r.log.ended.length],
+        want: ['waiting', WAV, true, WAV, 0, 0],
+      };
+    },
+  },
+  {
+    key: 'S17',
+    title: '파일이 열리기 전에 화면을 떠나도, 나중에 열리면 그때 끊는다',
+    run: async () => {
+      const r = rig();
+      const started = r.session.start(r.handlers);
+      r.session.dispose();
+      const before = r.names().filter((n) => n === 'abort').length;
+      r.emit('audiostart', { uri: WAV });
+      const uri = await Promise.race([started.catch(() => null), r.flush().then(() => 'hanging')]);
+      const after = r.names().filter((n) => n === 'abort').length;
+      r.emit('end');
+      return { got: [uri, after > before, r.live()], want: [WAV, true, 0] };
+    },
+  },
+  {
+    key: 'S18',
+    title: '파일이 열리기 전에 정지했는데 시작이 실패하면 정지는 경로 없이 끝나고 시작은 실패로 알린다',
+    run: async () => {
+      const r = rig();
+      const started = r.session.start(r.handlers);
+      const p = r.session.stop();
+      r.emit('error', { error: 'not-allowed', message: '' });
+      r.emit('end');
+      const end = await Promise.race([p, r.flush().then(() => ({ uri: 'hanging' }))]);
+      const e = await Promise.race([started.then(() => null, (x) => x.message), r.flush().then(() => null)]);
+      return { got: [end.uri, !!e, r.live()], want: [null, true, 0] };
+    },
+  },
+  {
+    key: 'S19',
+    title: '파일이 열리기 전 정지가 끝내 응답을 못 받으면 4초 뒤 끝내고, 그 뒤에 열려도 끊는다',
+    run: async () => {
+      const r = rig();
+      const started = r.session.start(r.handlers);
+      const p = r.session.stop();
+      r.advance(END_TIMEOUT_MS);
+      const end = await Promise.race([p, r.flush().then(() => 'hanging')]);
+      const before = r.names().filter((n) => n === 'abort').length;
+      r.emit('audiostart', { uri: WAV });
+      await Promise.race([started.catch(() => null), r.flush()]);
+      const after = r.names().filter((n) => n === 'abort').length;
+      r.emit('end');
+      await r.flush();
+      // 멈추라고 해 둔 끝이라 "예기치 않은 끝"으로 알리지 않는다 — 알리면 화면이 한 번 더 저장하고 떠난다
+      return {
+        got: [end === 'hanging' ? end : 'done', after > before, r.live(), r.log.ended.length, r.log.fallback.length],
+        want: ['done', true, 0, 0, 0],
+      };
+    },
+  },
+  {
+    key: 'S20',
+    title: '정지를 두 번 눌러도 같은 끝을 받는다 — 앞의 것이 4초 뒤에 따로 끝나지 않는다',
+    run: async () => {
+      const r = rig();
+      await opened(r);
+      const a = r.session.stop();
+      const b = r.session.stop();
+      r.emit('end');
+      const [ea, eb] = await Promise.race([Promise.all([a, b]), r.flush().then(() => ['hanging', 'hanging'])]);
+      return { got: [ea === 'hanging' ? ea : ea.uri, eb === 'hanging' ? eb : eb.uri, r.names().filter((n) => n === 'stop').length], want: [WAV, WAV, 1] };
     },
   },
 ];
