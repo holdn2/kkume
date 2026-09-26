@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { Badge, Button, Card, Row, Screen, Stack, Title } from '@components';
 import { audioBackend, mmss, probeAudioUpload } from '@shared/audio';
+import { formatRecordingFacts, inspectRecordings } from '@shared/audio/inspect';
 import { repairRecordingPaths } from '@shared/audio/paths';
 import { getDreamRepo, storageBackend, type Dream } from '@shared/db';
 import { updateInfo } from '@shared/updates';
@@ -166,6 +167,15 @@ export default function DiagScreen() {
       .catch((e) => setUploaded(`실패 · ${String(e)}`));
   };
 
+  /** 녹음마다 저장 길이 · 파일 유무 · 파일에서 읽은 길이를 나란히. 00:00 의 원인을 가른다 */
+  const [recFacts, setRecFacts] = useState<string | null>(null);
+  const doInspect = () => {
+    setRecFacts('녹음 점검 중입니다 — 한 건에 몇 초씩 걸립니다');
+    void inspectRecordings()
+      .then((list) => setRecFacts(list ? formatRecordingFacts(list) : '파일 · 오디오 모듈이 없는 빌드입니다'))
+      .catch((e) => setRecFacts(`실패 · ${String(e)}`));
+  };
+
   return (
     <Screen scroll>
       <Title sub="preview 빌드에서 네이티브가 실제로 붙었는지 본다">빌드 진단</Title>
@@ -299,6 +309,7 @@ export default function DiagScreen() {
         {/* 누르면 실제 녹음 하나가 서버로 올라간다. 되돌리는 버튼은 두지 않는다 —
             어차피 업로드가 붙으면 올라갈 파일이고, 지우는 자리는 서버에도 아직 없다 */}
         <Button label="오디오 업로드 확인" size="sm" variant="secondary" onPress={doUpload} />
+        <Button label="녹음 점검" size="sm" variant="secondary" onPress={doInspect} />
         <Button label="새로고침" size="sm" variant="ghost" onPress={refresh} />
       </Stack>
 
@@ -320,6 +331,17 @@ export default function DiagScreen() {
               동기화 확인
             </AppText>
             <AppText size="caption">{synced}</AppText>
+          </Stack>
+        </Card>
+      )}
+
+      {!!recFacts && (
+        <Card>
+          <Stack gap={sp[2]}>
+            <AppText size="caption" color={c.fgFaint}>
+              녹음 점검
+            </AppText>
+            <AppText size="caption">{recFacts}</AppText>
           </Stack>
         </Card>
       )}

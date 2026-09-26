@@ -1,4 +1,5 @@
 import {
+  createAudioPlayer,
   RecordingPresets,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
@@ -97,9 +98,16 @@ export function useNativePlayer(uri: string | null, fallbackMs?: number | null):
       player.pause();
       return;
     }
-    // 끝까지 간 뒤 다시 누르면 처음부터. seekTo를 안 부르면 그 자리에 멈춰 아무 일도 안 일어난다
-    if (durationMs > 0 && positionMs >= durationMs - 200) void player.seekTo(0);
-    player.play();
+    void (async () => {
+      // **재생 모드를 매번 먼저 건다.** 아무것도 안 걸면 iOS 기본값(soloAmbient)이라 무음 스위치를
+      // 따른다 — 앱을 새로 켜고 녹음 없이 재생하면 소리가 안 났다(2026-09-26 기기, 스위치를 끄면 들림).
+      // 녹음을 다시 듣는 화면이라 음성 메모처럼 스위치와 상관없이 들려야 한다.
+      // allowsRecording 을 끄는 것은 이 화면에 녹음기가 없어서다 — 켜 두면 playAndRecord 로 남는다
+      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false }).catch(() => {});
+      // 끝까지 간 뒤 다시 누르면 처음부터. seekTo를 안 부르면 그 자리에 멈춰 아무 일도 안 일어난다
+      if (durationMs > 0 && positionMs >= durationMs - 200) await player.seekTo(0);
+      player.play();
+    })();
   }, [player, status.playing, positionMs, durationMs]);
 
   const seek = useCallback(
@@ -118,4 +126,24 @@ export function useNativePlayer(uri: string | null, fallbackMs?: number | null):
     toggle,
     seek,
   };
+}
+
+/**
+ * 파일을 재생기로 열어 **파일이 말하는 길이**를 읽는다. 진단 화면의 녹음 점검용이다.
+ *
+ * 저장된 `duration_ms` 가 0 인 것과 파일 자체가 망가진 것(헤더 없음)은 목록에서 똑같이 00:00 으로
+ * 보인다. 둘을 가르려면 파일을 직접 열어 봐야 한다. 못 열거나 시간 안에 안 열리면 null
+ */
+export async function readFileDurationMs(uri: string, timeoutMs = 3000): Promise<number | null> {
+  const player = createAudioPlayer({ uri });
+  try {
+    const until = Date.now() + timeoutMs;
+    while (Date.now() < until) {
+      if (player.isLoaded && player.duration > 0) return Math.round(player.duration * 1000);
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return null;
+  } finally {
+    player.remove();
+  }
 }
