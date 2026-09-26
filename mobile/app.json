@@ -13,11 +13,7 @@
       "icon": "./assets/expo.icon",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSMicrophoneUsageDescription": "일어난 직후 꿈을 녹음해 기록하기 위해 마이크를 사용합니다.",
-        "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true,
-          "NSAllowsLocalNetworking": true
-        }
+        "NSMicrophoneUsageDescription": "일어난 직후 꿈을 녹음해 기록하기 위해 마이크를 사용합니다."
       },
       "appleTeamId": "3PW3FZG3GR"
     },
@@ -76,7 +72,13 @@
       ],
       "expo-apple-authentication",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-speech-recognition",
+        {
+          "speechRecognitionPermission": "녹음하는 동안 꿈을 글로 받아써 두기 위해 음성 인식을 사용합니다. 받아쓰기는 폰 안에서 합니다."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
@@ -87,7 +89,6 @@
       "eas": {
         "projectId": "15c9a3a6-60ae-4a44-9dfd-801be469857e"
       },
-      "apiBaseUrl": "http://13.239.58.251",
       "googleWebClientId": "93992852944-9a2lqaidmev14r5jj93pj8e4btdf8qrh.apps.googleusercontent.com",
       "googleIosClientId": "93992852944-ke866ebu7f54crioh585333u13cahc0a.apps.googleusercontent.com"
     },
