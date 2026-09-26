@@ -53,8 +53,17 @@ export function useNativeDictator(): Dictator {
     return () => clearInterval(t);
   }, [isRecording]);
 
-  // 화면을 떠나면 듣기를 놓는다. 녹음은 화면이 먼저 마무리했어야 한다
-  useEffect(() => () => subs.current.forEach((s) => s.remove()), []);
+  // 화면을 떠나면 듣기를 놓고, **아직 돌고 있으면 끊는다.** 녹음은 화면이 먼저 마무리했어야 하지만,
+  // 시작이 끝나기 전에 나가면(파일 경로를 받기 전) 마이크가 켜진 채 남는다
+  useEffect(
+    () => () => {
+      const live = subs.current.length > 0;
+      subs.current.forEach((s) => s.remove());
+      subs.current = [];
+      if (live) M.abort();
+    },
+    [],
+  );
 
   /** 파일 크기로 길이를 잰다(052 T9). 못 재면 JS 시계로 물러선다 */
   const wrapUp = useCallback(async (): Promise<DictationEnd> => {

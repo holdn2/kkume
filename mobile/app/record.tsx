@@ -172,9 +172,10 @@ export default function RecordModal() {
   /** 멈춘 녹음을 기록에 붙일 조각. 받아쓴 글이 있으면 본문과 "이 폰에서 합쳤음"까지 */
   const audioPatch = useCallback((out: Taken) => {
     const patch: Pick<DreamPatch, 'text' | 'audioPath' | 'durationMs' | 'sttStatus'> = {
-      audioPath: out.uri,
       durationMs: out.durationMs,
     };
+    // 경로가 비어 오면 쓰지 않는다 — 시작할 때 못 박아 둔 경로를 null 로 지우면 원본을 잃는다(절대 규칙 2)
+    if (out.uri) patch.audioPath = out.uri;
     if (out.text !== undefined) {
       dictated.current = out.text;
       patch.text = body(typed.current, out.text);
