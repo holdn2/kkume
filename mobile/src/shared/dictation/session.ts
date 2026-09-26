@@ -78,6 +78,14 @@ export function startOptions(documentDirectory: string) {
       outputEncoding: 'pcmFormatInt16',
     },
     volumeChangeEventOptions: { enabled: true, intervalMillis: 100 },
+    // 안 주면 playAndRecord · **measurement**로 연다(ExpoSpeechRecognizer.swift:625-628). measurement 는
+    // 입력 처리를 최소로 해 마이크 자동 음량 보정이 꺼지고, WAV 가 옛 m4a(expo-audio, default 모드)보다
+    // 훨씬 작게 녹음됐다(2026-09-26 기기, S22). 스피커로 재생 · 블루투스 입력은 라이브러리 기본과 같게 둔다
+    iosCategory: {
+      category: 'playAndRecord',
+      categoryOptions: ['defaultToSpeaker', 'allowBluetooth'],
+      mode: 'default',
+    },
   };
 }
 
