@@ -500,6 +500,9 @@ export default function RecordModal() {
         savedFeedback();
         leave();
       } catch (e) {
+        // 못 끝냈으니 끝내는 중이 아니다 — 그 뒤의 예기치 않은 끝 · 백그라운드 마무리가 다시 이동을 정한다
+        // (switchMode 의 catch 와 같다, 검증 레인 C 5차 N-1)
+        userClosing.current = false;
         // 다른 실패는 삼켜도 이건 아니다. 기록 유실은 이 앱에서 유일하게
         // 용납되지 않는 실패라(절대 규칙 1) 화면에 남긴다.
         // 다만 무엇을 할지 묻지는 않는다 — 그게 새벽의 결정이 된다
