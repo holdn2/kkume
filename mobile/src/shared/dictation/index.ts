@@ -40,9 +40,21 @@ export function useDictator(): Dictator {
  */
 function deviceLanguageIsKorean(): boolean {
   if (Platform.OS !== 'ios') return false;
-  const langs = Settings.get('AppleLanguages') as string[] | undefined;
-  const first = langs?.[0] ?? Intl.DateTimeFormat().resolvedOptions().locale;
-  return first.toLowerCase().startsWith('ko');
+  // `Settings`는 처음 읽을 때 `TurboModuleRegistry.getEnforcing('SettingsManager')`로 모듈을 붙잡아
+  // 없으면 던진다. 기본 파드(React-RCTSettings)라 있어야 하지만, 여기서 죽으면 녹음 화면이 통째로
+  // 안 열린다 — 못 읽으면 Intl로, 그것도 안 되면 "한국어 아님"으로 떨어져 녹음만 한다(안전한 쪽)
+  let first: string | undefined;
+  try {
+    first = (Settings.get('AppleLanguages') as string[] | undefined)?.[0];
+  } catch {
+    first = undefined;
+  }
+  try {
+    first ??= Intl.DateTimeFormat().resolvedOptions().locale;
+  } catch {
+    return false;
+  }
+  return (first ?? '').toLowerCase().startsWith('ko');
 }
 
 export type EngineChoice = { engine: 'dictation' | 'audio'; reason: EngineReason };
