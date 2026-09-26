@@ -14,9 +14,11 @@ import {
 import { Input, Row, Screen } from '@components';
 import { Waveform } from '@features/record/Waveform';
 import { MAX_TEXT_LENGTH } from '@shared/api/sync';
-import { mmss, useRecorder, type RecordingResult } from '@shared/audio';
-import { getDreamRepo } from '@shared/db';
+import { mmss, useRecorder } from '@shared/audio';
+import { getDreamRepo, type DreamPatch } from '@shared/db';
+import { chooseEngine, useDictator, type DictationEnd, type DictationHandlers } from '@shared/dictation';
 import { savedFeedback, startFeedback } from '@shared/haptics';
+import { mergeTranscript } from '@shared/stt/merge';
 import { AppText } from '@shared/ui';
 import { c, hit, r, sp } from '@theme/token';
 
@@ -24,6 +26,19 @@ type Mode = 'voice' | 'text';
 
 /** 입력이 이만큼 멈추면 저장한다. 짧으면 타이핑 중에 깜빡이고, 길면 불안해진다 */
 const IDLE_SAVE_MS = 1200;
+
+/** 받아쓰는 중인 구간은 이 간격까지만 저장한다. 확정 구간은 오는 즉시 저장한다 */
+const INTERIM_SAVE_MS = 1000;
+
+/** 멈춘 녹음. 받아쓰기로 남겼으면 받아쓴 글이 함께 온다 */
+type Taken = { uri: string | null; durationMs: number; text?: string };
+
+/**
+ * 본문은 **항상 적은 글과 받아쓴 글을 합쳐서** 만든다 — `CLAUDE.md`의 `[녹음 변환]` 형식.
+ * 적기 모드가 본문을 통째로 쓰면, 음성에서 적기로 넘어가 타이핑하는 순간 받아쓴 글이 사라진다
+ * (문서 052 03장). 적은 글이 없으면 마커 없이 받아쓴 글만(사용자 결정)
+ */
+const body = (typed: string, dictated: string) => mergeTranscript(typed, dictated);
 
 /**
  * RM-1. **새벽에 반쯤 자면서 보는 유일한 화면**이고, 이 앱에서 유일하게
@@ -53,10 +68,25 @@ export default function RecordModal() {
   const swapping = useRef(false);
 
   const rec = useRecorder();
-  const { start, stop } = rec;
+  const dict = useDictator();
+  /**
+   * 이번 녹음을 무엇으로 하는가. 들어올 때 정한다(`chooseEngine`) — 받아쓰기를 못 하는 기기 ·
+   * 권한이 없는 폰은 지금의 녹음기(expo-audio)로 녹음만 한다. 사용자에게 묻지 않는다(절대 규칙 7).
+   * 훅은 둘 다 부르고 하나만 켠다. 훅 순서를 바꿀 수 없어서다
+   */
+  const engine = useRef<'audio' | 'dictation' | null>(null);
+  const [engineOn, setEngineOn] = useState<'audio' | 'dictation'>('audio');
+  const active = engineOn === 'dictation' ? dict : rec;
   const [error, setError] = useState<string | null>(null);
 
   const [text, setText] = useState('');
+  // 콜백 안에서 최신값을 읽으려고 ref로도 들고 있다. 받아쓰기 이벤트는 렌더와 상관없이 온다
+  const typed = useRef('');
+  useEffect(() => {
+    typed.current = text;
+  }, [text]);
+  /** 지금까지 받아쓴 글. 새벽 화면에는 보여주지 않는다(2026-09-26 사용자 결정, 문서 052 06장 A) */
+  const dictated = useRef('');
   // **state가 아니라 ref다.** 저장은 비동기라 두 건이 겹쳐 돌 수 있는데,
   // state로 들고 있으면 둘 다 아직 null인 값을 읽고 **각각 create를 불러
   // 기록이 두 건으로 갈라진다.** 적기 자동저장(1.2초)이 발화하는 순간
@@ -81,7 +111,7 @@ export default function RecordModal() {
    * 그러면 파일 경로를 영영 못 꺼낸다 — 기록 유실이다(절대 규칙 1).
    * 결과를 들고 있다가 **저장만 다시 시도한다.**
    */
-  const pendingAudio = useRef<RecordingResult | null>(null);
+  const pendingAudio = useRef<Taken | null>(null);
 
   /** 녹음을 멈춰 결과를 얻는다. 이미 멈춰 있으면 그때 받아 둔 것을 그대로 쓴다 */
   const leave = useCallback(() => router.replace('/log'), [router]);
@@ -93,10 +123,24 @@ export default function RecordModal() {
    */
   const finalizedInBg = useRef(false);
 
-  const takeAudio = useCallback(async () => {
-    if (!pendingAudio.current) pendingAudio.current = await stop();
-    return pendingAudio.current;
-  }, [stop]);
+  /**
+   * `abort`는 백그라운드용이다. 받아쓰기의 `stop()`은 마지막 결과를 기다린 뒤에 파일을 닫는데,
+   * 그 사이에 앱이 정지되면 WAV 헤더를 못 쓴다(문서 052 T7). 받아쓴 글은 진행 중 구간까지 이미 저장했다
+   */
+  const takeAudio = useCallback(
+    async (kind: 'stop' | 'abort' = 'stop'): Promise<Taken> => {
+      if (!pendingAudio.current) {
+        if (engine.current === 'dictation') {
+          const end: DictationEnd = kind === 'abort' ? await dict.abort() : await dict.stop();
+          pendingAudio.current = end;
+        } else {
+          pendingAudio.current = await rec.stop();
+        }
+      }
+      return pendingAudio.current;
+    },
+    [dict, rec],
+  );
 
   /**
    * 지금까지 남긴 것을 같은 기록 하나에 붙인다. 없으면 만들고, 있으면 고친다.
@@ -105,7 +149,7 @@ export default function RecordModal() {
    * 갈라지면 목록에 반쪽짜리 두 건이 남고, 그건 사용자가 낮에 치워야 할 일이 된다.
    */
   const persist = useCallback(
-    (patch: { text?: string; audioPath?: string | null; durationMs?: number | null }) => {
+    (patch: Pick<DreamPatch, 'text' | 'audioPath' | 'durationMs' | 'sttStatus'>) => {
       // 앞의 저장이 끝난 뒤에 시작한다. 겹쳐 돌면 id가 정해지기 전에 둘 다 create를 부른다
       const run = queue.current.then(async () => {
         const repo = await getDreamRepo();
@@ -125,6 +169,80 @@ export default function RecordModal() {
     [],
   );
 
+  /** 멈춘 녹음을 기록에 붙일 조각. 받아쓴 글이 있으면 본문과 "이 폰에서 합쳤음"까지 */
+  const audioPatch = useCallback((out: Taken) => {
+    const patch: Pick<DreamPatch, 'text' | 'audioPath' | 'durationMs' | 'sttStatus'> = {
+      audioPath: out.uri,
+      durationMs: out.durationMs,
+    };
+    if (out.text !== undefined) {
+      dictated.current = out.text;
+      patch.text = body(typed.current, out.text);
+      // 로컬 stt_status 는 "이 폰에서 합쳤음"이다. 서버 변환 합치기(decideMerge)가 다시 손대지 않게
+      if (out.text) patch.sttStatus = 'done';
+    }
+    return patch;
+  }, []);
+
+  /** 지금의 녹음기로 녹음만 한다. 받아쓰기를 못 하는 기기 · 권한이 없는 폰, 그리고 받아쓰기가 시작 직후 실패했을 때 */
+  const startAudio = useCallback(async () => {
+    engine.current = 'audio';
+    setEngineOn('audio');
+    const uri = await rec.start();
+    startFeedback();
+    // 경로를 못 받는 구현이면 그냥 넘어간다. 여기서 막으면 녹음 자체가 안 된다
+    if (uri) void persist({ audioPath: uri });
+  }, [rec, persist]);
+
+  /**
+   * 받아쓴 글도 절대 규칙 1이다 — **확정 구간은 오는 즉시, 진행 중 구간은 1초에 한 번까지 저장한다.**
+   * 끝에 한 번만 쓰면 도중에 죽을 때 녹음은 남아도 글을 잃는다. iOS 17 이하는 끝까지 한 구간이라
+   * 진행 중 구간을 안 쓰면 끝날 때까지 한 글자도 저장되지 않는다(문서 052 T8)
+   */
+  const lastTextSave = useRef(0);
+  const textTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveDictated = useCallback(() => {
+    if (textTimer.current) clearTimeout(textTimer.current);
+    textTimer.current = null;
+    lastTextSave.current = Date.now();
+    void persist({ text: body(typed.current, dictated.current) }).catch(() => {});
+  }, [persist]);
+
+  const dictationHandlers = useCallback(
+    (): DictationHandlers => ({
+      onText: (t, isFinal) => {
+        dictated.current = t;
+        const wait = INTERIM_SAVE_MS - (Date.now() - lastTextSave.current);
+        if (isFinal || wait <= 0) saveDictated();
+        else if (!textTimer.current) textTimer.current = setTimeout(saveDictated, wait);
+      },
+      // 시작 직후 받아쓰기를 못 하는 기기로 드러났다. 같은 기록에 녹음만으로 넘어간다
+      onFallback: () => {
+        void startAudio().catch((e) => setError(String(e)));
+      },
+      // 멈추지 않았는데 세션이 끝났다 — 백그라운드 마무리와 똑같이 저장하고 꿈 로그로(052 06장 B).
+      // 기록 하나에 파일 하나라 이어 녹음하지 않는다
+      onEnded: (end) => {
+        pendingAudio.current = end;
+        void persist(audioPatch(end))
+          .catch(() => {})
+          .then(() => {
+            if (AppState.currentState === 'active') {
+              savedFeedback();
+              leave();
+            } else {
+              finalizedInBg.current = true;
+            }
+          });
+      },
+    }),
+    [saveDictated, startAudio, persist, audioPatch, leave],
+  );
+
+  useEffect(() => () => {
+    if (textTimer.current) clearTimeout(textTimer.current);
+  }, []);
+
   /**
    * 들어오자마자 녹음이 시작된다. 시작 버튼을 누르게 하면 그게 결정이다(절대 규칙 7).
    *
@@ -136,17 +254,31 @@ export default function RecordModal() {
    * 이때 만들어지는 행은 `audio_path`는 있고 `duration_ms`는 없다.
    * **그 조합이 곧 "끝나지 않은 녹음"**이라 따로 컬럼을 두지 않았다 —
    * 정상 종료는 `finish()`가 둘을 같이 넣기 때문에 섞이지 않는다.
+   *
+   * 받아쓰기가 되는 폰이면 받아쓰기로, 아니면 지금의 녹음기로. 받아쓰기가 시작부터 실패하면
+   * (파일을 못 만듦 · 모델 없음) 곧바로 녹음기로 넘어간다 — 원본 없는 기록을 만들지 않는다(052 T2)
    */
+  const began = useRef(false);
   useEffect(() => {
-    if (resolved !== 'voice') return;
-    void start()
-      .then((uri) => {
-        startFeedback();
-        // 경로를 못 받는 구현이면 그냥 넘어간다. 여기서 막으면 녹음 자체가 안 된다
-        if (uri) void persist({ audioPath: uri });
-      })
-      .catch((e) => setError(String(e)));
-  }, [resolved, start, persist]);
+    if (resolved !== 'voice' || began.current) return;
+    began.current = true;
+    void (async () => {
+      const choice = await chooseEngine();
+      if (choice.engine === 'dictation') {
+        engine.current = 'dictation';
+        setEngineOn('dictation');
+        try {
+          const uri = await dict.start(dictationHandlers());
+          startFeedback();
+          void persist({ audioPath: uri });
+          return;
+        } catch {
+          // 아래에서 녹음기로 넘어간다
+        }
+      }
+      await startAudio();
+    })().catch((e) => setError(String(e)));
+  }, [resolved, dict, dictationHandlers, startAudio, persist]);
 
   /**
    * **백그라운드로 가면 녹음을 마무리한다.** 시작 시점에 경로를 못 박는 것만으로는
@@ -164,15 +296,19 @@ export default function RecordModal() {
    *
    * `inactive`가 아니라 `background`만 본다. `inactive`는 알림창을 내리거나
    * 전화가 올 때도 오는데, 거기서 멈추면 **새벽에 알림 하나로 녹음이 끊긴다.**
+   *
+   * 받아쓰기면 **받아쓴 글을 먼저 저장하고 `abort`로 곧바로 닫는다.** `stop`은 마지막 결과를
+   * 기다린 뒤에 파일을 닫는데, 그 사이에 앱이 정지되면 WAV 헤더를 못 쓴다(문서 052 T7)
    */
   useEffect(() => {
     if (resolved !== 'voice') return;
     const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'background' && rec.isRecording) {
+      if (next === 'background' && active.isRecording) {
         void (async () => {
           try {
-            const out = await takeAudio();
-            await persist({ audioPath: out.uri, durationMs: out.durationMs });
+            if (engine.current === 'dictation') saveDictated();
+            const out = await takeAudio('abort');
+            await persist(audioPatch(out));
           } catch {
             // 여기서는 화면에 남길 수 없다 — 이미 백그라운드다.
             // 시작할 때 넣어 둔 행이 있으니 경로까지 잃지는 않는다
@@ -196,7 +332,7 @@ export default function RecordModal() {
       }
     });
     return () => sub.remove();
-  }, [resolved, rec.isRecording, takeAudio, persist, leave]);
+  }, [resolved, active.isRecording, takeAudio, persist, audioPatch, saveDictated, leave]);
 
   /**
    * 반대쪽으로 넘어간다. 넘어가기 전에 지금 것을 먼저 붙인다 — 잃는 것이 없어야 되돌리기다.
@@ -215,12 +351,12 @@ export default function RecordModal() {
         if (resolved === 'voice') {
           // 녹음을 멈추고 붙인 뒤 텍스트로. 정지가 곧 저장이라 따로 확인하지 않는다
           const out = await takeAudio();
-          await persist({ audioPath: out.uri, durationMs: out.durationMs });
+          await persist(audioPatch(out));
           pendingAudio.current = null;
           setResolved('text');
         } else {
           if (text.trim()) {
-            await persist({ text });
+            await persist({ text: body(text, dictated.current) });
             setSavedText(text);
           }
           setResolved('voice');
@@ -241,7 +377,7 @@ export default function RecordModal() {
     const t = setTimeout(() => {
       void (async () => {
         try {
-          await persist({ text });
+          await persist({ text: body(text, dictated.current) });
           setSavedText(text);
           savedFeedback();
         } catch (e) {
@@ -263,7 +399,7 @@ export default function RecordModal() {
         const out = await takeAudio();
         // 길이를 여기서 같이 넣는다. 나중에 파일에서 다시 읽으면 되지 않느냐면,
         // 목록 한 화면을 그리려고 오디오 파일 수십 개를 여는 일이 된다
-        await persist({ audioPath: out.uri, durationMs: out.durationMs });
+        await persist(audioPatch(out));
         pendingAudio.current = null;
         savedFeedback();
         leave();
@@ -281,7 +417,7 @@ export default function RecordModal() {
     void (async () => {
       try {
         if (text.trim()) {
-          await persist({ text });
+          await persist({ text: body(text, dictated.current) });
           savedFeedback();
         }
         leave();
@@ -355,13 +491,15 @@ export default function RecordModal() {
       <View style={s.top}>
         {/* "녹음 중"이라고 쓰지 않는다. 점 하나와 색으로 충분하고, 읽을 여력이 없다 */}
         <View style={s.dotRow}>
-          {rec.isRecording && <View style={s.dot} />}
-          <AppText size="display" weight="bold" color={rec.isRecording ? c.running : c.fgFaint}>
-            {mmss(rec.durationMs)}
+          {active.isRecording && <View style={s.dot} />}
+          <AppText size="display" weight="bold" color={active.isRecording ? c.running : c.fgFaint}>
+            {mmss(active.durationMs)}
           </AppText>
         </View>
 
-        <Waveform level={rec.level} active={rec.isRecording} />
+        {/* 받아쓰는 글은 여기 보여주지 않는다 — 읽을 것 · 고치고 싶은 것이 생기면 새벽의 결정이 된다
+            (2026-09-26 사용자 결정 "안 보여 줌", 문서 052 06장 A). 화면은 녹음만 할 때와 같다 */}
+        <Waveform level={active.level} active={active.isRecording} />
 
         {!!error && (
           <AppText size="caption" color={c.danger} style={{ textAlign: 'center' }}>

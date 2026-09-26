@@ -35,7 +35,9 @@ export async function putFile(uploadUrl, filePath, headers) {
     throw new Error(`File '${filePath}' could not be read`);
   }
   const key = uploadUrl.replace(/^https:\/\/fake-s3\//, '').split('?')[0];
-  if (headers?.['Content-Type'] !== 'audio/mp4') {
+  // 서명된 Content-Type 은 키 확장자를 따른다(서버 #52). 다르게 붙이면 S3 가 403
+  const signed = key.endsWith('.wav') ? 'audio/wav' : 'audio/mp4';
+  if (headers?.['Content-Type'] !== signed) {
     return { status: 403, body: '<Error><Code>SignatureDoesNotMatch</Code></Error>' };
   }
   if (uploadControl.putStatus !== 200) {

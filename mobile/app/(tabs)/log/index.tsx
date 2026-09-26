@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { Card, Screen, Title } from '@components';
+import { DictationPrompt } from '@features/log/DictationPrompt';
 import { DreamCard } from '@features/log/DreamCard';
 import { repairRecordingPaths } from '@shared/audio/paths';
 import { getDreamRepo, type Dream } from '@shared/db';
@@ -70,6 +71,9 @@ export default function LogScreen() {
           지금 기록하기
         </AppText>
       </Pressable>
+
+      {/* 받아쓰기 권한을 낮에 한 번 묻는다. 새벽 녹음 화면은 권한을 조회만 한다(절대 규칙 7) */}
+      <DictationPrompt />
 
       {!!error && (
         <Card>

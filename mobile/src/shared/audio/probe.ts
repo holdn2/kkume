@@ -5,6 +5,7 @@ import { isExpired, loadSession } from '@shared/auth/session';
 import { getDreamRepo } from '@shared/db';
 import { syncIfSignedIn } from '@shared/sync';
 
+import { uploadFormatFor } from './format';
 import { fileSize, putFile, uploadBackend } from './upload';
 
 /**
@@ -64,7 +65,7 @@ export async function probeAudioUpload(): Promise<ProbeResult> {
   // 3. 업로드 자리
   let slot;
   try {
-    slot = await requestUploadSlot(token, target.id);
+    slot = await requestUploadSlot(token, target.id, uploadFormatFor(target.audioPath));
   } catch (e) {
     return fail(`업로드 자리 · ${describe(e)}`);
   }

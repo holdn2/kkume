@@ -32,6 +32,8 @@ const state = {
   pushLog: [],
   /** 발급한 업로드 자리 수. key 를 매번 새로 만드는 데도 쓴다 */
   uploadSlots: 0,
+  /** 업로드 자리를 달라며 앱이 보낸 형식. 안 보냈으면 null */
+  uploadFormats: [],
   /** GET /stt 를 부른 횟수. pending 인 동안은 부르지 않아야 한다(재현 테스트 H) */
   sttCalls: 0,
 };
@@ -178,19 +180,28 @@ export const s3 = new Map();
 /** 발급한 업로드 자리. dreamId → key */
 const issued = new Map();
 
-export async function requestUploadSlot(_token, dreamId) {
+/**
+ * 받는 형식 — 서버 #52 · PR #53(`AudioFormat`). 본문이 없으면 m4a(옛 앱 호환), 모르는 값은 400.
+ * 서명의 `Content-Type` 과 키 확장자가 형식을 따라간다
+ */
+const FORMATS = { m4a: 'audio/mp4', wav: 'audio/wav' };
+
+export async function requestUploadSlot(_token, dreamId, format) {
+  state.uploadFormats.push(format ?? null);
+  const fmt = format == null || format === '' ? 'm4a' : format;
+  if (!FORMATS[fmt]) throw apiError(400, 'unsupported_format');
   const r = state.rows.get(dreamId);
   if (!r || r.userId !== USER) throw apiError(404, 'dream_not_found');
   if (r.deletedAt) throw apiError(409, 'dream_deleted');
   if (r.durationMs == null) throw apiError(409, 'recording_unfinished');
   if (r.audioUrl) throw apiError(409, 'audio_exists');
   state.uploadSlots += 1;
-  const key = `audio/${USER}/${dreamId}/${state.uploadSlots}.m4a`;
+  const key = `audio/${USER}/${dreamId}/${state.uploadSlots}.${fmt}`;
   issued.set(dreamId, key);
   return {
     uploadUrl: `https://fake-s3/${key}?X-Amz-Signature=fake`,
     method: 'PUT',
-    headers: { 'Content-Type': 'audio/mp4' },
+    headers: { 'Content-Type': FORMATS[fmt] },
     key,
     expiresAt: formatInstant(serverNow() + 15n * 60n * 1_000_000n),
   };
@@ -258,11 +269,15 @@ export const server = {
   get uploadSlots() {
     return state.uploadSlots;
   },
+  get uploadFormats() {
+    return state.uploadFormats;
+  },
   reset() {
     USER = 'u1';
     issued.clear();
     s3.clear();
     state.uploadSlots = 0;
+    state.uploadFormats = [];
     state.sttCalls = 0;
     state.rows = new Map();
     state.skewMs = 0;

@@ -1,4 +1,5 @@
 import { completeUpload, fetchStt, requestUploadSlot } from '@shared/api/audio';
+import { uploadFormatFor } from '@shared/audio/format';
 import { HAS_API, isApiError } from '@shared/api/client';
 import { MAX_BATCH, pullDreams, pushDreams, type DreamPayload, type DreamView } from '@shared/api/sync';
 // 배럴(`@shared/audio`)이 아니라 파일을 직접 부른다 — 배럴은 녹음 훅과 네이티브 오디오 모듈을
@@ -271,7 +272,7 @@ async function uploadOne(repo: Repo, token: string, d: Dream): Promise<string> {
 
   let slot;
   try {
-    slot = await requestUploadSlot(token, d.id);
+    slot = await requestUploadSlot(token, d.id, uploadFormatFor(d.audioPath));
   } catch (e) {
     if (isNetwork(e)) return 'network';
     const code = (e as { code: string }).code;
