@@ -103,6 +103,21 @@ export const sessionCases = [
     },
   },
   {
+    key: 'S22',
+    title: '오디오 세션을 measurement 가 아니라 default 모드로 연다 — 마이크 자동 음량 보정이 켜진다',
+    run: async () => {
+      // 2026-09-26 기기: 받아쓰기 녹음(WAV)이 옛 m4a 보다 훨씬 작게 들렸다. iosCategory 를 안 주면 라이브러리가
+      // playAndRecord · measurement 로 연다(ExpoSpeechRecognizer.swift:625-628). measurement 는 입력 처리를
+      // 최소로 해 음량 보정이 꺼진다. expo-audio 녹음은 default 모드였다
+      const r = rig();
+      await opened(r);
+      return {
+        got: r.calls[0][1].iosCategory,
+        want: { category: 'playAndRecord', categoryOptions: ['defaultToSpeaker', 'allowBluetooth'], mode: 'default' },
+      };
+    },
+  },
+  {
     key: 'S3',
     title: '파일을 못 만들면(audiostart uri 없음) 시작이 실패하고 인식을 끊는다 — 원본 없는 기록을 만들지 않는다',
     run: async () => {
