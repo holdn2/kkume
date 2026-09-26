@@ -353,6 +353,25 @@ export const sessionCases = [
     },
   },
   {
+    key: 'S21',
+    title: '정지를 누른 직후 백그라운드로 가면(abort) 마지막 결과를 기다리지 않고 곧바로 끊는다',
+    run: async () => {
+      // 검증 레인 C 2차 B-1: 정지 약속을 재사용하느라 abort 가 라이브러리에 닿지 않았다.
+      // 앱이 정지되면 2초 유예 타이머도 돌지 않아 WAV 헤더를 못 쓴다(052 T7)
+      const r = rig();
+      await opened(r);
+      const a = r.session.stop();
+      const b = r.session.abort();
+      const before = r.names();
+      r.emit('end');
+      const [ea, eb] = await Promise.race([Promise.all([a, b]), r.flush().then(() => ['hanging', 'hanging'])]);
+      return {
+        got: [before, ea === 'hanging' ? ea : ea.uri, eb === 'hanging' ? eb : eb.uri],
+        want: [['start', 'stop', 'abort'], WAV, WAV],
+      };
+    },
+  },
+  {
     key: 'S20',
     title: '정지를 두 번 눌러도 같은 끝을 받는다 — 앞의 것이 4초 뒤에 따로 끝나지 않는다',
     run: async () => {
