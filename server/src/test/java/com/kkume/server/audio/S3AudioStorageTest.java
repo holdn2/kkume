@@ -22,7 +22,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 class S3AudioStorageTest {
 
 	private final AudioProperties properties = new AudioProperties("kkume-audio-test", "ap-southeast-2",
-			26_214_400L, Duration.ofMinutes(15), "audio/mp4");
+			26_214_400L, Duration.ofMinutes(15));
 
 	private S3AudioStorage storage() {
 		StaticCredentialsProvider creds = StaticCredentialsProvider.create(AwsBasicCredentials.create("AKIAFAKE", "fake"));
@@ -33,7 +33,7 @@ class S3AudioStorageTest {
 
 	@Test
 	void 업로드_URL에_Content_Type과_15분이_박힌다() {
-		AudioStorage.Ticket ticket = storage().presignUpload("audio/u1/d1/abc.m4a");
+		AudioStorage.Ticket ticket = storage().presignUpload("audio/u1/d1/abc.m4a", "audio/mp4");
 		URI url = URI.create(ticket.url());
 
 		assertThat(url.getHost()).isEqualTo("kkume-audio-test.s3.ap-southeast-2.amazonaws.com");

@@ -18,6 +18,7 @@ import com.kkume.server.dream.SttStatus;
 import com.kkume.server.job.Job;
 import com.kkume.server.job.JobRepository;
 import com.kkume.server.job.JobType;
+import com.kkume.server.job.SttProperties;
 
 /**
  * 오디오 업로드와 변환 상태. 계약은 문서 039(모바일 040에서 수용).
@@ -30,7 +31,7 @@ import com.kkume.server.job.JobType;
 public class AudioService {
 
 	/** 키의 마지막 조각. {@link #prepareUpload}가 만드는 모양이다 */
-	private static final Pattern RANDOM_PART = Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.m4a");
+	private static final Pattern RANDOM_PART = Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(m4a|wav)");
 
 	private final DreamRepository dreams;
 
@@ -42,17 +43,22 @@ public class AudioService {
 
 	private final TransactionTemplate transactions;
 
+	private final SttProperties stt;
+
 	public AudioService(DreamRepository dreams, JobRepository jobs, AudioStorage storage, AudioProperties properties,
-			TransactionTemplate transactions) {
+			TransactionTemplate transactions, SttProperties stt) {
 		this.dreams = dreams;
 		this.jobs = jobs;
 		this.storage = storage;
 		this.properties = properties;
 		this.transactions = transactions;
+		this.stt = stt;
 	}
 
-	/** ② 업로드 자리를 준다 */
-	public UploadTicket prepareUpload(UUID userId, String dreamId) {
+	/** ② 업로드 자리를 준다. {@code format}이 비어 있으면 m4a 다(형식을 보내지 않던 앱) */
+	public UploadTicket prepareUpload(UUID userId, String dreamId, String format) {
+		AudioFormat audioFormat = AudioFormat.of(format)
+			.orElseThrow(() -> new AudioApiException(HttpStatus.BAD_REQUEST, "unsupported_format", "받지 않는 녹음 형식입니다"));
 		Dream dream = this.transactions.execute(status -> owned(userId, this.dreams.findById(dreamId).orElse(null)));
 		notDeleted(dream);
 		if (dream.getDurationMs() == null) {
@@ -63,8 +69,8 @@ public class AudioService {
 			throw new AudioApiException(HttpStatus.CONFLICT, "audio_exists", "이미 올라간 오디오가 있습니다");
 		}
 		// 요청마다 새 키를 만든다. 오래된 URL 이 늦게 도착해도 나중 업로드를 덮지 못한다
-		String key = prefix(userId, dreamId) + UUID.randomUUID() + ".m4a";
-		AudioStorage.Ticket ticket = this.storage.presignUpload(key);
+		String key = prefix(userId, dreamId) + UUID.randomUUID() + audioFormat.extension();
+		AudioStorage.Ticket ticket = this.storage.presignUpload(key, audioFormat.contentType());
 		return new UploadTicket(ticket.url(), "PUT", ticket.headers(), key, ticket.expiresAt());
 	}
 
@@ -107,6 +113,10 @@ public class AudioService {
 			Instant now = Instant.now();
 			// 둘 다 updated_at 을 올린다 — 받기에 다시 내려가 앱이 audioUrl 이 채워진 것을 안다
 			dream.attachAudio(location, now);
+			if (!this.stt.enqueue()) {
+				// 받아쓰기는 녹음하는 동안 기기가 끝냈다(문서 048). 녹음은 대조용 사본이라 변환할 것이 없다
+				return dream.getSttStatus().code();
+			}
 			dream.changeSttStatus(SttStatus.PENDING, now);
 			this.jobs.save(new Job(JobType.STT, dreamId, userId, now));
 			return SttStatus.PENDING.code();

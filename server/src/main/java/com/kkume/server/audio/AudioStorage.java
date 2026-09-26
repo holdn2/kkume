@@ -13,7 +13,7 @@ import java.util.OptionalLong;
 public interface AudioStorage {
 
 	/** 앱이 파일을 PUT 할 URL. 서명에 {@code headers}가 들어가므로 앱은 그대로 붙여야 한다 */
-	Ticket presignUpload(String key);
+	Ticket presignUpload(String key, String contentType);
 
 	/** 올라간 파일의 크기. 없으면 비어 있다 */
 	OptionalLong sizeOf(String key);

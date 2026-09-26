@@ -35,18 +35,18 @@ class S3AudioStorage implements AudioStorage {
 	}
 
 	@Override
-	public Ticket presignUpload(String key) {
+	public Ticket presignUpload(String key, String contentType) {
 		PutObjectRequest put = PutObjectRequest.builder()
 			.bucket(this.properties.bucket())
 			.key(key)
-			.contentType(this.properties.contentType())
+			.contentType(contentType)
 			.build();
 		PresignedPutObjectRequest signed = this.presigner.presignPutObject(PutObjectPresignRequest.builder()
 			.signatureDuration(this.properties.uploadTtl())
 			.putObjectRequest(put)
 			.build());
 		// host 는 URL 에 들어 있어 앱이 따로 붙일 필요가 없다. 앱에 넘길 것은 Content-Type 하나다
-		return new Ticket(signed.url().toString(), Map.of("Content-Type", this.properties.contentType()),
+		return new Ticket(signed.url().toString(), Map.of("Content-Type", contentType),
 				signed.expiration());
 	}
 

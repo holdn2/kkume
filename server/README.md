@@ -152,12 +152,14 @@ POST /api/sync/dreams
 
 ### 오디오와 변환
 
-계약은 문서 039(모바일 040에서 그대로 수용)다. **변환 서비스는 아직 붙지 않았다** —
-그동안 작업은 줄에 쌓이기만 하고 `sttStatus` 는 `pending` 으로 남는다.
+**2026-09-24부터 받아쓰기는 기기가 녹음하면서 한다(문서 048).** 녹음은 사용자가 받아쓴 글과
+대조해 보는 사본으로만 올라온다. 그래서 **④는 변환 작업을 만들지 않는다**(`kkume.stt.enqueue=false`) —
+⑤ · ⑦ · 재시도는 서버 변환을 예비로 켜는 날(한국어 모델이 없는 폰 · Android)을 위해 남겨 둔 경로다.
+그 전의 계약은 문서 039(모바일 040에서 그대로 수용)다.
 
 ```
 ① 기록 행을 동기화로 올린다                   (위의 "동기화")
-② POST /api/dreams/{id}/audio/upload        → { uploadUrl, method, headers, key, expiresAt }
+② POST /api/dreams/{id}/audio/upload {format?} → { uploadUrl, method, headers, key, expiresAt }
 ③ 앱이 uploadUrl 에 파일을 PUT               (headers 를 그대로 붙인다)
 ④ POST /api/dreams/{id}/audio/complete {key} → { sttStatus: "pending" }
 ⑤ 서버가 변환                                 (끝나면 기록의 updated_at 이 올라 받기에 다시 내려온다)
@@ -171,12 +173,16 @@ POST /api/sync/dreams
 서버가 기록에 쓰는 것은 `audio_url` · `stt_status` · `updated_at` 뿐이다.
 
 - **①이 ②보다 먼저다.** 서버에 없는 기록에는 업로드 자리를 주지 않는다
+- **②의 `format` 은 `"m4a"`(기본) · `"wav"`.** 본문이 없으면 m4a 다 — 형식을 보내지 않던 앱이 그대로 동작한다.
+  받아쓰기 녹음은 WAV 로만 남으므로(인식 라이브러리가 WAV 만 쓴다) `"wav"` 를 보낸다. 서명의 `Content-Type` 이
+  `audio/mp4` · `audio/wav` 로, 키의 확장자가 `.m4a` · `.wav` 로 따라간다
 - **②의 `headers` 를 그대로 붙여 PUT 한다.** `Content-Type` 이 서명에 들어가 있어 다르면 S3 가 403 으로 거절한다. URL 은 15분짜리다
 - **④는 두 번 보내도 된다.** 응답이 유실돼 다시 보내면 같은 결과를 준다
 - **`audioUrl` 은 URL 이 아니다.** `s3://…` 모양의 저장 위치다. 앱은 `null` 인지만 본다
 - **`sttStatus` 는 `audioUrl` 이 있을 때만 뜻이 있다.** 음성 없는 기록도 기본값이 `pending` 이다
 - **⑦의 원문은 서버에 남는다.** 합치기 전에 폰을 잃어도 새 폰에서 다시 받는다
-- 서버는 실패하면 스스로 3번까지 다시 시도하고, 그 동안 ⑦은 `pending` 이다. 파일 한도 25MB · 자동 재시도 3번은 **가안**이다
+- 서버는 실패하면 스스로 3번까지 다시 시도하고, 그 동안 ⑦은 `pending` 이다. 파일 한도 25MB · 자동 재시도 3번은 **가안**이다.
+  25MB 는 m4a(128kbps)로 약 26분, WAV(16kHz · 16bit · mono)로 약 13분이다
 - **올린 뒤 지운 기록은 변환하지 않는다.** 작업은 줄에 그대로 남고, 앱이 되살리면(`deletedAt: null` 로 올리면)
   그때 잡혀 변환된다. S3 의 파일도 남는다 — 앱이 "나중에 되살릴 수 있다"고 안내하는 경로라서다.
   변환 도중에 지운 것은 끝까지 간다(이미 쓴 비용이다). 변환 서비스를 붙이는 날 쌓인 작업을 돌릴 때도 같다
@@ -187,6 +193,7 @@ POST /api/sync/dreams
 | `409 recording_unfinished` | 서버의 `durationMs` 가 비어 있음 | 올리지 않는다 |
 | `409 dream_deleted` | 지운 기록 — ② · ④ · 재시도 모두 | 올리지 않는다 |
 | `409 audio_exists` | 이미 다른 파일로 끝난 기록 | 올라간 것으로 본다 |
+| `400 unsupported_format` | ②의 `format` 이 `m4a` · `wav` 가 아님 | 앱 버그 |
 | `400 key_mismatch` | ④의 `key` 가 이 기록의 것이 아님 | 앱 버그 |
 | `422 upload_missing` | ④를 받았는데 파일이 없음 | ②부터 다시 |
 | `413 audio_too_large` | 25MB 초과. 서버가 지운다 | 다시 보내도 같다. 폰 원본은 남는다 |
