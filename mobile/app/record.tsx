@@ -142,6 +142,14 @@ export default function RecordModal() {
    * 그 뒤에 시작이 실패해도 **녹음기로 넘어가 녹음을 새로 켜지 않는다**(검증 레인 C 지적 1)
    */
   const stopRequested = useRef(false);
+  /**
+   * expo-audio 녹음기가 실제로 켜졌는가. 이 녹음기는 만들어지는 순간 파일 경로가 정해지고, 켜지기 전의
+   * `stop()`은 아무것도 안 하면서 그 경로를 돌려준다 — 그대로 쓰면 **없는 파일을 가리키는 0초 기록**이
+   * 생긴다(검증 레인 C 3차 2). 켜지기 전 멈춤은 경로 없이 끝내고, 켜진 뒤는 `startAudio`가 마무리한다
+   */
+  const audioLive = useRef(false);
+  /** 정지 · 되돌리기로 이 녹음을 끝냈다. 화면이 내려가기 전 틈의 백그라운드가 다시 저장하지 않게 */
+  const closed = useRef(false);
 
   const takeAudio = useCallback(
     (kind: 'stop' | 'abort' = 'stop'): Promise<Taken> => {
@@ -158,10 +166,10 @@ export default function RecordModal() {
           // 파일이 열리기 전이면 세션이 열리는 순간 끊고 그 경로로 끝낸다(session.ts)
           const end: DictationEnd = kind === 'abort' ? await dict.abort() : await dict.stop();
           out = end;
-        } else if (engine.current === 'audio') {
+        } else if (engine.current === 'audio' && audioLive.current) {
           out = await rec.stop();
         } else {
-          // 아직 어느 녹음기로 할지도 정하지 않았다. 시작하지 않고 끝낸다
+          // 아직 녹음기를 고르지 않았거나 켜지기 전이다. 경로 없이 끝낸다 — 켜진 뒤는 startAudio 가 멈춘다
           out = { uri: null, durationMs: 0 };
         }
         pendingAudio.current = out;
@@ -231,6 +239,7 @@ export default function RecordModal() {
     engine.current = 'audio';
     setEngineOn('audio');
     const uri = await rec.start();
+    audioLive.current = true;
     // 경로를 못 받는 구현이면 그냥 넘어간다. 여기서 막으면 녹음 자체가 안 된다
     if (uri) void persist({ audioPath: uri });
     // 시작하는 사이에 이미 정지 · 적기 · 백그라운드가 왔으면, 켜진 녹음을 곧바로 멈춰 파일을 마무리한다.
@@ -256,7 +265,10 @@ export default function RecordModal() {
     if (textTimer.current) clearTimeout(textTimer.current);
     textTimer.current = null;
     lastTextSave.current = Date.now();
-    void persist({ text: body(typed.current, dictated.current) }).catch(() => {});
+    // 아직 쓸 글도 기록도 없으면 쓰지 않는다 — 시작 중에 백그라운드로 가면 빈 기록이 생겼다(검증 레인 C 3차 3)
+    const next = body(typed.current, dictated.current);
+    if (!next && !dreamId.current) return;
+    void persist({ text: next }).catch(() => {});
   }, [persist]);
 
   const dictationHandlers = useCallback(
@@ -363,7 +375,7 @@ export default function RecordModal() {
     const sub = AppState.addEventListener('change', (next) => {
       // 녹음 중이 아니어도 아직 끝나지 않았으면 마무리한다 — 받아쓰기 파일이 열리기 전(시작 중)에
       // 나가면, 그 뒤에 열린 녹음이 백그라운드에서 계속 돌 수 있다(UIBackgroundModes에 audio가 있다)
-      if (next === 'background' && !pendingAudio.current) {
+      if (next === 'background' && !pendingAudio.current && !closed.current) {
         void (async () => {
           try {
             if (engine.current === 'dictation') saveDictated();
@@ -373,8 +385,15 @@ export default function RecordModal() {
             // 여기서는 화면에 남길 수 없다 — 이미 백그라운드다.
             // 시작할 때 넣어 둔 행이 있으니 경로까지 잃지는 않는다
           }
-          // 실패했어도 표시한다. 돌아왔을 때 멈춘 화면에 세워 두는 것이 더 나쁘다
-          finalizedInBg.current = true;
+          // 실패했어도 표시한다. 돌아왔을 때 멈춘 화면에 세워 두는 것이 더 나쁘다.
+          // 마무리가 늦게 끝나 그 사이 이미 돌아와 있으면(파일이 열리기를 기다린 경우) 지금 보낸다 —
+          // 'active' 이벤트는 이미 지나가 다시 오지 않는다(검증 레인 C 3차 4)
+          if (AppState.currentState === 'active') {
+            savedFeedback();
+            leave();
+          } else {
+            finalizedInBg.current = true;
+          }
           // pendingAudio는 비우지 않는다. 정지를 누르더라도 멈춘 녹음기에
           // stop()을 다시 부르지 않고 이 결과를 그대로 쓴다
         })();
@@ -412,6 +431,7 @@ export default function RecordModal() {
           // 녹음을 멈추고 붙인 뒤 텍스트로. 정지가 곧 저장이라 따로 확인하지 않는다
           const out = await takeAudio();
           await saveTaken(out);
+          closed.current = true;
           pendingAudio.current = null;
           setResolved('text');
         } else {
@@ -460,6 +480,7 @@ export default function RecordModal() {
         // 길이를 여기서 같이 넣는다. 나중에 파일에서 다시 읽으면 되지 않느냐면,
         // 목록 한 화면을 그리려고 오디오 파일 수십 개를 여는 일이 된다
         await saveTaken(out);
+        closed.current = true;
         pendingAudio.current = null;
         savedFeedback();
         leave();
