@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { Badge, Button, Card, Row, Screen, Stack, Title } from '@components';
 import { audioBackend, mmss, probeAudioUpload } from '@shared/audio';
+import { formatRecordingFacts, inspectRecordings } from '@shared/audio/inspect';
+import { repairRecordingPaths } from '@shared/audio/paths';
 import { getDreamRepo, storageBackend, type Dream } from '@shared/db';
 import { updateInfo } from '@shared/updates';
 import { API_BASE_URL, HAS_API, ping } from '@shared/api/client';
@@ -135,9 +137,16 @@ export default function DiagScreen() {
   /** 동기화를 한 번 돌리고 서버를 따로 센다. 평소 동기화는 조용히 돌아 결과가 안 남는다 */
   const doSync = () => {
     setSynced('동기화 중입니다');
-    void diagnoseSync()
-      .then((d) => {
-        setSynced(formatDiagnosis(d));
+    // 꿈 로그 탭과 같은 순서 — 녹음 경로 정리가 먼저다
+    void repairRecordingPaths()
+      .then(async (rel) => ({ rel, d: await diagnoseSync() }))
+      .then(({ rel, d }) => {
+        const relLine =
+          rel == null
+            ? '녹음 경로 정리 · 파일 모듈 없음'
+            : `녹음 경로 정리 · 옮김 ${rel.moved} · 경로 고침 ${rel.repointed} · 사라짐 ${rel.missing} · 실패 ${rel.failed}` +
+              (rel.other > 0 ? ` · 모양 다른 경로 ${rel.other}` : '');
+        setSynced(`${relLine}\n${formatDiagnosis(d)}`);
         refresh();
       })
       .catch((e) => setSynced(`실패 · ${String(e)}`));
@@ -156,6 +165,15 @@ export default function DiagScreen() {
     void probeAudioUpload()
       .then((r) => setUploaded(r.lines.join('\n')))
       .catch((e) => setUploaded(`실패 · ${String(e)}`));
+  };
+
+  /** 녹음마다 저장 길이 · 파일 유무 · 파일에서 읽은 길이를 나란히. 00:00 의 원인을 가른다 */
+  const [recFacts, setRecFacts] = useState<string | null>(null);
+  const doInspect = () => {
+    setRecFacts('녹음 점검 중입니다 — 한 건에 몇 초씩 걸립니다');
+    void inspectRecordings()
+      .then((list) => setRecFacts(list ? formatRecordingFacts(list) : '파일 · 오디오 모듈이 없는 빌드입니다'))
+      .catch((e) => setRecFacts(`실패 · ${String(e)}`));
   };
 
   return (
@@ -291,6 +309,7 @@ export default function DiagScreen() {
         {/* 누르면 실제 녹음 하나가 서버로 올라간다. 되돌리는 버튼은 두지 않는다 —
             어차피 업로드가 붙으면 올라갈 파일이고, 지우는 자리는 서버에도 아직 없다 */}
         <Button label="오디오 업로드 확인" size="sm" variant="secondary" onPress={doUpload} />
+        <Button label="녹음 점검" size="sm" variant="secondary" onPress={doInspect} />
         <Button label="새로고침" size="sm" variant="ghost" onPress={refresh} />
       </Stack>
 
@@ -312,6 +331,17 @@ export default function DiagScreen() {
               동기화 확인
             </AppText>
             <AppText size="caption">{synced}</AppText>
+          </Stack>
+        </Card>
+      )}
+
+      {!!recFacts && (
+        <Card>
+          <Stack gap={sp[2]}>
+            <AppText size="caption" color={c.fgFaint}>
+              녹음 점검
+            </AppText>
+            <AppText size="caption">{recFacts}</AppText>
           </Stack>
         </Card>
       )}

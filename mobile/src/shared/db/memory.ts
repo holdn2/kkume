@@ -164,6 +164,11 @@ export function createMemoryRepo(): DreamRepo {
       rows = rows.map((r) => (r.id === id ? { ...r, audioUploadedAt: at } : r));
     },
 
+    async setAudioPath(id: string, path: string) {
+      // updatedAt 은 그대로 둔다. 서버로 올릴 변경이 아니다(DreamRepo 주석)
+      rows = rows.map((r) => (r.id === id ? { ...r, audioPath: path } : r));
+    },
+
     async setSttStatus(id: string, status: Dream['sttStatus']) {
       // updatedAt 은 그대로 둔다. 서버로 올릴 변경이 아니다(DreamRepo 주석)
       rows = rows.map((r) => (r.id === id ? { ...r, sttStatus: status } : r));

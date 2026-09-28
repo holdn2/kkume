@@ -12,6 +12,7 @@ import { createSqliteRepo } from '@shared/db/sqlite';
 import { formatInstant, server } from '@shared/api/sync';
 import { resetSyncPosition, syncOnce } from '@shared/sync';
 import { TRANSCRIPT_MARKER } from '@shared/stt/merge';
+import { relocateRecordings } from '@shared/audio/relocate';
 
 import { resetUpload, uploadControl } from './fake-upload.mjs';
 import { openNodeDb } from './support.mjs';
@@ -26,6 +27,33 @@ async function freshRepo(kind) {
   server.reset();
   resetUpload();
   return repo;
+}
+
+/**
+ * 가짜 파일 시스템. 경로 → 크기. 녹음 경로 정리(R)가 쓴다.
+ * 폴더 이름은 iOS 모양을 흉내 낸다 — 컨테이너 UUID 가 경로 안에 박혀 있다
+ */
+function fakeFs() {
+  const fs = {
+    cacheDirectory: 'file:///var/mobile/Containers/Data/Application/NOW-UUID/Library/Caches/',
+    documentDirectory: 'file:///var/mobile/Containers/Data/Application/NOW-UUID/Documents/',
+    files: new Map(),
+    copies: 0,
+    failCopy: false,
+    async size(p) {
+      return fs.files.has(p) ? fs.files.get(p) : null;
+    },
+    async ensureDir() {},
+    async copy(from, to) {
+      if (fs.failCopy) throw new Error('copy failed');
+      fs.copies += 1;
+      fs.files.set(to, fs.files.get(from));
+    },
+    async remove(p) {
+      fs.files.delete(p);
+    },
+  };
+  return fs;
 }
 
 /** 끝난 음성 기록. 길이가 있어야 서버가 업로드 자리를 준다 */
@@ -521,6 +549,108 @@ const scenarios = [
       return {
         reproduced: !(r.uploaded === 1 && freshLocal.audioUploadedAt && !r.morePending),
         detail: `올린 파일 ${r.uploaded} · 새 녹음 표시 ${freshLocal.audioUploadedAt ? '있음' : '없음'} · 더 남음 ${r.morePending} · 못 올림 ${r.uploadIssues.map((i) => i.reason).join(',')}`,
+      };
+    },
+  },
+  // ---- R: 녹음 경로 정리 (캐시 폴더 → Documents, 바뀐 컨테이너 경로 고치기) ----
+  {
+    key: 'R1',
+    title: '캐시 폴더의 녹음은 Documents/ExpoAudio 로 옮기고 경로를 바꾸되, 동기화 대기열에는 안 넣는다',
+    async run(repo) {
+      const fs = fakeFs();
+      const src = `${fs.cacheDirectory}ExpoAudio/recording-A.m4a`;
+      fs.files.set(src, 5000);
+      const d = await voiceDream(repo, { audioPath: src });
+      await syncOnce(TOKEN); // 행을 서버에 올려 깨끗하게 만든다
+      const r = await relocateRecordings(repo, fs);
+      const after = await repo.get(d.id);
+      const dest = `${fs.documentDirectory}ExpoAudio/recording-A.m4a`;
+      const pending = (await pendingIds(repo)).includes(d.id);
+      return {
+        reproduced: !(r.moved === 1 && after.audioPath === dest && fs.files.get(dest) === 5000 && !fs.files.has(src) && !pending),
+        detail: `옮김 ${r.moved} · 경로 ${after.audioPath === dest ? 'Documents' : after.audioPath} · 원본 ${fs.files.has(src) ? '남음' : '지움'} · 대기열 ${pending ? '들어감' : '안 들어감'}`,
+      };
+    },
+  },
+  {
+    key: 'R2',
+    title: '캐시 경로인데 파일이 이미 없으면 건드리지 않고 사라진 수로만 센다',
+    async run(repo) {
+      const fs = fakeFs();
+      const src = `${fs.cacheDirectory}ExpoAudio/recording-gone.m4a`;
+      const d = await voiceDream(repo, { audioPath: src });
+      const r = await relocateRecordings(repo, fs);
+      const after = await repo.get(d.id);
+      return {
+        reproduced: !(r.missing === 1 && r.moved === 0 && after.audioPath === src),
+        detail: `사라짐 ${r.missing} · 옮김 ${r.moved} · 경로 ${after.audioPath === src ? '그대로' : after.audioPath}`,
+      };
+    },
+  },
+  {
+    key: 'R3',
+    title: '이미 Documents 에 있는 녹음은 아무것도 하지 않는다',
+    async run(repo) {
+      const fs = fakeFs();
+      const p = `${fs.documentDirectory}ExpoAudio/recording-B.m4a`;
+      fs.files.set(p, 100);
+      await voiceDream(repo, { audioPath: p });
+      const r = await relocateRecordings(repo, fs);
+      return {
+        reproduced: !(r.moved === 0 && r.repointed === 0 && fs.copies === 0),
+        detail: `옮김 ${r.moved} · 경로 고침 ${r.repointed} · 복사 ${fs.copies}번`,
+      };
+    },
+  },
+  {
+    key: 'R4',
+    title: '복사 뒤 경로를 바꾸기 전에 꺼졌던 흔적(목적지에 같은 크기)이 있으면 경로만 고치고 원본을 지운다',
+    async run(repo) {
+      const fs = fakeFs();
+      const src = `${fs.cacheDirectory}ExpoAudio/recording-C.m4a`;
+      const dest = `${fs.documentDirectory}ExpoAudio/recording-C.m4a`;
+      fs.files.set(src, 700);
+      fs.files.set(dest, 700);
+      const d = await voiceDream(repo, { audioPath: src });
+      const r = await relocateRecordings(repo, fs);
+      const after = await repo.get(d.id);
+      return {
+        reproduced: !(r.moved === 1 && after.audioPath === dest && !fs.files.has(src) && fs.copies === 0),
+        detail: `옮김 ${r.moved} · 경로 ${after.audioPath === dest ? 'Documents' : after.audioPath} · 복사 ${fs.copies}번 · 원본 ${fs.files.has(src) ? '남음' : '지움'}`,
+      };
+    },
+  },
+  {
+    key: 'R5',
+    title: '앱 컨테이너가 바뀌어 저장 경로가 틀렸지만 같은 이름 파일이 지금 Documents 에 있으면 경로를 고친다',
+    async run(repo) {
+      const fs = fakeFs();
+      const old = 'file:///var/mobile/Containers/Data/Application/OLD-UUID/Documents/ExpoAudio/recording-D.m4a';
+      const now = `${fs.documentDirectory}ExpoAudio/recording-D.m4a`;
+      fs.files.set(now, 300);
+      const d = await voiceDream(repo, { audioPath: old });
+      const r = await relocateRecordings(repo, fs);
+      const after = await repo.get(d.id);
+      return {
+        reproduced: !(r.repointed === 1 && after.audioPath === now),
+        detail: `경로 고침 ${r.repointed} · 경로 ${after.audioPath === now ? '지금 컨테이너' : after.audioPath}`,
+      };
+    },
+  },
+  {
+    key: 'R6',
+    title: '복사가 실패하면 경로도 원본도 그대로 둔다',
+    async run(repo) {
+      const fs = fakeFs();
+      const src = `${fs.cacheDirectory}ExpoAudio/recording-E.m4a`;
+      fs.files.set(src, 900);
+      fs.failCopy = true;
+      const d = await voiceDream(repo, { audioPath: src });
+      const r = await relocateRecordings(repo, fs);
+      const after = await repo.get(d.id);
+      return {
+        reproduced: !(r.failed === 1 && after.audioPath === src && fs.files.has(src)),
+        detail: `실패 ${r.failed} · 경로 ${after.audioPath === src ? '그대로' : after.audioPath} · 원본 ${fs.files.has(src) ? '남음' : '지움'}`,
       };
     },
   },

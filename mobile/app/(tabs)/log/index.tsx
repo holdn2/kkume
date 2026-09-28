@@ -5,6 +5,7 @@ import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { Card, Screen, Title } from '@components';
 import { DreamCard } from '@features/log/DreamCard';
+import { repairRecordingPaths } from '@shared/audio/paths';
 import { getDreamRepo, type Dream } from '@shared/db';
 import { syncIfSignedIn } from '@shared/sync';
 import { AppText } from '@shared/ui';
@@ -44,7 +45,11 @@ export default function LogScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
-      void syncIfSignedIn().then((r) => {
+      // 녹음 경로 정리가 먼저다 — 캐시 폴더의 녹음을 옮긴 뒤라야 업로드가 옮긴 경로로 올린다.
+      // 로그인과 상관없이 돈다. 원본을 지키는 일이라 동기화보다 앞선다(절대 규칙 2)
+      void repairRecordingPaths()
+        .then(() => syncIfSignedIn())
+        .then((r) => {
         // 뭔가 바뀌었을 때만 다시 읽는다. 매번 읽으면 목록이 한 번 깜빡인다
         if (r && (r.pulled > 0 || r.pushed > 0)) load();
       });

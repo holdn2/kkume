@@ -186,6 +186,12 @@ export interface DreamRepo {
   setSttStatus(id: string, status: SttStatus): Promise<void>;
 
   /**
+   * 녹음 파일 경로만 바꾼다. **`updatedAt`을 올리지 않는다** — 서버는 `audioPath`를 받지 않아
+   * 올릴 변경이 아니다. 캐시 폴더에서 옮기거나 바뀐 앱 컨테이너 경로를 고칠 때 쓴다(`audio/relocate.ts`)
+   */
+  setAudioPath(id: string, path: string): Promise<void>;
+
+  /**
    * 한 줄짜리 설정. 없으면 null.
    *
    * 꿈 기록과 같은 저장소에 두는 이유는 하나다 — **네이티브 모듈을 늘리지 않으려고.**
