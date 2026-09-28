@@ -223,6 +223,11 @@ export const SETTINGS = {
    * (계획서 001). 닉네임을 같이 두는 이유는 차단 목록 화면에서 서버 없이 이름을 보이려는 것이다
    */
   blockedUsers: 'blocked_users',
+  /**
+   * 꿈 로그 탭에서 「받아쓰기 켜기」를 한 번 물었는가. 값이 있으면 다시 띄우지 않는다 —
+   * 거절한 사람에게 매번 띄우면 그것도 결정이 된다(문서 052 03장)
+   */
+  dictationAsked: 'dictation_asked',
 } as const;
 
 /**

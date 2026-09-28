@@ -10,6 +10,7 @@ import { updateInfo } from '@shared/updates';
 import { API_BASE_URL, HAS_API, ping } from '@shared/api/client';
 import { googleBackend, sessionBackend } from '@shared/auth';
 import { AUTH_CONFIGURED } from '@shared/auth/google';
+import { dictationDiagnosis } from '@shared/dictation';
 import { diagnoseSync, type SyncDiagnosis } from '@shared/sync';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
@@ -78,6 +79,8 @@ export default function DiagScreen() {
   const [rows, setRows] = useState<Dream[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [storage, setStorage] = useState<string | null>(null);
+  /** 새벽 녹음이 받아쓰기로 가는지, 아니면 어느 조건에서 녹음만으로 떨어졌는지(문서 052 03장) */
+  const [dictation, setDictation] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -95,6 +98,9 @@ export default function DiagScreen() {
         setErr(null);
       })
       .catch((e) => setErr(String(e)));
+    dictationDiagnosis()
+      .then(setDictation)
+      .catch((e) => setDictation(`녹음기 판정 실패 · ${String(e)}`));
   }, [load]);
 
   useEffect(() => {
@@ -201,6 +207,11 @@ export default function DiagScreen() {
             <Badge label="가짜 — 마이크 안 씀" tone="warning" />
           )}
         </Row>
+        {!!dictation && (
+          <AppText size="caption" color={c.fgMuted}>
+            {dictation}
+          </AppText>
+        )}
         <Row>
           <AppText size="label" style={{ flex: 1 }}>
             위젯

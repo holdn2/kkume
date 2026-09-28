@@ -1,9 +1,10 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Mic } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { Card, Screen, Title } from '@components';
+import { DictationPrompt } from '@features/log/DictationPrompt';
 import { DreamCard } from '@features/log/DreamCard';
 import { repairRecordingPaths } from '@shared/audio/paths';
 import { getDreamRepo, type Dream } from '@shared/db';
@@ -22,6 +23,11 @@ import { c, hit, press, r, sp } from '@theme/token';
  */
 export default function LogScreen() {
   const router = useRouter();
+  // 새벽 녹음을 마치고 떨어진 것이면 권한 카드를 띄우지 않는다(record.tsx의 leave)
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  // 파라미터는 **이 화면의** navigation으로 지운다. 전역 router.setParams는 그 순간 포커스된 화면에
+  // 붙는데, blur는 다음 화면으로 넘어간 뒤에 와서 엉뚱한 화면의 파라미터를 지웠다(검증 레인 C 3차 1)
+  const navigation = useNavigation<{ setParams: (p: { from?: string }) => void }>();
   const [rows, setRows] = useState<Dream[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +59,12 @@ export default function LogScreen() {
         // 뭔가 바뀌었을 때만 다시 읽는다. 매번 읽으면 목록이 한 번 깜빡인다
         if (r && (r.pulled > 0 || r.pushed > 0)) load();
       });
-    }, [load]),
+      // 화면을 떠나면 `from=record`를 지운다. 탭은 파라미터를 들고 있어서, 안 지우면 앱을 다시 켤 때까지
+      // 카드가 안 뜨고 — 이미 온보딩을 지난 폰은 받아쓰기 권한을 물을 곳이 없어진다(검증 레인 C 2차 B-2)
+      return () => {
+        if (from) navigation.setParams({ from: undefined });
+      };
+    }, [load, from, navigation]),
   );
 
   return (
@@ -70,6 +81,9 @@ export default function LogScreen() {
           지금 기록하기
         </AppText>
       </Pressable>
+
+      {/* 받아쓰기 권한을 낮에 한 번 묻는다. 새벽 녹음 화면은 권한을 조회만 한다(절대 규칙 7) */}
+      {from !== 'record' && <DictationPrompt />}
 
       {!!error && (
         <Card>

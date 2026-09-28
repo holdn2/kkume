@@ -37,8 +37,15 @@ export type SttView = {
 
 const path = (dreamId: string, tail: string) => `/api/dreams/${encodeURIComponent(dreamId)}${tail}`;
 
-export function requestUploadSlot(token: string, dreamId: string) {
-  return request<UploadSlot>(path(dreamId, '/audio/upload'), { method: 'POST', token });
+/** 녹음 파일 형식(서버 #52 · PR #53). 고르는 규칙은 `@shared/audio/format` */
+export type AudioFormat = 'wav';
+
+export function requestUploadSlot(token: string, dreamId: string, format?: AudioFormat) {
+  return request<UploadSlot>(path(dreamId, '/audio/upload'), {
+    method: 'POST',
+    token,
+    ...(format ? { body: { format } } : {}),
+  });
 }
 
 /** **두 번 보내도 된다.** 응답을 못 받았으면 같은 `key` 로 다시 보내면 같은 답이 온다 */

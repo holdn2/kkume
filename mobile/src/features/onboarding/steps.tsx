@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { Button, Card, Row, Stack } from '@components';
 import { mmss, useRecorder } from '@shared/audio';
+import { askSpeechPermission, speechPermission } from '@shared/dictation';
 import { AppText } from '@shared/ui';
 import { c, r, sp } from '@theme/token';
 
@@ -73,7 +74,8 @@ export function Value() {
 }
 
 /**
- * ON-6. 리허설. **여기서 마이크 권한이 처음 요청된다.**
+ * ON-6. 리허설. **여기서 마이크 권한이 처음 요청된다.** 음성 인식 권한도 여기서 묻는다 —
+ * 마이크와 별개 권한이라, 새벽 첫 녹음에서 뜨면 절대 규칙 7이다(문서 052 03장). 낮인 지금 묻는다.
  *
  * 계획서가 이 장을 P0로 둔 이유는 권한 때문만이 아니다 —
  * 새벽에 처음 해 보면 그날 기록을 놓친다. 낮에 한 번 겪어 둬야 몸이 안다.
@@ -105,7 +107,11 @@ export function Rehearsal({ onDone }: { onDone: () => void }) {
 
   const begin = () => {
     setError(null);
-    void start()
+    // 받아쓰기 권한을 먼저. 거절해도 리허설은 그대로 간다 — 새벽에는 녹음만 하게 될 뿐이다
+    void (async () => {
+      if ((await speechPermission()) === 'undetermined') await askSpeechPermission();
+    })()
+      .then(() => start())
       .then(() => setState('recording'))
       .catch((e) => setError(String(e)));
   };

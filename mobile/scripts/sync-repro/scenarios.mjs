@@ -14,6 +14,7 @@ import { resetSyncPosition, syncOnce } from '@shared/sync';
 import { TRANSCRIPT_MARKER } from '@shared/stt/merge';
 import { relocateRecordings } from '@shared/audio/relocate';
 
+import { s3 } from './fake-server.mjs';
 import { resetUpload, uploadControl } from './fake-upload.mjs';
 import { openNodeDb } from './support.mjs';
 
@@ -552,6 +553,32 @@ const scenarios = [
       };
     },
   },
+  {
+    key: 'H11',
+    title: '받아쓰기 녹음(WAV)은 format "wav" 로, 옛 녹음(m4a)은 형식 없이 업로드 자리를 받아 둘 다 올라간다',
+    async run(repo) {
+      // 서버 #52 · PR #53: 본문이 없으면 m4a. WAV 를 형식 없이 올리면 키가 .m4a · audio/mp4 로 서명돼
+      // 파일과 형식이 어긋난 채 S3 에 남는다
+      const wav = await voiceDream(repo, { audioPath: 'file:///docs/ExpoAudio/recording_A.wav' });
+      const m4a = await voiceDream(repo, { audioPath: 'file:///docs/ExpoAudio/recording-B.m4a' });
+      const r = await syncOnce(TOKEN);
+      const keys = [...s3.keys()];
+      const wavKey = keys.find((k) => k.includes(wav.id));
+      const m4aKey = keys.find((k) => k.includes(m4a.id));
+      const formats = server.uploadFormats;
+      return {
+        reproduced: !(
+          r.uploaded === 2 &&
+          wavKey?.endsWith('.wav') &&
+          m4aKey?.endsWith('.m4a') &&
+          formats.includes('wav') &&
+          formats.includes(null) &&
+          !formats.includes('m4a')
+        ),
+        detail: `올림 ${r.uploaded} · 보낸 형식 ${JSON.stringify(formats)} · 키 ${wavKey ?? '없음'} / ${m4aKey ?? '없음'} · 못 올림 ${r.uploadIssues.map((i) => i.reason).join(',') || '없음'}`,
+      };
+    },
+  },
   // ---- R: 녹음 경로 정리 (캐시 폴더 → Documents, 바뀐 컨테이너 경로 고치기) ----
   {
     key: 'R1',
@@ -651,6 +678,25 @@ const scenarios = [
       return {
         reproduced: !(r.failed === 1 && after.audioPath === src && fs.files.has(src)),
         detail: `실패 ${r.failed} · 경로 ${after.audioPath === src ? '그대로' : after.audioPath} · 원본 ${fs.files.has(src) ? '남음' : '지움'}`,
+      };
+    },
+  },
+  {
+    key: 'R7',
+    title: '받아쓰기 녹음(WAV)도 앱 컨테이너가 바뀌면 같은 이름 파일을 찾아 경로를 고친다',
+    async run(repo) {
+      // 받아쓰기는 녹음을 Documents/ExpoAudio/recording_<UUID>.wav 로 남긴다(문서 052 T1).
+      // 다음 빌드가 컨테이너를 바꾸면 이 경로도 틀어진다 — m4a 와 같은 길로 고쳐져야 한다
+      const fs = fakeFs();
+      const old = 'file:///var/mobile/Containers/Data/Application/OLD-UUID/Documents/ExpoAudio/recording_9F2C.wav';
+      const now = `${fs.documentDirectory}ExpoAudio/recording_9F2C.wav`;
+      fs.files.set(now, 64044);
+      const d = await voiceDream(repo, { audioPath: old });
+      const r = await relocateRecordings(repo, fs);
+      const after = await repo.get(d.id);
+      return {
+        reproduced: !(r.repointed === 1 && after.audioPath === now),
+        detail: `경로 고침 ${r.repointed} · 경로 ${after.audioPath === now ? '지금 Documents' : after.audioPath}`,
       };
     },
   },
