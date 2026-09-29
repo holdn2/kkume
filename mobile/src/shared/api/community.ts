@@ -15,8 +15,17 @@
  * 계획서가 정한 것(001 커뮤니티 최소 운영 장치 · 003 COM-1~6):
  * - 신고 누적 3회면 자동으로 가려진다 — 서버 몫. 가려진 글 · 댓글은 목록에 안 내려온다
  * - 차단은 앱에서 거른다 — 차단한 사람의 글 · 댓글을 내 화면에서 숨긴다
- * - 피드의 성격은 "해몽 요청"이다
+ *
+ * **2026-09-29 사용자 결정(문서 055)으로 성격이 "해몽 요청"에서 "꿈 공유"로 바뀌었다** —
+ * *"기록 상세에서 해몽 요청하기 보다 꿈 공유하기 이런느낌으로 가고 싶은데."* 해몽은 댓글에서 자유롭게.
+ * - 올리기 전에 꿈 제목 · 내용을 고칠 수 있다(원래 기록은 그대로). 한마디(`body`)는 선택
+ * - **같은 꿈은 한 번만 공유한다.** 지우면 다시 공유할 수 있다. 공유했는지는 폰이 아니라 서버에 묻는다 —
+ *   앱을 지우거나 기기를 바꾸면 폰의 기억은 사라진다(`postForDream`)
+ * - 피드는 최신순 · 공감 많은 순. 화면의 「공감」은 필드 이름으로는 like 다(서버와 맞출 때 정한다)
  */
+
+/** 피드 · 사용자 글 목록의 정렬 */
+export type FeedSort = 'latest' | 'empathy';
 
 export type Author = {
   id: string;
@@ -30,7 +39,7 @@ export type PostSummary = {
   author: Author;
   /** 꿈 제목(복사본). 없으면 본문 첫 줄로 물러선다 */
   title: string | null;
-  /** 해몽 요청 글의 앞부분. 목록에서 두 줄까지 보인다 */
+  /** 공유한 꿈 내용의 앞부분. 목록에서 두 줄까지 보인다 */
   excerpt: string;
   /** 꿈을 꾼(기록한) 시각 — 복사할 때 함께 가져온다 */
   dreamRecordedAt: string;
@@ -57,7 +66,7 @@ export type Comment = {
 export type PostDetail = PostSummary & {
   /** 게시할 때 복사한 꿈 본문 */
   dreamText: string;
-  /** 해몽 요청 글 */
+  /** 올린 사람의 한마디. 없으면 빈 문자열 */
   body: string;
   /** 만화 이미지 주소. 만화가 붙기 전에는 null */
   comicUrl: string | null;
@@ -85,9 +94,11 @@ export type Page<T> = {
 export type NewPost = {
   /** 어느 꿈에서 왔는가. 서버는 소유만 확인하고 내용은 아래 복사본을 쓴다 */
   dreamId: string;
+  /** 사용자가 올리기 전에 고친 제목 · 꿈 내용 — 원래 기록과 다를 수 있다 */
   title: string | null;
   dreamText: string;
   dreamRecordedAt: string;
+  /** 한마디. 선택이라 빈 문자열이어도 된다 */
   body: string;
 };
 
@@ -96,9 +107,12 @@ export type NewPost = {
  * `{ code, message, status }` 를 던진다.
  */
 export interface CommunityApi {
-  feed(cursor?: string | null): Promise<Page<PostSummary>>;
+  feed(sort: FeedSort, cursor?: string | null): Promise<Page<PostSummary>>;
   post(id: string): Promise<PostDetail | null>;
+  /** 이미 공유한 꿈이면 `409 already_shared` 를 던지고, 오류에 그 글의 `postId` 가 붙는다 */
   createPost(input: NewPost): Promise<PostSummary>;
+  /** 이 꿈을 공유한 (지우지 않은) 내 글. 없으면 null — 꿈 상세의 「공유한 글 보기」가 쓴다 */
+  postForDream(dreamId: string): Promise<string | null>;
   deletePost(id: string): Promise<void>;
   /** 누르면 뒤집는다. 서버가 센 최신 값을 돌려준다 */
   setLiked(postId: string, liked: boolean): Promise<{ likeCount: number; likedByMe: boolean }>;
@@ -108,9 +122,11 @@ export interface CommunityApi {
   /** 같은 사람이 같은 대상을 두 번 신고해도 한 번으로 센다 */
   report(target: ReportTarget, reason: ReportReason): Promise<void>;
   profile(userId: string): Promise<Profile | null>;
-  userPosts(userId: string, cursor?: string | null): Promise<Page<PostSummary>>;
+  userPosts(userId: string, sort: FeedSort, cursor?: string | null): Promise<Page<PostSummary>>;
 }
 
 /** 서버와 같은 상한. 제목은 동기화의 제목 상한과 같게 둔다 */
 export const MAX_POST_BODY = 2_000;
+/** 공유할 때 고친 꿈 내용의 상한. 꿈 기록 본문 상한(`MAX_TEXT_LENGTH`)과 같게 둔다 */
+export const MAX_POST_DREAM_TEXT = 5_000;
 export const MAX_COMMENT = 500;

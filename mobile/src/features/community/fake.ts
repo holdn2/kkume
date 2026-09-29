@@ -2,6 +2,7 @@ import type {
   Author,
   Comment,
   CommunityApi,
+  FeedSort,
   NewPost,
   Page,
   PostDetail,
@@ -21,13 +22,19 @@ import { loadSession } from '@shared/auth/session';
  * 흉내 내는 규칙(계약 초안 `@shared/api/community` 주석과 같다):
  * - 신고 3회(서로 다른 사람) → 자동으로 가림. 가린 글 · 댓글은 목록에 안 나온다
  * - 답글의 답글은 `reply_depth` 로 거절
- * - 쓰기(글 · 댓글 · 좋아요 · 신고)는 로그인해야 한다
+ * - 쓰기(글 · 댓글 · 공감 · 신고)는 로그인해야 한다
+ * - 같은 꿈은 한 번만 공유한다 — 지우지 않은 내 글이 있으면 `409 already_shared`(그 글 id 포함). 지우면 다시 된다
+ * - 피드는 최신순 · 공감 많은 순(같으면 최신)
+ *
+ * 규칙은 `scripts/community`(C1~C15 · N1~N10)가 고정한다.
  */
 
 type UserRow = { id: string; nickname: string; joinedAt: string };
 type PostRow = {
   id: string;
   authorId: string;
+  /** 어느 꿈에서 왔는가. 꿈당 한 글을 가르는 데만 쓴다 — 내용은 아래 복사본이다 */
+  dreamId: string;
   title: string | null;
   dreamText: string;
   body: string;
@@ -73,6 +80,7 @@ function seed() {
     posts.set(id, {
       id,
       authorId,
+      dreamId: `seed-${id}`,
       title,
       dreamText,
       body,
@@ -121,7 +129,8 @@ function summary(p: PostRow, myId: string | null): PostSummary {
     id: p.id,
     author: author(p.authorId),
     title: p.title,
-    excerpt: p.body.slice(0, 120),
+    // 목록은 꿈 내용을 보여 준다 — 한마디는 선택이라 비어 있을 수 있다(문서 055)
+    excerpt: p.dreamText.slice(0, 120),
     dreamRecordedAt: p.dreamRecordedAt,
     hasComic: false,
     likeCount: p.likes.size,
@@ -131,8 +140,19 @@ function summary(p: PostRow, myId: string | null): PostSummary {
   };
 }
 
-function page(rows: PostRow[], cursor: string | null | undefined, myId: string | null): Page<PostSummary> {
-  const sorted = rows.filter(visible).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+const newest = (a: PostRow, b: PostRow) => b.createdAt.localeCompare(a.createdAt);
+const ORDER: Record<FeedSort, (a: PostRow, b: PostRow) => number> = {
+  latest: newest,
+  empathy: (a, b) => b.likes.size - a.likes.size || newest(a, b),
+};
+
+function page(
+  rows: PostRow[],
+  sort: FeedSort,
+  cursor: string | null | undefined,
+  myId: string | null,
+): Page<PostSummary> {
+  const sorted = rows.filter(visible).sort(ORDER[sort]);
   const start = cursor ? Number(cursor) : 0;
   const slice = sorted.slice(start, start + PAGE);
   return {
@@ -168,11 +188,18 @@ function threaded(postId: string): Comment[] {
   return out;
 }
 
+/**
+ * 이 꿈을 공유한, 지우지 않은 내 글. 신고로 가려진 글도 센다 — 가려졌다고 다시 올리게 하면
+ * 같은 꿈이 두 번 남는다
+ */
+const mineFor = (userId: string, dreamId: string) =>
+  [...posts.values()].find((p) => p.authorId === userId && p.dreamId === dreamId && !p.deleted) ?? null;
+
 export const fakeCommunity: CommunityApi = {
-  async feed(cursor) {
+  async feed(sort, cursor) {
     await wait();
     const m = await me();
-    return page([...posts.values()], cursor, m?.id ?? null);
+    return page([...posts.values()], sort, cursor, m?.id ?? null);
   },
 
   async post(id) {
@@ -193,9 +220,12 @@ export const fakeCommunity: CommunityApi = {
   async createPost(input: NewPost) {
     await wait();
     const m = await requireMe();
+    const existing = mineFor(m.id, input.dreamId);
+    if (existing) throw { ...err(409, 'already_shared', '이미 공유한 꿈입니다'), postId: existing.id };
     const row: PostRow = {
       id: nextId('p'),
       authorId: m.id,
+      dreamId: input.dreamId,
       title: input.title,
       dreamText: input.dreamText,
       body: input.body,
@@ -207,6 +237,13 @@ export const fakeCommunity: CommunityApi = {
     };
     posts.set(row.id, row);
     return summary(row, m.id);
+  },
+
+  async postForDream(dreamId) {
+    await wait();
+    const m = await me();
+    if (!m) return null;
+    return mineFor(m.id, dreamId)?.id ?? null;
   },
 
   async deletePost(id) {
@@ -279,9 +316,9 @@ export const fakeCommunity: CommunityApi = {
     return result;
   },
 
-  async userPosts(userId, cursor) {
+  async userPosts(userId, sort, cursor) {
     await wait();
     const m = await me();
-    return page([...posts.values()].filter((p) => p.authorId === userId), cursor, m?.id ?? null);
+    return page([...posts.values()].filter((p) => p.authorId === userId), sort, cursor, m?.id ?? null);
   },
 };

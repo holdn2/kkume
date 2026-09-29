@@ -21,7 +21,8 @@ type Reporting = ReportTarget & { author: Author };
 /**
  * COM-2. 글 상세.
  *
- * 순서는 계획서 003 그대로 — 본문 → 만화 → 반응 → 댓글.
+ * 순서는 계획서 003 그대로 — 꿈 → (한마디) → 만화 → 반응 → 댓글. 반응 이름은 「공감」(문서 055).
+ * 한마디는 선택이라 없으면 그 자리를 비운다.
  * **신고는 반응 줄에 늘 보인다**(숨기지 않는다 — 계획서 001 "신고 버튼만 있고 처리 주체가 없으면
  * 없는 것보다 나쁘다"의 반대편: 처리 주체(자동 가림)가 있으니 버튼도 찾기 쉬워야 한다).
  * **차단은 우상단 ⋯ 안에** 둔다. 신고와 차단을 한 번에 하고 싶으면 신고 시트에서 함께 고른다(COM-6).
@@ -213,9 +214,12 @@ export default function PostScreen() {
             </Card>
           )}
 
-          <AppText size="body" color={c.fgMuted}>
-            {post.body}
-          </AppText>
+          {/* 올린 사람의 한마디. 선택이라 없으면 그리지 않는다(문서 055) */}
+          {!!post.body.trim() && (
+            <AppText size="body" color={c.fgMuted}>
+              {post.body}
+            </AppText>
+          )}
 
           {/* 만화는 9~10주차에 붙는다. 자리만 두고 지금은 그리지 않는다(comicUrl이 늘 null) */}
 
@@ -223,10 +227,10 @@ export default function PostScreen() {
             <Pressable
               onPress={toggleLike}
               accessibilityRole="button"
-              accessibilityLabel={post.likedByMe ? '좋아요 취소' : '좋아요'}
+              accessibilityLabel={post.likedByMe ? `공감 취소 · ${post.likeCount}` : `공감 · ${post.likeCount}`}
               style={({ pressed }) => [s.action, pressed && { opacity: press }]}>
               <Heart size={18} strokeWidth={1.75} color={c.fg} fill={post.likedByMe ? c.fg : 'none'} />
-              <AppText size="label">{post.likeCount}</AppText>
+              <AppText size="label">공감 {post.likeCount}</AppText>
             </Pressable>
             <View style={{ flex: 1 }} />
             {!mine && (

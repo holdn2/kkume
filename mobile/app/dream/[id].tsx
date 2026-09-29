@@ -1,9 +1,10 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Trash2 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet } from 'react-native';
 
 import { Badge, Button, Input, Row, Screen, Sheet, Stack } from '@components';
+import { getCommunityApi } from '@features/community';
 import { PlayerBar } from '@features/log/PlayerBar';
 import { MAX_TEXT_LENGTH, MAX_TITLE_LENGTH } from '@shared/api/sync';
 import { getDreamRepo, nowIso, type Dream } from '@shared/db';
@@ -33,6 +34,25 @@ export default function DreamDetail() {
   const [saved, setSaved] = useState<{ title: string; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [askDelete, setAskDelete] = useState(false);
+  /**
+   * 이 꿈을 나눈 글. 있으면 버튼이 「공유한 글 보기」가 된다 — 같은 꿈은 한 번만 나눈다(문서 055).
+   * 폰이 아니라 서버에 묻는다. 모르는 동안(undefined)과 못 물었을 때는 「꿈 공유하기」로 둔다 —
+   * 이미 나눴다면 글쓰기 화면이 다시 확인해 그 글로 안내한다
+   */
+  const [sharedPostId, setSharedPostId] = useState<string | null | undefined>(undefined);
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+      let alive = true;
+      getCommunityApi()
+        .postForDream(id)
+        .then((pid) => alive && setSharedPostId(pid))
+        .catch(() => alive && setSharedPostId(null));
+      return () => {
+        alive = false;
+      };
+    }, [id]),
+  );
   // 화면을 연 시점의 본문 길이. 본문 입력칸 상한을 정하는 데만 쓴다(아래 Input 주석).
   // **`saved.text`로 대신하면 안 된다** — 저장할 때마다 갱신돼 상한이 계속 올라간다
   const [openedTextLength, setOpenedTextLength] = useState(0);
@@ -164,12 +184,21 @@ export default function DreamDetail() {
 
           <Stack gap={sp[2]}>
             {unread && <Button label="확인함으로 표시" onPress={review} />}
-            {/* COM-3 진입점(계획서 003 — LOG-2에서 들어가면 꿈이 미리 골라져 있다) */}
-            <Button
-              label="해몽 요청하기"
-              variant="secondary"
-              onPress={() => router.push(`/community/new?dreamId=${dream.id}`)}
-            />
+            {/* COM-3 진입점(계획서 003 — LOG-2에서 들어가면 꿈이 미리 골라져 있다).
+                2026-09-29 「해몽 요청하기」에서 「꿈 공유하기」로(문서 055). 이미 나눴으면 그 글로 */}
+            {sharedPostId ? (
+              <Button
+                label="공유한 글 보기"
+                variant="secondary"
+                onPress={() => router.push(`/community/${sharedPostId}`)}
+              />
+            ) : (
+              <Button
+                label="꿈 공유하기"
+                variant="secondary"
+                onPress={() => router.push(`/community/new?dreamId=${dream.id}`)}
+              />
+            )}
             <Pressable
               onPress={() => setAskDelete(true)}
               accessibilityRole="button"

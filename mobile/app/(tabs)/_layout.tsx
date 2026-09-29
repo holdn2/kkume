@@ -21,7 +21,7 @@ export default function TabsLayout() {
 
       <NativeTabs.Trigger name="community">
         <NativeTabs.Trigger.Icon sf={{ default: 'bubble.left.and.bubble.right', selected: 'bubble.left.and.bubble.right.fill' }} md="forum" />
-        <NativeTabs.Trigger.Label>둘러보기</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>꿈 나눔</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="quick">

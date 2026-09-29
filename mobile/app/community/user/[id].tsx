@@ -32,7 +32,7 @@ export default function ProfileScreen() {
       const api = getCommunityApi();
       api.profile(id).then(setProfile).catch(() => setProfile(null));
       api
-        .userPosts(id)
+        .userPosts(id, 'latest')
         .then((p) => setPosts(p.items))
         .catch(() => setPosts([]));
       reloadBlocked();
