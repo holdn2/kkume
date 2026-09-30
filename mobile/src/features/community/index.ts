@@ -1,20 +1,28 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import type { Author, CommunityApi } from '@shared/api/community';
+import { createHttpCommunity } from '@shared/api/communityHttp';
 import { isExpired, loadSession } from '@shared/auth/session';
 import { getDreamRepo } from '@shared/db';
 
-import { fakeCommunity } from './fake';
 import { migrateLocalBlocks } from './logic';
 
 /**
- * 커뮤니티 화면이 쓰는 것의 문 하나.
+ * 커뮤니티 화면이 쓰는 것의 문 하나. 화면은 `CommunityApi` 인터페이스만 본다.
  *
- * **지금은 가짜 서버가 답한다.** 서버에 커뮤니티 API 가 생기면 `getCommunityApi` 가 돌려주는
- * 것만 바꾼다 — 화면은 `CommunityApi` 인터페이스만 보고 있어서 그대로다.
+ * **2026-09-30부터 진짜 서버가 답한다**(서버 이슈 #60 · PR #61). 그 전에 화면을 만들던 가짜 서버
+ * (`./fake`)는 규칙 테스트(`scripts/community`)가 계속 쓴다 — 서버 테스트와 이름을 맞춰 둔 기준이다.
+ * 만료된 토큰은 넘기지 않는다: 서버는 보낸 토큰이 맞아야 해서 붙이면 읽기까지 401 이 된다(056).
  */
+const http = createHttpCommunity({
+  token: async () => {
+    const s = await loadSession();
+    return s && !isExpired(s) ? s.accessToken : null;
+  },
+});
+
 export function getCommunityApi(): CommunityApi {
-  return fakeCommunity;
+  return http;
 }
 
 /** 지금 로그인한 사람. 로그인 전이면 null — 읽기는 되고 쓰기는 로그인을 부탁한다 */

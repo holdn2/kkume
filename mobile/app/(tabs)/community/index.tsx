@@ -27,7 +27,7 @@ const SORTS: FeedSort[] = ['latest', 'empathy'];
  * 「내 글」은 예전처럼 프로필로 보내지 않고 **이 피드 안에서 걸러 본다** — 같은 정렬로 보려는 것이다.
  *
  * **차단한 사람의 글은 서버가 거른다**(서버 계약 056 04장 1) — 앱에서 거르면 쪽이 비어 온다.
- * 지금은 가짜 서버가 답한다(`@features/community/fake`).
+ * 2026-09-30부터 진짜 서버가 답한다(`@shared/api/communityHttp`).
  */
 export default function CommunityScreen() {
   const router = useRouter();
