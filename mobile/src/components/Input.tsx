@@ -49,6 +49,16 @@ export function Input({
   // 표시가 없으면 사용자는 **키보드가 먹통이 된 것으로** 읽는다
   const atLimit = showCounter && (value?.length ?? 0) >= (maxLength ?? 0);
 
+  /**
+   * **한 줄 입력도 iOS 의 여러 줄 부품(UITextView)으로 그린다.** 한 줄 부품(UITextField)은 Pretendard 의
+   * 글자와 안내 문구를 상자 가운데보다 아래에 그렸다 — 글꼴 측정값과 RN 소스로는 가운데여야 하는데
+   * 기기에서는 쏠렸고(2026-09-30), 같은 패딩의 여러 줄 입력(`growing`)은 기기에서 가운데로 확인됐다.
+   * 그래서 한 줄은 줄바꿈만 막은 여러 줄이다 — Enter 는 입력을 마치고, 붙여 넣은 줄바꿈은 공백이 된다.
+   * 긴 제목은 옆으로 밀리지 않고 아래로 늘어난다
+   */
+  const oneLine = !multiline;
+  const { onChangeText, submitBehavior, returnKeyType } = rest;
+
   return (
     <View style={{ gap: sp[2] }}>
       {!!label && (
@@ -61,7 +71,10 @@ export function Input({
         {...rest}
         value={value}
         maxLength={maxLength}
-        multiline={multiline}
+        multiline
+        submitBehavior={oneLine ? 'blurAndSubmit' : submitBehavior}
+        returnKeyType={oneLine ? (returnKeyType ?? 'done') : returnKeyType}
+        onChangeText={oneLine && onChangeText ? (t) => onChangeText(t.replace(/\r?\n/g, ' ')) : onChangeText}
         placeholderTextColor={c.fgDisabled}
         onFocus={(e) => {
           setFocused(true);
@@ -73,7 +86,7 @@ export function Input({
         }}
         style={[
           s.base,
-          multiline ? (rows === 1 ? s.growing : s.multiline) : s.single,
+          multiline && rows !== 1 ? s.multiline : s.growing,
           focused && { borderColor: c.action },
           // 에러가 포커스를 이긴다. 고쳐야 할 것이 우선이다
           !!error && { borderColor: c.danger },
@@ -120,12 +133,6 @@ const s = StyleSheet.create({
     fontSize: ty.body.fontSize,
     letterSpacing: ty.body.letterSpacing,
   },
-  /**
-   * 한 줄 입력에는 `lineHeight`를 주지 않는다.
-   * iOS의 TextInput은 lineHeight가 있으면 글자를 상자 아래쪽에 붙여 그린다.
-   * 높이를 고정하고 세로 패딩을 0으로 두면 시스템이 알아서 가운데로 맞춘다.
-   */
-  single: { height: hit.base, paddingVertical: 0 },
   // 여러 줄에서는 반대로 lineHeight가 있어야 문단이 읽힌다
   multiline: {
     minHeight: 140,
