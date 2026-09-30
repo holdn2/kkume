@@ -5,6 +5,7 @@
  * N1~N9 는 055 의 새 규칙이고 **구현보다 먼저 넣었다** — 꿈 공유 · 꿈당 한 글 · 정렬 두 가지.
  */
 import { fakeCommunity as api } from '@features/community/fake';
+import { mergePage, migrateLocalBlocks, shareDream } from '@features/community/logic';
 import { request } from '@shared/api/client';
 import { clearSession, saveSession } from '@shared/auth/session';
 
@@ -114,6 +115,90 @@ check(
 );
 const myList = (await api.userPosts('u-me', 'latest', null)).items;
 check('N10', '내 글 목록도 정렬을 받는다', myList.every((p) => p.author.id === 'u-me') && myList.length >= 1);
+
+// ---- 서버 계약 056 확정본(2026-09-30)의 규칙 — 구현보다 먼저 넣었다 ----
+const asUser = (id, nickname) =>
+  saveSession({ accessToken: 't', expiresAt: new Date(Date.now() + 3_600_000).toISOString(), user: { id, nickname } });
+
+// postForDream: 서버에 없는 꿈 · 남의 꿈이어도 null(057 03장 1)
+check('F1', '남의 꿈 id 로 물어도 null', (await api.postForDream('seed-p-teeth')) === null);
+
+// 가려진 글은 작성자에게만 hidden: true 로 보인다(056 04장 2). p-fall 은 C6 에서 세 번째 신고로 가려졌다
+await asUser('u-star', '느린별 5580');
+const starPosts = (await api.userPosts('u-star', 'latest', null)).items;
+const fallMine = starPosts.find((p) => p.id === 'p-fall');
+const fallDetail = await api.post('p-fall');
+check('F2', '가려진 내 글은 내 글 목록 · 상세에 hidden: true', fallMine?.hidden === true && fallDetail?.hidden === true);
+check('F3', '가려진 글은 작성자라도 공감 · 댓글이 404', (await code(api.setLiked('p-fall', true))) === 'post_not_found' && (await code(api.addComment('p-fall', 'x'))) === 'post_not_found');
+check('F4', '가려진 글이 있는 꿈은 postForDream 이 그 글', (await api.postForDream('seed-p-fall')) === 'p-fall');
+check('F5', '가려진 글도 지울 수 있다', (await code(api.deletePost('p-fall'))) === 'ok');
+await asUser('u-me', '나 0001');
+check('F6', '남에게는 가려진 글이 피드 · 사용자 글에서 빠지고 상세는 null', !(await api.userPosts('u-star', 'latest', null)).items.some((p) => p.id === 'p-fall') && (await api.post('p-fall')) === null);
+check('F7', '보이는 글은 hidden: false', (await api.feed('latest', null)).items.every((p) => p.hidden === false));
+
+// 만료된 로그인: 앱은 만료 토큰을 붙이지 않으므로 읽기는 되고(로그인 안 한 것처럼) 쓰기는 401(056 04장 6)
+await saveSession({ accessToken: 't', expiresAt: new Date(Date.now() - 60_000).toISOString(), user: { id: 'u-me', nickname: '나 0001' } });
+const expiredFeed = await api.feed('latest', null);
+check('F8', '만료되면 읽기는 되고 likedByMe 는 false, 쓰기는 401', expiredFeed.items.length > 0 && expiredFeed.items.every((p) => !p.likedByMe) && (await code(api.addComment('p-teeth', 'x'))) === 'unauthorized');
+await asUser('u-me', '나 0001');
+
+// 차단은 서버에(056 04장 1) — 피드와 댓글을 서버가 거르고, 프로필 · 사용자 글 · 글 상세는 거르지 않는다
+check('F9', '나를 차단하면 400 self_block', (await code(api.block('u-me'))) === 'self_block');
+await api.block('u-owl');
+const feedB = (await api.feed('latest', null)).items;
+const teethB = await api.post('p-teeth');
+const c1 = teethB?.comments.find((x) => x.id === 'c-1');
+check('F10', '차단하면 피드에서 그 사람 글이 빠진다', !feedB.some((p) => p.author.id === 'u-owl'));
+check('F11', '답글 달린 차단한 사람 댓글은 자리만(deleted)', c1?.deleted === true && c1?.body === '' && teethB.comments.some((x) => x.parentId === 'c-1'));
+check('F12', '프로필 · 사용자 글 · 글 상세는 거르지 않는다', (await api.userPosts('u-owl', 'latest', null)).items.length > 0 && (await api.post('p-sea')) !== null);
+check('F13', '차단 목록', (await api.blocks()).map((a) => a.id).join() === 'u-owl');
+await api.unblock('u-owl');
+check('F14', '풀면 다시 보인다', (await api.feed('latest', null)).items.some((p) => p.author.id === 'u-owl') && (await api.blocks()).length === 0);
+await asUser('u-cloud', '구름사탕 0356');
+check('F15', '차단은 나에게만 — 다른 사람 목록은 그대로', (await api.blocks()).length === 0);
+await asUser('u-me', '나 0001');
+
+// 닉네임 바꾸기(056 04장 4) — 2~16자, 글에 복사하지 않아 지난 글 작성자 이름도 바뀐다
+check('F16', '1자 · 17자 · 줄바꿈은 400 nickname_invalid', (await code(api.setNickname('가'))) === 'nickname_invalid' && (await code(api.setNickname('가'.repeat(17)))) === 'nickname_invalid' && (await code(api.setNickname('가\n나'))) === 'nickname_invalid');
+const renamed = await api.setNickname('  새 이름  ');
+const myPostNow = (await api.userPosts('u-me', 'latest', null)).items[0];
+check('F17', '앞뒤 공백을 자르고, 지난 글 작성자 이름도 새 이름', renamed.nickname === '새 이름' && myPostNow?.author.nickname === '새 이름', `${renamed.nickname} / ${myPostNow?.author.nickname}`);
+
+// ---- 화면 곁의 순수 도우미 ----
+const ids = mergePage([{ id: 'a' }, { id: 'b' }], [{ id: 'b' }, { id: 'c' }]).map((p) => p.id).join();
+check('H1', '다음 쪽을 붙일 때 이미 있는 id 는 버린다(공감순 순서가 움직임, 056)', ids === 'a,b,c', ids);
+
+{
+  const calls = [];
+  const fakeApi = (fails) => ({
+    createPost: async () => {
+      calls.push('post');
+      if (fails-- > 0) throw { code: 'dream_not_found', status: 404, message: '' };
+      return { id: 'p-ok' };
+    },
+  });
+  const sync = async () => {
+    calls.push('sync');
+  };
+  const ok = await shareDream(fakeApi(1), sync, newPost());
+  check('H2', '공유는 동기화 뒤에 보내고, dream_not_found 면 한 번 더 동기화하고 다시', ok.id === 'p-ok' && calls.join() === 'sync,post,sync,post', calls.join());
+  calls.length = 0;
+  const e2 = await shareDream(fakeApi(2), sync, newPost()).then(() => null, (e) => e);
+  check('H3', '두 번째도 dream_not_found 면 그 오류로 끝난다', e2?.code === 'dream_not_found' && calls.join() === 'sync,post,sync,post', calls.join());
+}
+
+{
+  const store = new Map([['blocked_users', JSON.stringify([{ id: 'u-owl', nickname: 'a' }, { id: 'u-cloud', nickname: 'b' }])]]);
+  const settings = { get: async (k) => store.get(k) ?? null, set: async (k, v) => void store.set(k, v) };
+  const failing = { block: async (id) => { if (id === 'u-cloud') throw { code: 'network', status: 0 }; } };
+  const r1 = await migrateLocalBlocks(failing, settings);
+  check('H4', '하나라도 못 올리면 로컬 차단을 비우지 않는다', r1.moved === 1 && r1.failed === 1 && JSON.parse(store.get('blocked_users')).length === 2, JSON.stringify(r1));
+  const okApi = { block: async () => {} };
+  const r2 = await migrateLocalBlocks(okApi, settings);
+  check('H5', '전부 올리면 비운다', r2.moved === 2 && r2.failed === 0 && JSON.parse(store.get('blocked_users')).length === 0, JSON.stringify(r2));
+  const r3 = await migrateLocalBlocks(okApi, settings);
+  check('H6', '비어 있으면 아무것도 하지 않는다', r3.moved === 0 && r3.failed === 0);
+}
 
 // ---- 진짜 request() 가 오류 본문의 덧붙은 필드를 넘기는가(서버 계약 056 01장) ----
 // 서버는 409 already_shared 에 postId 를 싣는다. code · message 만 남기면 화면이 그 글로 안내하지 못한다
