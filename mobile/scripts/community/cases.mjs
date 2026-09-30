@@ -7,6 +7,7 @@
 import { fakeCommunity as api } from '@features/community/fake';
 import { mergePage, migrateLocalBlocks, shareDream } from '@features/community/logic';
 import { request } from '@shared/api/client';
+import { createHttpCommunity } from '@shared/api/communityHttp';
 import { clearSession, saveSession } from '@shared/auth/session';
 
 let failed = 0;
@@ -164,6 +165,23 @@ const renamed = await api.setNickname('  새 이름  ');
 const myPostNow = (await api.userPosts('u-me', 'latest', null)).items[0];
 check('F17', '앞뒤 공백을 자르고, 지난 글 작성자 이름도 새 이름', renamed.nickname === '새 이름' && myPostNow?.author.nickname === '새 이름', `${renamed.nickname} / ${myPostNow?.author.nickname}`);
 
+// ---- 배포된 서버(9ce6fa8, 이슈 #60)가 정한 세부 — 가짜 서버를 맞추기 전에 넣었다 ----
+await asUser('u-whale', '고래 1234');
+check('S1', '없는 글 신고는 404 post_not_found', (await code(api.report({ type: 'post', id: 'p-none' }, 'spam'))) === 'post_not_found');
+check('S2', '없는 댓글 신고는 404 comment_not_found', (await code(api.report({ type: 'comment', id: 'c-none' }, 'spam'))) === 'comment_not_found');
+check('S3', '신고 사유가 틀리면 400 invalid_report(대상보다 먼저 본다)', (await code(api.report({ type: 'post', id: 'p-none' }, 'rude'))) === 'invalid_report');
+check('S4', '신고 종류가 틀리면 400 invalid_report', (await code(api.report({ type: 'user', id: 'u-owl' }, 'spam'))) === 'invalid_report');
+check('S5', '꿈을 꾼 시각이 없으면 400 missing_dream_recorded_at', (await code(api.createPost(newPost({ dreamId: 'd-s5', dreamRecordedAt: undefined })))) === 'missing_dream_recorded_at');
+check('S6', '남에게 가려진 글을 지우려 하면 403 이 아니라 404 post_not_found', (await code(api.deletePost('p-fall'))) === 'post_not_found');
+check('S7', '가려지지 않은 남의 글은 그대로 403 not_owner', (await code(api.deletePost('p-sea'))) === 'not_owner');
+{
+  const trimmed = await api.addComment('p-sea', '  좋은 꿈이네요  ');
+  check('S8', '댓글은 앞뒤 공백을 잘라 저장한다', trimmed.body === '좋은 꿈이네요', JSON.stringify(trimmed.body));
+  check('S9', '공백뿐인 댓글은 400 comment_empty', (await code(api.addComment('p-sea', '   '))) === 'comment_empty');
+  check('S10', '자른 뒤 500자를 넘으면 400 comment_too_long', (await code(api.addComment('p-sea', 'a'.repeat(501)))) === 'comment_too_long');
+  check('S11', '자른 뒤 500자면 된다', (await code(api.addComment('p-sea', ` ${'a'.repeat(500)} `))) === 'ok');
+}
+
 // ---- 화면 곁의 순수 도우미 ----
 const ids = mergePage([{ id: 'a' }, { id: 'b' }], [{ id: 'b' }, { id: 'c' }]).map((p) => p.id).join();
 check('H1', '다음 쪽을 붙일 때 이미 있는 id 는 버린다(공감순 순서가 움직임, 056)', ids === 'a,b,c', ids);
@@ -198,6 +216,17 @@ check('H1', '다음 쪽을 붙일 때 이미 있는 id 는 버린다(공감순 �
   check('H5', '전부 올리면 비운다', r2.moved === 2 && r2.failed === 0 && JSON.parse(store.get('blocked_users')).length === 0, JSON.stringify(r2));
   const r3 = await migrateLocalBlocks(okApi, settings);
   check('H6', '비어 있으면 아무것도 하지 않는다', r3.moved === 0 && r3.failed === 0);
+
+  // 가짜 서버 기간의 차단은 가짜 사용자(u-owl)를 가리킨다. 진짜 서버는 404 user_not_found 를 준다 —
+  // 이것을 실패로 세면 폰 목록이 영영 안 비고 목록을 열 때마다 다시 보낸다
+  store.set('blocked_users', JSON.stringify([{ id: 'u-owl', nickname: 'a' }, { id: 'real-1', nickname: 'b' }]));
+  const realServer = { block: async (id) => { if (id === 'u-owl') throw { code: 'user_not_found', status: 404 }; } };
+  const r4 = await migrateLocalBlocks(realServer, settings);
+  check('H7', '서버에 없는 사용자(404)는 옮길 것이 없는 것으로 보고 비운다', r4.failed === 0 && JSON.parse(store.get('blocked_users')).length === 0, JSON.stringify(r4));
+  store.set('blocked_users', JSON.stringify([{ id: 'real-1', nickname: 'b' }]));
+  const expired = { block: async () => { throw { code: 'unauthorized', status: 401 }; } };
+  const r5 = await migrateLocalBlocks(expired, settings);
+  check('H8', '401 · 네트워크는 여전히 실패로 두고 남긴다', r5.failed === 1 && JSON.parse(store.get('blocked_users')).length === 1, JSON.stringify(r5));
 }
 
 // ---- 진짜 request() 가 오류 본문의 덧붙은 필드를 넘기는가(서버 계약 056 01장) ----
@@ -219,6 +248,69 @@ check(
   apiErr?.code === 'already_shared' && apiErr?.status === 409 && apiErr?.data?.postId === 'p-42',
   JSON.stringify(apiErr),
 );
+
+// ---- 진짜 클라이언트(communityHttp)가 서버 컨트롤러(9ce6fa8)와 같은 요청을 만드는가 ----
+{
+  const sent = [];
+  let reply = () => new Response(null, { status: 204 });
+  globalThis.fetch = async (url, init) => {
+    sent.push({ url: String(url).replace(/^https?:\/\/[^/]+/, ''), method: init.method, auth: init.headers.Authorization ?? null, body: init.body ? JSON.parse(init.body) : null });
+    return reply(sent.at(-1));
+  };
+  const json = (status, obj) => new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
+  let token = null;
+  const http = createHttpCommunity({ token: async () => token });
+  const last = () => sent.at(-1);
+
+  reply = () => json(200, { items: [], nextCursor: null });
+  await http.feed('empathy', 'c/1');
+  check('W1', '피드는 GET /api/community/posts?sort&cursor, 로그인 전엔 토큰 없음', last().url === '/api/community/posts?sort=empathy&cursor=c%2F1' && last().method === 'GET' && last().auth === null, JSON.stringify(last()));
+  reply = () => json(404, { code: 'post_not_found', message: '글을 찾을 수 없습니다' });
+  check('W2', '없는 글은 null', (await http.post('p-x').catch((e) => e)) === null && last().url === '/api/community/posts/p-x');
+  reply = () => json(404, { code: 'user_not_found', message: '' });
+  check('W3', '없는 사람 프로필은 null', (await http.profile('u-x').catch((e) => e)) === null && last().url === '/api/users/u-x/profile');
+  const before = sent.length;
+  check('W4', '로그인 전 쓰기는 보내지 않고 401 unauthorized', (await code(http.addComment('p-1', 'x'))) === 'unauthorized' && sent.length === before);
+  check('W5', '로그인 전 postForDream 은 보내지 않고 null', (await http.postForDream('d-1').catch((e) => e)) === null && sent.length === before);
+
+  token = 'tok';
+  reply = () => json(200, { items: [], nextCursor: null });
+  await http.userPosts('u-1', 'latest', null);
+  check('W6', '로그인하면 읽기에도 토큰을 붙이고, 커서 없으면 쿼리에 안 넣는다', last().url === '/api/users/u-1/posts?sort=latest' && last().auth === 'Bearer tok', JSON.stringify(last()));
+  reply = () => json(201, { id: 'p-new' });
+  const input = newPost();
+  await http.createPost(input);
+  check('W7', '글쓰기는 POST 에 NewPost 그대로(dreamRecordedAt 포함)', last().method === 'POST' && last().url === '/api/community/posts' && last().body.dreamRecordedAt === input.dreamRecordedAt && last().body.dreamId === 'd-1');
+  reply = () => json(409, { code: 'already_shared', message: '이미 공유한 꿈입니다', postId: 'p-9' });
+  const dup = await http.createPost(input).then(() => null, (e) => e);
+  check('W8', '409 already_shared 의 postId 가 data 로 온다', dup?.code === 'already_shared' && dup?.data?.postId === 'p-9');
+  reply = () => json(200, { postId: 'p-7' });
+  check('W9', 'postForDream 은 GET /dreams/{id}/post 의 postId', (await http.postForDream('d 1')) === 'p-7' && last().url === '/api/community/dreams/d%201/post');
+  reply = () => json(200, { likeCount: 3, likedByMe: true });
+  await http.setLiked('p-1', true);
+  check('W10', '공감은 PUT .../like {liked}', last().method === 'PUT' && last().url === '/api/community/posts/p-1/like' && last().body.liked === true);
+  reply = () => json(201, { id: 'c-1' });
+  await http.addComment('p-1', '댓글');
+  check('W11', '댓글은 POST .../comments {body, parentId:null}', last().url === '/api/community/posts/p-1/comments' && last().body.body === '댓글' && last().body.parentId === null);
+  reply = () => new Response(null, { status: 204 });
+  await http.deleteComment('c-1');
+  check('W12', '댓글 지우기는 DELETE /api/community/comments/{id}', last().method === 'DELETE' && last().url === '/api/community/comments/c-1');
+  await http.deletePost('p-1');
+  check('W13', '글 지우기는 DELETE /api/community/posts/{id}', last().method === 'DELETE' && last().url === '/api/community/posts/p-1');
+  await http.report({ type: 'comment', id: 'c-1' }, 'spam');
+  check('W14', '신고는 POST /api/community/reports {type,id,reason}', last().url === '/api/community/reports' && JSON.stringify(last().body) === '{"type":"comment","id":"c-1","reason":"spam"}');
+  await http.block('u-2');
+  check('W15', '차단은 PUT /api/community/blocks/{id}', last().method === 'PUT' && last().url === '/api/community/blocks/u-2');
+  await http.unblock('u-2');
+  check('W16', '차단 풀기는 DELETE 같은 경로', last().method === 'DELETE' && last().url === '/api/community/blocks/u-2');
+  reply = () => json(200, { items: [{ id: 'u-3', nickname: '셋' }] });
+  const bl = await http.blocks();
+  check('W17', '차단 목록은 {items} 를 벗겨 준다', bl.length === 1 && bl[0].id === 'u-3' && last().auth === 'Bearer tok');
+  reply = () => json(200, { id: 'u-me', nickname: '새 이름', provider: 'google', createdAt: '2026-09-01T00:00:00Z' });
+  const renamed2 = await http.setNickname('새 이름');
+  check('W18', '닉네임은 PATCH /api/me, 응답을 Author 로', last().method === 'PATCH' && last().url === '/api/me' && JSON.stringify(renamed2) === '{"id":"u-me","nickname":"새 이름"}');
+  globalThis.fetch = realFetch;
+}
 
 console.log(`\n${total}개 중 실패 ${failed}개`);
 if (failed) process.exitCode = 1;

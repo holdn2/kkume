@@ -62,8 +62,11 @@ export async function migrateLocalBlocks(
     try {
       await api.block(u.id);
       moved += 1;
-    } catch {
-      failed += 1;
+    } catch (e) {
+      // 가짜 서버 기간의 차단은 가짜 사용자를 가리켜 진짜 서버가 404 user_not_found 를 준다.
+      // 옮길 사람이 없는 것이라 실패로 세지 않는다 — 세면 폰 목록이 영영 안 빈다
+      const code = (e as { code?: string })?.code;
+      if (code !== 'user_not_found' && code !== 'self_block') failed += 1;
     }
   }
   if (failed === 0) await settings.set(BLOCKED_KEY, '[]');
