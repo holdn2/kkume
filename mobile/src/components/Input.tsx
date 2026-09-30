@@ -101,6 +101,11 @@ export function Input({
 }
 
 const BORDER = 1.5;
+/**
+ * 본문 글자(Pretendard 16)가 스스로 차지하는 줄 높이. 글꼴 값이다 — hhea 위 1950 + 아래 494, 단위 2048
+ * (`assets/fonts/Pretendard-Regular.otf`). 글꼴이나 본문 크기를 바꾸면 함께 바꾼다
+ */
+const FONT_LINE = (ty.body.fontSize * (1950 + 494)) / 2048;
 
 const s = StyleSheet.create({
   base: {
@@ -129,14 +134,17 @@ const s = StyleSheet.create({
     textAlignVertical: 'top',
   },
   /**
-   * 한 줄 높이에서 시작해 늘어나는 여러 줄. 위아래 패딩을 (한 줄 높이 - 테두리 - 줄 높이) / 2 로 줘서
-   * 한 줄일 때 글자와 안내 문구가 한가운데 온다. 여섯 줄쯤에서 멈추고 안쪽이 스크롤된다
+   * 한 줄 높이에서 시작해 늘어나는 여러 줄. 여섯 줄쯤에서 멈추고 안쪽이 스크롤된다.
+   *
+   * **`lineHeight`를 주지 않는다.** RN 은 글자(Text)에는 줄 높이의 남는 공간을 위아래로 나누는 보정
+   * (`RCTApplyBaselineOffset`)을 하지만 입력칸에는 하지 않아서, iOS 가 남는 공간(26 - 19.1)을 전부 글자 위에
+   * 넣어 **글자와 안내 문구가 약 3.5pt 아래로 쏠렸다**(2026-09-30 기기 확인, RN 0.86 `RCTAttributedTextUtils.mm`).
+   * 대신 글꼴 자체의 줄 높이로 위아래 패딩을 나눠 한 줄일 때 한가운데 온다
    */
   growing: {
     minHeight: hit.base,
-    maxHeight: hit.base + ty.body.lineHeight * 5,
-    paddingVertical: (hit.base - BORDER * 2 - ty.body.lineHeight) / 2,
-    lineHeight: ty.body.lineHeight,
+    maxHeight: hit.base + FONT_LINE * 5,
+    paddingVertical: (hit.base - BORDER * 2 - FONT_LINE) / 2,
     textAlignVertical: 'top',
   },
 });
