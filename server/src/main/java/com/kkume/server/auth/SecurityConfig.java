@@ -1,5 +1,6 @@
 package com.kkume.server.auth;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.HexFormat;
@@ -9,18 +10,25 @@ import javax.crypto.spec.SecretKeySpec;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
@@ -48,10 +56,30 @@ public class SecurityConfig {
 				.requestMatchers("/health", "/health/ready").permitAll()
 				// 로그인 자체는 토큰이 없는 상태에서 부른다
 				.requestMatchers("/api/auth/**").permitAll()
+				// 커뮤니티 읽기는 로그인 없이 된다(문서 056 04장 6번). 쓰기와 "이 꿈으로 쓴 내 글"은 막는다.
+				// 토큰을 보냈는데 만료됐으면 여기서도 401 이다 — 토큰 검사는 경로와 상관없이 "보냈으면 맞아야" 한다
+				.requestMatchers(HttpMethod.GET, "/api/community/posts", "/api/community/posts/*",
+						"/api/users/*/profile", "/api/users/*/posts").permitAll()
 				.anyRequest().authenticated())
+			.exceptionHandling(e -> e.authenticationEntryPoint(SecurityConfig::unauthorized))
 			.oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {
-			}))
+			}).authenticationEntryPoint(SecurityConfig::unauthorized))
 			.build();
+	}
+
+	private static final BearerTokenAuthenticationEntryPoint BEARER = new BearerTokenAuthenticationEntryPoint();
+
+	/**
+	 * 401 에 다른 오류와 같은 모양의 본문을 붙인다. 앱은 {@code code}로 가르는데, 본문이 비면
+	 * {@code http_error}가 되어 "로그인이 필요함"과 "서버 오류"를 구분하지 못한다.
+	 * 표준 {@code WWW-Authenticate} 헤더는 그대로 둔다.
+	 */
+	private static void unauthorized(HttpServletRequest request, HttpServletResponse response,
+			AuthenticationException ex) throws IOException {
+		BEARER.commence(request, response, ex);
+		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+		response.getWriter().write("{\"code\":\"unauthorized\",\"message\":\"로그인이 필요합니다\"}");
 	}
 
 	@Bean
