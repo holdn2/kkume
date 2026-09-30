@@ -51,6 +51,31 @@ public class UserService {
 		return this.users.findById(id).orElseThrow(() -> new UnknownUserException(id));
 	}
 
+	/**
+	 * 닉네임을 바꾼다(문서 056 04장 4번). 앞뒤 공백을 자르고 2~16자, 줄바꿈 · 제어문자는 안 된다.
+	 *
+	 * <p>중복을 막지 않는다 — 닉네임은 식별자가 아니다({@link NicknameGenerator}).
+	 * 글에 복사하지 않으므로 지난 글 · 댓글의 작성자 이름도 새 이름으로 보인다.
+	 */
+	@Transactional
+	public User rename(UUID id, String nickname) {
+		String name = nickname == null ? "" : nickname.strip();
+		int length = name.codePointCount(0, name.length());
+		if (length < 2 || length > 16 || name.codePoints().anyMatch(Character::isISOControl)) {
+			throw new InvalidNicknameException();
+		}
+		User user = get(id);
+		user.rename(name, Instant.now());
+		return user;
+	}
+
+	public static class InvalidNicknameException extends RuntimeException {
+
+		public InvalidNicknameException() {
+			super("닉네임은 2~16자이고 줄바꿈을 쓸 수 없습니다");
+		}
+	}
+
 	/** 토큰은 유효한데 그 사용자가 없다. 계정을 지웠거나 DB가 갈린 상황이다. */
 	public static class UnknownUserException extends RuntimeException {
 
