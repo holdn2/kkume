@@ -1,12 +1,21 @@
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Avatar, Button, Card, Input, Row, Screen, Sheet, Stack } from '@components';
-import { getCommunityApi, setBlocked, useBlocked, useMe } from '@features/community';
+import {
+  getCommunityApi,
+  setBlocked,
+  useBlocked,
+  useInvalidateCommunity,
+  useMe,
+  useProfile,
+  useRefetchOnFocus,
+  useUserPosts,
+} from '@features/community';
 import { PostCard } from '@features/community/PostCard';
-import { NICKNAME_MAX, NICKNAME_MIN, type PostSummary, type Profile } from '@shared/api/community';
+import { NICKNAME_MAX, NICKNAME_MIN } from '@shared/api/community';
 import { loadSession, saveSession } from '@shared/auth/session';
 import { AppText } from '@shared/ui';
 import { c, hit, sp } from '@theme/token';
@@ -24,33 +33,21 @@ export default function ProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const me = useMe();
-  const blocked = useBlocked();
-  const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
-  const [posts, setPosts] = useState<PostSummary[]>([]);
+  const meId = me === undefined ? undefined : (me?.id ?? null);
+  const blocked = useBlocked(meId);
+  const invalidate = useInvalidateCommunity();
   const [renaming, setRenaming] = useState(false);
   const [nickname, setNickname] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const { reload: reloadBlocked } = blocked;
 
-  const loadProfile = useCallback(() => {
-    getCommunityApi()
-      .profile(id)
-      .then(setProfile)
-      .catch(() => setProfile(null));
-  }, [id]);
-
-  useFocusEffect(
-    useCallback(() => {
-      const api = getCommunityApi();
-      loadProfile();
-      api
-        .userPosts(id, 'latest')
-        .then((p) => setPosts(p.items))
-        .catch(() => setPosts([]));
-      reloadBlocked();
-    }, [id, loadProfile, reloadBlocked]),
-  );
+  // 프로필과 글 목록은 캐시에 있다. 글은 끝에 닿으면 다음 쪽을 잇는다
+  const profileQuery = useProfile(meId, id);
+  // 없는 사람이거나 못 불러왔으면 null — 화면이 "찾을 수 없는 사람"으로 그린다
+  const profile = profileQuery.error ? null : profileQuery.data;
+  const posts = useUserPosts(meId, id, 'latest');
+  useRefetchOnFocus(profileQuery.refetch, profileQuery.isStale);
+  useRefetchOnFocus(posts.refetch, posts.isStale);
 
   const trimmed = nickname.trim();
   const nicknameOk = trimmed.length >= NICKNAME_MIN && trimmed.length <= NICKNAME_MAX && !nickname.includes('\n');
@@ -65,7 +62,8 @@ export default function ProfileScreen() {
         const s = await loadSession();
         if (s) await saveSession({ ...s, user: { ...s.user, nickname: a.nickname } });
         setRenaming(false);
-        loadProfile();
+        // 닉네임은 글에 복사하지 않아 피드 · 댓글의 이름도 바뀐다 — 커뮤니티 캐시를 전부 다시 읽는다
+        void invalidate();
       })
       .catch((e) => setRenameError(e?.message ?? '바꾸지 못했습니다'))
       .finally(() => setSaving(false));
@@ -77,7 +75,7 @@ export default function ProfileScreen() {
   const toggleBlock = () => {
     if (!profile) return;
     setBlocked({ id: profile.id, nickname: profile.nickname }, !isBlocked)
-      .then(reloadBlocked)
+      .then(() => invalidate())
       .catch(() => {});
   };
 
@@ -137,12 +135,10 @@ export default function ProfileScreen() {
     </Stack>
   );
 
-  const shown = posts;
-
   return (
     <Screen>
       <FlatList
-        data={profile ? shown : []}
+        data={profile ? posts.items : []}
         keyExtractor={(p) => p.id}
         ListHeaderComponent={header}
         ListHeaderComponentStyle={{ marginBottom: sp[4] }}
@@ -150,8 +146,21 @@ export default function ProfileScreen() {
         ItemSeparatorComponent={() => <View style={{ height: sp[3] }} />}
         contentContainerStyle={{ paddingBottom: sp[8] }}
         showsVerticalScrollIndicator={false}
+        onEndReached={posts.more}
+        onEndReachedThreshold={0.4}
+        refreshControl={
+          <RefreshControl
+            refreshing={posts.isRefetching && !posts.isFetchingNextPage}
+            onRefresh={() => {
+              void profileQuery.refetch();
+              void posts.refetch();
+            }}
+            tintColor={c.fgMuted}
+          />
+        }
+        ListFooterComponent={posts.isFetchingNextPage ? <ActivityIndicator color={c.fgMuted} style={{ padding: sp[4] }} /> : null}
         ListEmptyComponent={
-          profile ? (
+          profile && !posts.isPending ? (
             <Card>
               <AppText size="caption" color={c.fgFaint}>
                 아직 올린 글이 없습니다.

@@ -12,6 +12,12 @@ type Props = TextInputProps & {
   error?: string;
   /** `maxLength`와 같이 줬을 때만 글자수를 센다 */
   counter?: boolean;
+  /**
+   * 여러 줄 입력의 처음 높이(줄 수). 기본은 문단용 높이다. **`1`이면 한 줄 입력과 같은 높이에서
+   * 가운데 맞춰 시작하고 치는 만큼 늘어난다** — 댓글처럼 대개 한 줄인 곳에서 빈 상자 위쪽에
+   * 안내 문구가 붙어 보이던 것을 막는다(2026-09-30)
+   */
+  rows?: 1;
 };
 
 /**
@@ -29,6 +35,7 @@ export function Input({
   error,
   counter,
   multiline,
+  rows,
   style,
   onFocus,
   onBlur,
@@ -66,7 +73,7 @@ export function Input({
         }}
         style={[
           s.base,
-          multiline ? s.multiline : s.single,
+          multiline ? (rows === 1 ? s.growing : s.multiline) : s.single,
           focused && { borderColor: c.action },
           // 에러가 포커스를 이긴다. 고쳐야 할 것이 우선이다
           !!error && { borderColor: c.danger },
@@ -93,12 +100,14 @@ export function Input({
   );
 }
 
+const BORDER = 1.5;
+
 const s = StyleSheet.create({
   base: {
     backgroundColor: c.surface,
     borderRadius: r.control,
     // 평소에도 테두리를 두되 투명하게 둔다. 포커스 때 레이아웃이 밀리지 않는다
-    borderWidth: 1.5,
+    borderWidth: BORDER,
     borderColor: 'transparent',
     paddingHorizontal: sp[4],
     color: c.fg,
@@ -116,6 +125,17 @@ const s = StyleSheet.create({
   multiline: {
     minHeight: 140,
     paddingVertical: sp[3],
+    lineHeight: ty.body.lineHeight,
+    textAlignVertical: 'top',
+  },
+  /**
+   * 한 줄 높이에서 시작해 늘어나는 여러 줄. 위아래 패딩을 (한 줄 높이 - 테두리 - 줄 높이) / 2 로 줘서
+   * 한 줄일 때 글자와 안내 문구가 한가운데 온다. 여섯 줄쯤에서 멈추고 안쪽이 스크롤된다
+   */
+  growing: {
+    minHeight: hit.base,
+    maxHeight: hit.base + ty.body.lineHeight * 5,
+    paddingVertical: (hit.base - BORDER * 2 - ty.body.lineHeight) / 2,
     lineHeight: ty.body.lineHeight,
     textAlignVertical: 'top',
   },

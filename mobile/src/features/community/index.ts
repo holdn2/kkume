@@ -1,42 +1,39 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 
-import type { Author, CommunityApi } from '@shared/api/community';
-import { createHttpCommunity } from '@shared/api/communityHttp';
+import type { Author } from '@shared/api/community';
 import { isExpired, loadSession } from '@shared/auth/session';
 import { getDreamRepo } from '@shared/db';
 
+import { getCommunityApi } from './api';
 import { migrateLocalBlocks } from './logic';
+import { communityKeys } from './queries';
+
+export { getCommunityApi } from './api';
 
 /**
- * 커뮤니티 화면이 쓰는 것의 문 하나. 화면은 `CommunityApi` 인터페이스만 본다.
- *
- * **2026-09-30부터 진짜 서버가 답한다**(서버 이슈 #60 · PR #61). 그 전에 화면을 만들던 가짜 서버
- * (`./fake`)는 규칙 테스트(`scripts/community`)가 계속 쓴다 — 서버 테스트와 이름을 맞춰 둔 기준이다.
- * 만료된 토큰은 넘기지 않는다: 서버는 보낸 토큰이 맞아야 해서 붙이면 읽기까지 401 이 된다(056).
+ * 지금 로그인한 사람. 로그인 전이면 null — 읽기는 되고 쓰기는 로그인을 부탁한다.
+ * **만료된 세션은 로그인 전으로 본다** — 마이 탭(`@shared/auth`)과 같다. 토큰을 붙이지 않으니 쓰기가 401 이 된다.
+ * **화면에 돌아올 때마다 다시 읽는다** — 탭 화면은 떠 있는 채로 남아서, 마이 탭에서 로그인하고 돌아와도
+ * 처음 읽은 "로그인 전"이 그대로 남았다
  */
-const http = createHttpCommunity({
-  token: async () => {
-    const s = await loadSession();
-    return s && !isExpired(s) ? s.accessToken : null;
-  },
-});
-
-export function getCommunityApi(): CommunityApi {
-  return http;
-}
-
-/** 지금 로그인한 사람. 로그인 전이면 null — 읽기는 되고 쓰기는 로그인을 부탁한다 */
 export function useMe(): Author | null | undefined {
   const [me, setMe] = useState<Author | null | undefined>(undefined);
-  useEffect(() => {
-    let alive = true;
-    void loadSession().then((s) => {
-      if (alive) setMe(s ? { id: s.user.id, nickname: s.user.nickname } : null);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      void loadSession().then((s) => {
+        if (!alive) return;
+        const next = s && !isExpired(s) ? { id: s.user.id, nickname: s.user.nickname } : null;
+        // 같은 사람이면 그대로 둔다 — 새 객체를 넣으면 이것에 걸린 쿼리 키 · effect 가 다시 돈다
+        setMe((prev) => (prev?.id === next?.id && prev?.nickname === next?.nickname && prev !== undefined ? prev : next));
+      });
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
   return me;
 }
 
@@ -68,17 +65,28 @@ export async function setBlocked(user: Author, blocked: boolean): Promise<void> 
   else await api.unblock(user.id);
 }
 
-export function useBlocked() {
-  const [list, setList] = useState<Blocked>([]);
-  const reload = useCallback(() => {
-    void readBlocked()
-      .then(setList)
-      .catch(() => {});
-  }, []);
-  useEffect(reload, [reload]);
+export function useBlocked(meId: string | null | undefined) {
+  const query = useQuery({
+    queryKey: communityKeys.blocks(meId),
+    queryFn: readBlocked,
+    enabled: !!meId,
+  });
+  const list = meId ? (query.data ?? []) : [];
   const ids = new Set(list.map((u) => u.id));
-  return { list, ids, reload };
+  return { list, ids, reload: query.refetch };
 }
 
 export { mergePage, shareDream } from './logic';
+export {
+  communityKeys,
+  patchPostEverywhere,
+  queryClient,
+  useFeed,
+  useInvalidateCommunity,
+  usePost,
+  usePostForDream,
+  useProfile,
+  useRefetchOnFocus,
+  useUserPosts,
+} from './queries';
 export { ago, REPORT_REASONS } from './format';

@@ -1,12 +1,12 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { ChevronDown, Plus } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Button, Card, Radio, Row, Screen, Segmented, Sheet, Stack, Title } from '@components';
-import { getCommunityApi, mergePage, useBlocked, useMe } from '@features/community';
+import { useFeed, useMe, useRefetchOnFocus, useUserPosts } from '@features/community';
 import { PostCard } from '@features/community/PostCard';
-import type { FeedSort, PostSummary } from '@shared/api/community';
+import type { FeedSort } from '@shared/api/community';
 import { AppText } from '@shared/ui';
 import { c, hit, press, r, sp } from '@theme/token';
 
@@ -32,57 +32,19 @@ const SORTS: FeedSort[] = ['latest', 'empathy'];
 export default function CommunityScreen() {
   const router = useRouter();
   const me = useMe();
+  const meId = me === undefined ? undefined : (me?.id ?? null);
   const [scope, setScope] = useState<Scope>('all');
   const [sort, setSort] = useState<FeedSort>('latest');
   const [sorting, setSorting] = useState(false);
-  const [items, setItems] = useState<PostSummary[] | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [needLogin, setNeedLogin] = useState(false);
-  // 차단 목록은 여기서 거르지 않는다(서버가 거름, 056). 읽기만 해서 폰에 남은 옛 차단을 서버로 옮긴다
-  const { reload: reloadBlocked } = useBlocked();
 
-  const fetchPage = useCallback(
-    (from: string | null) => {
-      const api = getCommunityApi();
-      if (scope === 'mine') {
-        // 로그인 전에는 내 글이 없다. 전환 자체를 막으므로 여기 오지 않지만, 오더라도 빈 목록이다
-        if (!me) return Promise.resolve({ items: [], nextCursor: null });
-        return api.userPosts(me.id, sort, from);
-      }
-      return api.feed(sort, from);
-    },
-    [scope, sort, me],
-  );
-
-  const load = useCallback(() => {
-    fetchPage(null)
-      .then((page) => {
-        setItems(page.items);
-        setCursor(page.nextCursor);
-        setError(null);
-      })
-      .catch((e) => setError(e?.message ?? String(e)));
-  }, [fetchPage]);
-
-  // 글을 쓰거나 차단하고 돌아오면 반영돼 있어야 한다. 전환 · 정렬을 바꿔도 다시 읽는다(load 가 바뀐다)
-  useFocusEffect(
-    useCallback(() => {
-      load();
-      reloadBlocked();
-    }, [load, reloadBlocked]),
-  );
-
-  const more = () => {
-    if (!cursor) return;
-    fetchPage(cursor)
-      .then((page) => {
-        // 공감순은 쪽 사이에 순서가 움직여 같은 글이 또 올 수 있다 — id 로 거른다(056)
-        setItems((prev) => mergePage(prev ?? [], page.items));
-        setCursor(page.nextCursor);
-      })
-      .catch(() => {});
-  };
+  // 쪽은 TanStack Query 가 들고 있다 — 탭을 오가도 다시 받지 않고, 끝에 닿으면 다음 쪽을 잇는다.
+  // 「내 글」은 로그인했을 때만 켠다. 로그아웃하면 전체로 돌아간다
+  const mine = scope === 'mine' && !!me;
+  const all = useFeed(meId, sort);
+  const minePages = useUserPosts(meId, mine ? meId : null, sort);
+  const list = mine ? minePages : all;
+  useRefetchOnFocus(list.refetch, list.isStale);
 
   const guard = (go: () => void) => {
     if (me) go();
@@ -97,7 +59,9 @@ export default function CommunityScreen() {
     setScope(next);
   };
 
-  const visible = items ?? [];
+  // 로그인 여부를 읽는 동안(쿼리가 아직 꺼져 있음)도 불러오는 중이다 — 빈 목록 문구가 깜빡이지 않게
+  const loading = list.isPending;
+  const error = list.error ? ((list.error as { message?: string }).message ?? String(list.error)) : null;
 
   return (
     <Screen>
@@ -121,13 +85,14 @@ export default function CommunityScreen() {
         </Pressable>
       </Row>
 
-      {needLogin && (
+      {/* 로그인 전인 것과 로그인했는데 글이 없는 것을 가른다 — 로그인 전이면 늘 이 카드가 보인다 */}
+      {(me === null || needLogin) && (
         <Card>
           <AppText size="label" weight="semibold">
-            로그인하면 꿈을 나누고 공감할 수 있습니다
+            로그인이 필요합니다
           </AppText>
           <AppText size="caption" color={c.fgFaint}>
-            읽기는 로그인 없이 됩니다. 로그인은 마이 탭에서 합니다.
+            꿈을 나누고 공감하려면 마이 탭에서 로그인해 주세요. 올라온 글은 로그인 없이도 볼 수 있습니다.
           </AppText>
           <Button label="마이 탭으로" size="sm" variant="secondary" onPress={() => router.push('/my')} />
         </Card>
@@ -138,24 +103,35 @@ export default function CommunityScreen() {
           <AppText size="caption" color={c.danger}>
             {error}
           </AppText>
+          <Button label="다시 불러오기" size="sm" variant="secondary" onPress={() => void list.refetch()} />
         </Card>
       )}
 
       <FlatList
-        data={visible}
+        data={list.items}
         keyExtractor={(p) => p.id}
         renderItem={({ item }) => <PostCard post={item} onPress={() => router.push(`/community/${item.id}`)} />}
         ItemSeparatorComponent={() => <View style={{ height: sp[3] }} />}
         // 떠 있는 공유 버튼에 마지막 글이 가리지 않게 아래를 비운다
         contentContainerStyle={{ paddingBottom: hit.base + sp[10] }}
         showsVerticalScrollIndicator={false}
-        onEndReached={more}
+        onEndReached={list.more}
         onEndReachedThreshold={0.4}
+        refreshControl={
+          <RefreshControl
+            refreshing={list.isRefetching && !list.isFetchingNextPage}
+            onRefresh={() => void list.refetch()}
+            tintColor={c.fgMuted}
+          />
+        }
+        ListFooterComponent={list.isFetchingNextPage ? <ActivityIndicator color={c.fgMuted} style={{ padding: sp[4] }} /> : null}
         ListEmptyComponent={
-          items === null ? null : (
+          loading ? (
+            <ActivityIndicator color={c.fgMuted} style={{ padding: sp[6] }} />
+          ) : error ? null : (
             <Card>
               <AppText size="body" color={c.fgMuted}>
-                {scope === 'mine' ? '아직 나눈 꿈이 없습니다.' : '아직 올라온 꿈이 없습니다.'}
+                {mine ? '아직 나눈 꿈이 없습니다.' : '아직 올라온 꿈이 없습니다.'}
               </AppText>
               <AppText size="caption" color={c.fgFaint}>
                 아래 버튼이나 꿈 상세의 「꿈 공유하기」로 나눠 보세요.

@@ -1,15 +1,26 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { ChevronLeft, CornerDownRight, Flag, Heart, MoreHorizontal, X } from 'lucide-react-native';
-import { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Button, Card, Input, Radio, Row, Screen, Sheet, Stack, Switch } from '@components';
-import { ago, getCommunityApi, REPORT_REASONS, setBlocked, useBlocked, useMe } from '@features/community';
+import {
+  ago,
+  getCommunityApi,
+  patchPostEverywhere,
+  REPORT_REASONS,
+  setBlocked,
+  useBlocked,
+  useInvalidateCommunity,
+  useMe,
+  usePost,
+  useRefetchOnFocus,
+} from '@features/community';
 import {
   MAX_COMMENT,
   type Author,
   type Comment,
-  type PostDetail,
   type ReportReason,
   type ReportTarget,
 } from '@shared/api/community';
@@ -30,13 +41,34 @@ type Reporting = ReportTarget & { author: Author };
  * 댓글은 **답글까지 한 단계**(2026-09-24 사용자 결정, 에브리타임 방식). 답글에는 [답글]이 없다.
  */
 export default function PostScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const router = useRouter();
-  const me = useMe();
-  const blocked = useBlocked();
+  const navigation = useNavigation();
 
-  const [post, setPost] = useState<PostDetail | null | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * 방금 공유한 글에서 뒤로 가면 **꿈 나눔 피드로** 간다(2026-09-30 사용자 요청). 꿈 상세에서 공유를 시작했으면
+   * 그냥 뒤로는 꿈 상세로 돌아가서, 올린 글이 피드에 어떻게 보이는지를 보지 못한다.
+   * 쓸어 넘기는 뒤로도 같은 곳으로 가야 해서 그 제스처는 끈다
+   */
+  const fromShare = from === 'share';
+  useEffect(() => {
+    if (fromShare) navigation.setOptions({ gestureEnabled: false });
+  }, [fromShare, navigation]);
+  const goBack = () => {
+    if (fromShare) router.dismissTo('/community');
+    else router.back();
+  };
+  const me = useMe();
+  const meId = me === undefined ? undefined : (me?.id ?? null);
+  const blocked = useBlocked(meId);
+  const qc = useQueryClient();
+  const invalidate = useInvalidateCommunity();
+
+  // 글은 캐시에 있다 — 피드에서 들어올 때마다 새로 받지 않고, 쓰고 나면 무효로 해 다시 읽는다
+  const query = usePost(meId, id);
+  const post = query.data;
+  const error = query.error ? ((query.error as { message?: string }).message ?? String(query.error)) : null;
+  useRefetchOnFocus(query.refetch, query.isStale);
   const [notice, setNotice] = useState<string | null>(null);
 
   const [draft, setDraft] = useState('');
@@ -48,18 +80,6 @@ export default function PostScreen() {
   const [reason, setReason] = useState<ReportReason>('sexual');
   const [alsoBlock, setAlsoBlock] = useState(false);
 
-  const load = useCallback(() => {
-    getCommunityApi()
-      .post(id)
-      .then((p) => {
-        setPost(p);
-        setError(null);
-      })
-      .catch((e) => setError(e?.message ?? String(e)));
-  }, [id]);
-
-  useEffect(load, [load]);
-
   /** 쓰기는 로그인해야 한다. 안 했으면 이유를 말하고 멈춘다 */
   const needMe = (): Author | null => {
     if (me) return me;
@@ -70,13 +90,16 @@ export default function PostScreen() {
   const toggleLike = () => {
     if (!post || !needMe()) return;
     const next = !post.likedByMe;
-    // 먼저 그려 놓고 서버 값으로 맞춘다. 실패하면 되돌린다
-    setPost({ ...post, likedByMe: next, likeCount: post.likeCount + (next ? 1 : -1) });
+    // 먼저 그려 놓고 서버 값으로 맞춘다 — 글 상세와 캐시에 든 목록을 함께. 실패하면 되돌린다
+    const undo = patchPostEverywhere(qc, post.id, (p) => ({
+      likedByMe: next,
+      likeCount: p.likeCount + (next === p.likedByMe ? 0 : next ? 1 : -1),
+    }));
     getCommunityApi()
       .setLiked(post.id, next)
-      .then((r) => setPost((p) => (p ? { ...p, ...r } : p)))
+      .then((r) => patchPostEverywhere(qc, post.id, () => r))
       .catch((e) => {
-        setPost((p) => (p ? { ...p, likedByMe: !next, likeCount: p.likeCount + (next ? -1 : 1) } : p));
+        undo();
         setNotice(e?.message ?? '반영하지 못했습니다');
       });
   };
@@ -90,7 +113,7 @@ export default function PostScreen() {
       .then(() => {
         setDraft('');
         setReplyTo(null);
-        load();
+        void invalidate();
       })
       .catch((e) => setNotice(e?.message ?? '댓글을 달지 못했습니다'))
       .finally(() => setSending(false));
@@ -99,7 +122,7 @@ export default function PostScreen() {
   const removeComment = (cm: Comment) => {
     getCommunityApi()
       .deleteComment(cm.id)
-      .then(load)
+      .then(() => invalidate())
       .catch((e) => setNotice(e?.message ?? '지우지 못했습니다'));
   };
 
@@ -108,7 +131,10 @@ export default function PostScreen() {
     setMenuOpen(false);
     getCommunityApi()
       .deletePost(post.id)
-      .then(() => router.back())
+      .then(() => {
+        void invalidate();
+        goBack();
+      })
       .catch((e) => setNotice(e?.message ?? '지우지 못했습니다'));
   };
 
@@ -116,12 +142,11 @@ export default function PostScreen() {
     setMenuOpen(false);
     setBlocked(user, true)
       .then(() => {
-        blocked.reload();
+        void invalidate();
         // 글쓴이를 차단했으면 피드로 돌아간다 — 피드에서는 서버가 그 사람 글을 뺀다
         if (post && user.id === post.author.id) router.back();
         else {
           setNotice(`${user.nickname}님을 차단했습니다. 그 사람의 글과 댓글이 보이지 않습니다.`);
-          load();
         }
       })
       .catch((e) => setNotice(e?.message ?? '차단하지 못했습니다'));
@@ -130,7 +155,7 @@ export default function PostScreen() {
   const unblockAuthor = () => {
     if (!post) return;
     setBlocked(post.author, false)
-      .then(blocked.reload)
+      .then(() => invalidate())
       .catch((e) => setNotice(e?.message ?? '차단을 풀지 못했습니다'));
   };
 
@@ -150,14 +175,14 @@ export default function PostScreen() {
       .then(async () => {
         if (alsoBlock) {
           await setBlocked(target.author, true);
-          blocked.reload();
+          void invalidate();
           if (post && target.author.id === post.author.id) {
             router.back();
             return;
           }
         }
         setNotice('신고했습니다. 여러 사람이 신고하면 자동으로 가려집니다.');
-        load();
+        void invalidate();
       })
       .catch((e) => setNotice(e?.message ?? '신고하지 못했습니다'));
   };
@@ -165,7 +190,7 @@ export default function PostScreen() {
   if (post === undefined) {
     return (
       <Screen>
-        <Back onPress={() => router.back()} />
+        <Back onPress={goBack} />
         <AppText color={c.fgMuted}>{error ?? '불러오는 중입니다'}</AppText>
       </Screen>
     );
@@ -174,7 +199,7 @@ export default function PostScreen() {
   if (post === null) {
     return (
       <Screen>
-        <Back onPress={() => router.back()} />
+        <Back onPress={goBack} />
         <AppText color={c.fgMuted}>지워졌거나 가려진 글입니다.</AppText>
       </Screen>
     );
@@ -189,150 +214,149 @@ export default function PostScreen() {
 
   return (
     <Screen scroll>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Stack gap={sp[5]}>
-          <Row>
-            <Back onPress={() => router.back()} />
-            <View style={{ flex: 1 }} />
-            <Pressable
-              onPress={() => setMenuOpen(true)}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="더 보기"
-              style={({ pressed }) => pressed && { opacity: press }}>
-              <MoreHorizontal size={22} strokeWidth={1.75} color={c.fgMuted} />
-            </Pressable>
-          </Row>
-
-          {post.hidden && (
-            <Card>
-              <AppText size="label" weight="semibold">
-                신고가 쌓여 다른 사람에게는 보이지 않습니다
-              </AppText>
-              <AppText size="caption" color={c.fgFaint}>
-                공감과 댓글을 더 받지 않습니다. 오른쪽 위 메뉴에서 지울 수 있고, 지우면 같은 꿈을 다시 나눌 수 있습니다.
-              </AppText>
-            </Card>
-          )}
-
-          {authorBlocked && (
-            <Card>
-              <AppText size="label" weight="semibold">
-                차단한 사용자의 글입니다
-              </AppText>
-              <Button label="차단 풀기" size="sm" variant="secondary" onPress={unblockAuthor} />
-            </Card>
-          )}
-
+      <Stack gap={sp[5]}>
+        <Row>
+          <Back onPress={goBack} />
+          <View style={{ flex: 1 }} />
           <Pressable
-            onPress={() => router.push(`/community/user/${post.author.id}`)}
+            onPress={() => setMenuOpen(true)}
+            hitSlop={12}
             accessibilityRole="button"
+            accessibilityLabel="더 보기"
             style={({ pressed }) => pressed && { opacity: press }}>
-            <AppText size="caption" color={c.fgMuted}>
-              {post.author.nickname} · {ago(post.createdAt)}
-            </AppText>
+            <MoreHorizontal size={22} strokeWidth={1.75} color={c.fgMuted} />
           </Pressable>
+        </Row>
 
-          <Stack gap={sp[2]}>
-            <AppText size="heading" weight="bold">
-              {post.title?.trim() || '제목 없는 꿈'}
+        {post.hidden && (
+          <Card>
+            <AppText size="label" weight="semibold">
+              신고가 쌓여 다른 사람에게는 보이지 않습니다
             </AppText>
             <AppText size="caption" color={c.fgFaint}>
-              {post.dreamRecordedAt.slice(0, 10)}에 꾼 꿈
+              공감과 댓글을 더 받지 않습니다. 오른쪽 위 메뉴에서 지울 수 있고, 지우면 같은 꿈을 다시 나눌 수 있습니다.
             </AppText>
-          </Stack>
+          </Card>
+        )}
 
-          {!!post.dreamText.trim() && (
-            <Card>
-              <AppText size="body">{post.dreamText}</AppText>
-            </Card>
-          )}
-
-          {/* 올린 사람의 한마디. 선택이라 없으면 그리지 않는다(문서 055) */}
-          {!!post.body.trim() && (
-            <AppText size="body" color={c.fgMuted}>
-              {post.body}
-            </AppText>
-          )}
-
-          {/* 만화는 9~10주차에 붙는다. 자리만 두고 지금은 그리지 않는다(comicUrl이 늘 null) */}
-
-          <Row gap={sp[5]}>
-            <Pressable
-              onPress={toggleLike}
-              disabled={closed}
-              accessibilityRole="button"
-              accessibilityLabel={post.likedByMe ? `공감 취소 · ${post.likeCount}` : `공감 · ${post.likeCount}`}
-              style={({ pressed }) => [s.action, pressed && { opacity: press }]}>
-              <Heart size={18} strokeWidth={1.75} color={c.fg} fill={post.likedByMe ? c.fg : 'none'} />
-              <AppText size="label">공감 {post.likeCount}</AppText>
-            </Pressable>
-            <View style={{ flex: 1 }} />
-            {!mine && (
-              <Pressable
-                onPress={() => openReport({ type: 'post', id: post.id, author: post.author })}
-                accessibilityRole="button"
-                style={({ pressed }) => [s.action, pressed && { opacity: press }]}>
-                <Flag size={16} strokeWidth={1.75} color={c.fgFaint} />
-                <AppText size="caption" color={c.fgFaint}>
-                  신고
-                </AppText>
-              </Pressable>
-            )}
-          </Row>
-
-          {!!notice && (
-            <Card>
-              <AppText size="caption" color={c.fgMuted}>
-                {notice}
-              </AppText>
-            </Card>
-          )}
-
-          <Stack gap={sp[4]}>
+        {authorBlocked && (
+          <Card>
             <AppText size="label" weight="semibold">
-              댓글 {thread.filter((x) => !x.comment.deleted).length}
+              차단한 사용자의 글입니다
             </AppText>
-            {thread.map(({ comment, placeholder }) => (
-              <CommentItem
-                key={comment.id}
-                comment={comment}
-                placeholder={placeholder}
-                mine={me?.id === comment.author.id}
-                onReply={() => {
-                  if (!needMe()) return;
-                  setReplyTo(comment);
-                }}
-                onReport={() => openReport({ type: 'comment', id: comment.id, author: comment.author })}
-                onDelete={() => removeComment(comment)}
-              />
-            ))}
-          </Stack>
+            <Button label="차단 풀기" size="sm" variant="secondary" onPress={unblockAuthor} />
+          </Card>
+        )}
 
-          {!closed && (
-          <Stack gap={sp[2]}>
-            {replyTo && (
-              <Row gap={sp[2]}>
-                <AppText size="caption" color={c.fgMuted} style={{ flex: 1 }}>
-                  {replyTo.author.nickname}님에게 답글
-                </AppText>
-                <Pressable onPress={() => setReplyTo(null)} hitSlop={12} accessibilityRole="button" accessibilityLabel="답글 취소">
-                  <X size={16} strokeWidth={1.75} color={c.fgFaint} />
-                </Pressable>
-              </Row>
-            )}
-            <Input
-              placeholder={replyTo ? '답글을 적어 주세요' : '해몽이나 비슷한 경험을 나눠 주세요'}
-              value={draft}
-              onChangeText={setDraft}
-              maxLength={MAX_COMMENT}
-              multiline
-            />
-            <Button label={sending ? '올리는 중' : '댓글 달기'} size="sm" disabled={!draft.trim() || sending} onPress={send} />
-          </Stack>
-          )}
+        <Pressable
+          onPress={() => router.push(`/community/user/${post.author.id}`)}
+          accessibilityRole="button"
+          style={({ pressed }) => pressed && { opacity: press }}>
+          <AppText size="caption" color={c.fgMuted}>
+            {post.author.nickname} · {ago(post.createdAt)}
+          </AppText>
+        </Pressable>
+
+        <Stack gap={sp[2]}>
+          <AppText size="heading" weight="bold">
+            {post.title?.trim() || '제목 없는 꿈'}
+          </AppText>
+          <AppText size="caption" color={c.fgFaint}>
+            {post.dreamRecordedAt.slice(0, 10)}에 꾼 꿈
+          </AppText>
         </Stack>
-      </KeyboardAvoidingView>
+
+        {!!post.dreamText.trim() && (
+          <Card>
+            <AppText size="body">{post.dreamText}</AppText>
+          </Card>
+        )}
+
+        {/* 올린 사람의 한마디. 선택이라 없으면 그리지 않는다(문서 055) */}
+        {!!post.body.trim() && (
+          <AppText size="body" color={c.fgMuted}>
+            {post.body}
+          </AppText>
+        )}
+
+        {/* 만화는 9~10주차에 붙는다. 자리만 두고 지금은 그리지 않는다(comicUrl이 늘 null) */}
+
+        <Row gap={sp[5]}>
+          <Pressable
+            onPress={toggleLike}
+            disabled={closed}
+            accessibilityRole="button"
+            accessibilityLabel={post.likedByMe ? `공감 취소 · ${post.likeCount}` : `공감 · ${post.likeCount}`}
+            style={({ pressed }) => [s.action, pressed && { opacity: press }]}>
+            <Heart size={18} strokeWidth={1.75} color={c.fg} fill={post.likedByMe ? c.fg : 'none'} />
+            <AppText size="label">공감 {post.likeCount}</AppText>
+          </Pressable>
+          <View style={{ flex: 1 }} />
+          {!mine && (
+            <Pressable
+              onPress={() => openReport({ type: 'post', id: post.id, author: post.author })}
+              accessibilityRole="button"
+              style={({ pressed }) => [s.action, pressed && { opacity: press }]}>
+              <Flag size={16} strokeWidth={1.75} color={c.fgFaint} />
+              <AppText size="caption" color={c.fgFaint}>
+                신고
+              </AppText>
+            </Pressable>
+          )}
+        </Row>
+
+        {!!notice && (
+          <Card>
+            <AppText size="caption" color={c.fgMuted}>
+              {notice}
+            </AppText>
+          </Card>
+        )}
+
+        <Stack gap={sp[4]}>
+          <AppText size="label" weight="semibold">
+            댓글 {thread.filter((x) => !x.comment.deleted).length}
+          </AppText>
+          {thread.map(({ comment, placeholder }) => (
+            <CommentItem
+              key={comment.id}
+              comment={comment}
+              placeholder={placeholder}
+              mine={me?.id === comment.author.id}
+              onReply={() => {
+                if (!needMe()) return;
+                setReplyTo(comment);
+              }}
+              onReport={() => openReport({ type: 'comment', id: comment.id, author: comment.author })}
+              onDelete={() => removeComment(comment)}
+            />
+          ))}
+        </Stack>
+
+        {!closed && (
+        <Stack gap={sp[2]}>
+          {replyTo && (
+            <Row gap={sp[2]}>
+              <AppText size="caption" color={c.fgMuted} style={{ flex: 1 }}>
+                {replyTo.author.nickname}님에게 답글
+              </AppText>
+              <Pressable onPress={() => setReplyTo(null)} hitSlop={12} accessibilityRole="button" accessibilityLabel="답글 취소">
+                <X size={16} strokeWidth={1.75} color={c.fgFaint} />
+              </Pressable>
+            </Row>
+          )}
+          <Input
+            placeholder={replyTo ? '답글을 적어 주세요' : '해몽이나 비슷한 경험을 나눠 주세요'}
+            value={draft}
+            onChangeText={setDraft}
+            maxLength={MAX_COMMENT}
+            multiline
+            rows={1}
+          />
+          <Button label={sending ? '올리는 중' : '댓글 달기'} size="sm" disabled={!draft.trim() || sending} onPress={send} />
+        </Stack>
+        )}
+      </Stack>
 
       <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)}>
         <Stack gap={sp[2]}>

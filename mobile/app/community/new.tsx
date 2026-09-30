@@ -1,10 +1,10 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 
 import { Button, Card, Input, Radio, Row, Screen, Sheet, Stack, Switch, Title } from '@components';
-import { getCommunityApi, shareDream, useMe } from '@features/community';
+import { getCommunityApi, shareDream, useInvalidateCommunity, useMe } from '@features/community';
 import { isApiError } from '@shared/api/client';
 import { MAX_POST_BODY, MAX_POST_DREAM_TEXT } from '@shared/api/community';
 import { MAX_TITLE_LENGTH } from '@shared/api/sync';
@@ -32,6 +32,7 @@ export default function NewPostScreen() {
   const { dreamId } = useLocalSearchParams<{ dreamId?: string }>();
   const router = useRouter();
   const me = useMe();
+  const invalidate = useInvalidateCommunity();
 
   const [dreams, setDreams] = useState<Dream[] | null>(null);
   const [picked, setPicked] = useState<Dream | null>(null);
@@ -91,7 +92,12 @@ export default function NewPostScreen() {
       dreamRecordedAt: picked.recordedAt,
       body: body.trim(),
     })
-      .then((p) => router.replace(`/community/${p.id}`))
+      .then((p) => {
+        // 피드 · 꿈 상세의 「공유한 글 보기」가 새 글을 보게 캐시를 무효로 한다.
+        // 글 화면은 이 화면을 대신하고, 거기서 뒤로 가면 꿈 나눔 피드로 간다(`from=share`)
+        void invalidate();
+        router.replace(`/community/${p.id}?from=share`);
+      })
       .catch((e) => {
         // 그 사이 다른 곳에서 공유했으면 그 글로 안내한다. 글 id 는 오류 본문에 덧붙어 온다(서버 계약 056)
         const postId = isApiError(e) && e.code === 'already_shared' ? e.data?.postId : undefined;
@@ -127,121 +133,119 @@ export default function NewPostScreen() {
 
   return (
     <Screen scroll>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Stack gap={sp[5]}>
-          {back}
-          <Title>꿈 공유하기</Title>
+      <Stack gap={sp[5]}>
+        {back}
+        <Title>꿈 공유하기</Title>
 
-          <Stack gap={sp[2]}>
-            <AppText size="label" weight="semibold">
-              어떤 꿈을 나눌까요?
-            </AppText>
-            {dreams !== null && dreams.length === 0 ? (
-              <Card>
-                <AppText size="body" color={c.fgMuted}>
-                  아직 남긴 꿈이 없습니다. 꿈을 먼저 기록한 뒤 나눌 수 있습니다.
-                </AppText>
-              </Card>
-            ) : picked ? (
-              <Card>
-                <Stack gap={sp[1]}>
-                  <AppText size="label" weight="semibold" numberOfLines={1}>
-                    {dreamTitle(picked)}
-                  </AppText>
-                  <AppText size="caption" color={c.fgFaint}>
-                    {picked.recordedAt.slice(0, 10)}에 꾼 꿈
-                  </AppText>
-                </Stack>
-              </Card>
-            ) : null}
-            {(dreams?.length ?? 0) > 0 && (
-              <Button
-                label={picked ? '다른 꿈 고르기' : '꿈 고르기'}
-                size="sm"
-                variant={picked ? 'ghost' : 'secondary'}
-                onPress={() => setChoosing(true)}
-              />
-            )}
-          </Stack>
-
-          {picked && sharedPostId && (
+        <Stack gap={sp[2]}>
+          <AppText size="label" weight="semibold">
+            어떤 꿈을 나눌까요?
+          </AppText>
+          {dreams !== null && dreams.length === 0 ? (
             <Card>
-              <AppText size="label" weight="semibold">
-                이미 나눈 꿈입니다
+              <AppText size="body" color={c.fgMuted}>
+                아직 남긴 꿈이 없습니다. 꿈을 먼저 기록한 뒤 나눌 수 있습니다.
               </AppText>
-              <AppText size="caption" color={c.fgFaint}>
-                같은 꿈은 한 번만 나눌 수 있습니다. 올린 글을 지우면 다시 나눌 수 있습니다.
-              </AppText>
-              <Button
-                label="공유한 글 보기"
-                size="sm"
-                variant="secondary"
-                onPress={() => router.replace(`/community/${sharedPostId}`)}
-              />
             </Card>
-          )}
-
-          {picked && sharedPostId === null && (
-            <>
-              <Stack gap={sp[3]}>
-                <Input
-                  label="제목"
-                  value={title}
-                  onChangeText={setTitle}
-                  placeholder="제목 없이도 나눌 수 있습니다"
-                  maxLength={MAX_TITLE_LENGTH}
-                />
-                <Input
-                  label="꿈 내용"
-                  multiline
-                  value={dreamText}
-                  onChangeText={setDreamText}
-                  placeholder="나누고 싶은 꿈 내용을 적어 주세요 (필수)"
-                  maxLength={Math.max(MAX_POST_DREAM_TEXT, openedTextLength)}
-                />
+          ) : picked ? (
+            <Card>
+              <Stack gap={sp[1]}>
+                <AppText size="label" weight="semibold" numberOfLines={1}>
+                  {dreamTitle(picked)}
+                </AppText>
                 <AppText size="caption" color={c.fgFaint}>
-                  올리기 전에 실명이나 사적인 부분은 빼도 됩니다. 원래 꿈 기록은 바뀌지 않고, 녹음은 올라가지 않습니다.
+                  {picked.recordedAt.slice(0, 10)}에 꾼 꿈
                 </AppText>
               </Stack>
-
-              <Input
-                label="한마디 (선택)"
-                multiline
-                placeholder="하고 싶은 말이 있으면 적어 주세요"
-                value={body}
-                onChangeText={setBody}
-                maxLength={MAX_POST_BODY}
-                counter
-              />
-
-              {/* 만화는 9~10주차에 붙는다. 자리를 보여 두되 꺼 둔다 */}
-              <Switch value={false} onChange={() => {}} disabled label="만화 함께 올리기" description="만화 기능이 생기면 붙일 수 있습니다" />
-            </>
-          )}
-
-          {!!error && (
-            <AppText size="caption" color={c.danger}>
-              {error}
-            </AppText>
-          )}
-
-          {picked && sharedPostId === null && (
-            <Stack gap={sp[2]}>
-              {/* 게시 바로 앞에서 누구 이름으로 올라가는지 보인다(계획서 003 — 실명 노출 방지).
-                  닉네임 변경은 서버에 아직 없어 [변경]을 두지 않는다(문서 049 03장 4번) */}
-              <Row>
-                <AppText size="caption" color={c.fgMuted} style={{ flex: 1 }}>
-                  <AppText size="caption" weight="semibold">
-                    {me?.nickname ?? '…'}
-                  </AppText>
-                  (으)로 올라갑니다
-                </AppText>
-              </Row>
-              <Button label={posting ? '올리는 중' : '공유하기'} disabled={!canPost} onPress={post} />
-            </Stack>
+            </Card>
+          ) : null}
+          {(dreams?.length ?? 0) > 0 && (
+            <Button
+              label={picked ? '다른 꿈 고르기' : '꿈 고르기'}
+              size="sm"
+              variant={picked ? 'ghost' : 'secondary'}
+              onPress={() => setChoosing(true)}
+            />
           )}
         </Stack>
-      </KeyboardAvoidingView>
+
+        {picked && sharedPostId && (
+          <Card>
+            <AppText size="label" weight="semibold">
+              이미 나눈 꿈입니다
+            </AppText>
+            <AppText size="caption" color={c.fgFaint}>
+              같은 꿈은 한 번만 나눌 수 있습니다. 올린 글을 지우면 다시 나눌 수 있습니다.
+            </AppText>
+            <Button
+              label="공유한 글 보기"
+              size="sm"
+              variant="secondary"
+              onPress={() => router.replace(`/community/${sharedPostId}`)}
+            />
+          </Card>
+        )}
+
+        {picked && sharedPostId === null && (
+          <>
+            <Stack gap={sp[3]}>
+              <Input
+                label="제목"
+                value={title}
+                onChangeText={setTitle}
+                placeholder="제목 없이도 나눌 수 있습니다"
+                maxLength={MAX_TITLE_LENGTH}
+              />
+              <Input
+                label="꿈 내용"
+                multiline
+                value={dreamText}
+                onChangeText={setDreamText}
+                placeholder="나누고 싶은 꿈 내용을 적어 주세요 (필수)"
+                maxLength={Math.max(MAX_POST_DREAM_TEXT, openedTextLength)}
+              />
+              <AppText size="caption" color={c.fgFaint}>
+                올리기 전에 실명이나 사적인 부분은 빼도 됩니다. 원래 꿈 기록은 바뀌지 않고, 녹음은 올라가지 않습니다.
+              </AppText>
+            </Stack>
+
+            <Input
+              label="한마디 (선택)"
+              multiline
+              placeholder="하고 싶은 말이 있으면 적어 주세요"
+              value={body}
+              onChangeText={setBody}
+              maxLength={MAX_POST_BODY}
+              counter
+            />
+
+            {/* 만화는 9~10주차에 붙는다. 자리를 보여 두되 꺼 둔다 */}
+            <Switch value={false} onChange={() => {}} disabled label="만화 함께 올리기" description="만화 기능이 생기면 붙일 수 있습니다" />
+          </>
+        )}
+
+        {!!error && (
+          <AppText size="caption" color={c.danger}>
+            {error}
+          </AppText>
+        )}
+
+        {picked && sharedPostId === null && (
+          <Stack gap={sp[2]}>
+            {/* 게시 바로 앞에서 누구 이름으로 올라가는지 보인다(계획서 003 — 실명 노출 방지).
+                닉네임 변경은 서버에 아직 없어 [변경]을 두지 않는다(문서 049 03장 4번) */}
+            <Row>
+              <AppText size="caption" color={c.fgMuted} style={{ flex: 1 }}>
+                <AppText size="caption" weight="semibold">
+                  {me?.nickname ?? '…'}
+                </AppText>
+                (으)로 올라갑니다
+              </AppText>
+            </Row>
+            <Button label={posting ? '올리는 중' : '공유하기'} disabled={!canPost} onPress={post} />
+          </Stack>
+        )}
+      </Stack>
 
       <Sheet visible={choosing} onClose={() => setChoosing(false)} title="꿈 고르기">
         <Stack gap={sp[1]}>
