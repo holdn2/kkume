@@ -48,6 +48,11 @@ export type ApiError = {
   /** 서버가 주는 사람용 문구. 이미 존댓말이라 그대로 보여줘도 된다 */
   message: string;
   status: number;
+  /**
+   * 오류 본문 전체. `code` · `message` 밖에 덧붙는 필드가 여기 온다 — 예: `409 already_shared`의 `postId`
+   * (서버 계약 056). 전에는 두 필드만 남기고 버려서 화면이 그 글로 안내하지 못했다
+   */
+  data?: Record<string, unknown>;
 };
 
 export function isApiError(e: unknown): e is ApiError {
@@ -82,9 +87,10 @@ export async function request<T>(
     if (!res.ok) {
       // 서버는 { code, message } 를 준다. 형식이 아닌 응답(프록시 오류 · HTML 에러 페이지)도
       // 오므로 파싱 실패를 따로 받는다 — 여기서 던지면 원인이 통째로 가려진다
-      let body: { code?: string; message?: string } = {};
+      let body: { code?: string; message?: string } & Record<string, unknown> = {};
       try {
-        body = (await res.json()) as typeof body;
+        const parsed: unknown = await res.json();
+        if (parsed && typeof parsed === 'object') body = parsed as typeof body;
       } catch {
         /* 형식이 아닌 응답. 아래에서 status로만 말한다 */
       }
@@ -92,6 +98,7 @@ export async function request<T>(
         code: body.code ?? 'http_error',
         message: body.message ?? '서버와 통신하지 못했습니다',
         status: res.status,
+        data: body,
       } as ApiError;
     }
 

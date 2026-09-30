@@ -40,7 +40,22 @@ export function Screen({
   return (
     <View
       style={{ flex: 1, paddingTop: top, paddingBottom: bottom, backgroundColor: night ? c.night : c.bg }}>
-      {scroll ? <ScrollView contentContainerStyle={{ flexGrow: 1 }}>{inner}</ScrollView> : inner}
+      {/* 키보드는 여기서 한 번에 받는다(2026-09-30). 화면마다 KeyboardAvoidingView 를 ScrollView **안에** 두던 것은
+          키보드 높이만큼 끝에 여백을 붙일 뿐 입력칸을 끌어올리지 못했다. iOS ScrollView 의
+          `automaticallyAdjustKeyboardInsets`는 키보드만큼 안쪽 여백을 주고 **포커스된 입력칸을 보이는 곳까지 올린다**
+          (RN 0.86 `RCTScrollViewComponentView` `_keyboardWillChangeFrame`). `handled`는 키보드가 떠 있을 때
+          버튼을 한 번에 누르게 한다 — 없으면 첫 탭은 키보드만 내린다 */}
+      {scroll ? (
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          automaticallyAdjustKeyboardInsets
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive">
+          {inner}
+        </ScrollView>
+      ) : (
+        inner
+      )}
     </View>
   );
 }

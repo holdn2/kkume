@@ -1,12 +1,27 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Animated, Modal, PanResponder, Pressable, StyleSheet, View } from 'react-native';
+import {
+  Animated,
+  Dimensions,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  PanResponder,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@shared/ui';
 import { c, dur, r, sp } from '@theme/token';
 
-/** 첫 프레임에도 화면 밖에 있도록 넉넉히 잡은 값 */
-const HIDDEN = 700;
+/**
+ * 첫 프레임과 닫힌 뒤에 화면 밖에 있도록 — 시트가 화면 높이까지 커질 수 있어(최대 높이, 2026-09-30)
+ * 고정값(700)이면 긴 시트의 윗부분이 닫힌 뒤에도 남았다가 툭 사라졌다
+ */
+const HIDDEN = Dimensions.get('window').height;
 /** 이만큼 끌어내리면 닫는다 */
 const CLOSE_DY = 90;
 /** 짧게 튕겨도 닫히도록 — 거리를 못 채워도 속도가 빠르면 닫을 뜻이다 */
@@ -75,6 +90,16 @@ type BodyProps = Omit<Props, 'visible'> & { closing: boolean; onExited: () => vo
 function SheetBody({ closing, onExited, onClose, title, description, children }: BodyProps) {
   const insets = useSafeAreaInsets();
   const [y] = useState(() => new Animated.Value(HIDDEN));
+  // 키보드가 떠 있으면 홈 인디케이터 여백이 필요 없다 — 두면 시트와 키보드 사이가 크게 벌어진다
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardUp(true));
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardUp(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (closing) {
@@ -125,30 +150,50 @@ function SheetBody({ closing, onExited, onClose, title, description, children }:
         accessibilityLabel="닫기"
       />
 
-      <Animated.View
-        style={[s.sheet, { paddingBottom: insets.bottom + sp[5], transform: [{ translateY: y }] }]}>
-        <View style={s.gripArea} accessibilityLabel="아래로 끌어 닫기" {...pan.panHandlers}>
-          <View style={s.grip} />
-        </View>
-
-        {(!!title || !!description) && (
-          <View style={{ gap: sp[2], paddingBottom: sp[2] }}>
-            {!!title && (
-              <AppText size="heading" weight="semibold">
-                {title}
-              </AppText>
-            )}
-            {!!description && <AppText color={c.fgMuted}>{description}</AppText>}
+      {/* 시트 안의 입력칸이 키보드에 가리지 않게 시트째 올린다(2026-09-30 닉네임 바꾸기에서 가렸다).
+          Modal 은 따로 뜬 창이라 화면 쪽 처리가 닿지 않아 여기서 받는다.
+          위쪽은 상태바 아래까지만 — 내용이 길면 그 높이에서 멈추고 안쪽이 스크롤된다 */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={[s.avoid, { paddingTop: insets.top + sp[4] }]}
+        pointerEvents="box-none">
+        <Animated.View
+          style={[
+            s.sheet,
+            { paddingBottom: keyboardUp ? sp[4] : insets.bottom + sp[5], transform: [{ translateY: y }] },
+          ]}>
+          <View style={s.gripArea} accessibilityLabel="아래로 끌어 닫기" {...pan.panHandlers}>
+            <View style={s.grip} />
           </View>
-        )}
-        {children}
-      </Animated.View>
+
+          {(!!title || !!description) && (
+            <View style={{ gap: sp[2], paddingBottom: sp[2] }}>
+              {!!title && (
+                <AppText size="heading" weight="semibold">
+                  {title}
+                </AppText>
+              )}
+              {!!description && <AppText color={c.fgMuted}>{description}</AppText>}
+            </View>
+          )}
+          {/* 항목이 많으면(꿈 고르기) 시트가 화면 위로 넘쳐 위쪽을 볼 수 없었다(2026-09-30).
+              시트 높이는 화면까지로 막고 안쪽만 스크롤한다. 짧으면 내용 높이 그대로다 */}
+          <ScrollView
+            style={s.body}
+            bounces={false}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}>
+            {children}
+          </ScrollView>
+        </Animated.View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'flex-end' },
+  root: { flex: 1 },
+  avoid: { flex: 1, justifyContent: 'flex-end' },
   fill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   sheet: {
     backgroundColor: c.surface,
@@ -156,7 +201,9 @@ const s = StyleSheet.create({
     borderTopRightRadius: r.sheet,
     paddingHorizontal: sp[5],
     gap: sp[3],
+    maxHeight: '100%',
   },
+  body: { flexGrow: 0, flexShrink: 1 },
   // 손잡이 자체는 작지만 잡는 자리는 넓게 준다. 새벽에 4px을 조준할 수는 없다
   gripArea: { height: 40, alignItems: 'center', justifyContent: 'center', marginHorizontal: -sp[5] },
   grip: { width: 36, height: 4, borderRadius: r.chip, backgroundColor: c.line },

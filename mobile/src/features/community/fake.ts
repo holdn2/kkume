@@ -1,16 +1,24 @@
-import type {
-  Author,
-  Comment,
-  CommunityApi,
-  NewPost,
-  Page,
-  PostDetail,
-  PostSummary,
-  Profile,
-  ReportReason,
-  ReportTarget,
+import {
+  MAX_COMMENT,
+  NICKNAME_MAX,
+  NICKNAME_MIN,
+  type Author,
+  type Comment,
+  type CommunityApi,
+  type FeedSort,
+  type NewPost,
+  type Page,
+  type PostDetail,
+  type PostSummary,
+  type Profile,
+  type ReportReason,
+  type ReportTarget,
 } from '@shared/api/community';
-import { loadSession } from '@shared/auth/session';
+import { isExpired, loadSession } from '@shared/auth/session';
+
+import { REPORT_REASONS } from './format';
+
+const REPORT_REASON_VALUES = new Set<string>(REPORT_REASONS.map((r) => r.value));
 
 /**
  * 가짜 커뮤니티 서버. **서버 API 가 생기기 전에 화면과 필드를 확정하려고 둔다.**
@@ -21,13 +29,26 @@ import { loadSession } from '@shared/auth/session';
  * 흉내 내는 규칙(계약 초안 `@shared/api/community` 주석과 같다):
  * - 신고 3회(서로 다른 사람) → 자동으로 가림. 가린 글 · 댓글은 목록에 안 나온다
  * - 답글의 답글은 `reply_depth` 로 거절
- * - 쓰기(글 · 댓글 · 좋아요 · 신고)는 로그인해야 한다
+ * - 쓰기(글 · 댓글 · 공감 · 신고)는 로그인해야 한다
+ * - 같은 꿈은 한 번만 공유한다 — 지우지 않은 내 글이 있으면 `409 already_shared`(그 글 id 포함). 지우면 다시 된다
+ * - 피드는 최신순 · 공감 많은 순(같으면 최신)
+ *
+ * 서버 계약 056 확정본(2026-09-30)을 따른다:
+ * - 가려진 글은 **작성자에게만** 내 글 목록 · 상세에 `hidden: true` 로 보이고, 피드에서는 모두에게 빠진다.
+ *   가려진 글은 공감 · 댓글을 받지 않는다(작성자 포함 404)
+ * - 로그인이 만료되면 앱은 토큰을 붙이지 않는다 — 읽기는 로그인 안 한 것처럼 되고 쓰기는 401
+ * - 차단은 서버에. 피드와 글 상세의 댓글만 거른다(답글 달린 댓글은 자리만). 프로필 · 사용자 글 · 글 상세는 거르지 않는다
+ * - 닉네임은 글에 복사하지 않는다 — 바꾸면 지난 글의 작성자 이름도 바뀐다
+ *
+ * 규칙은 `scripts/community`(C · N · F)가 고정한다. 서버 테스트도 같은 경우를 둔다.
  */
 
 type UserRow = { id: string; nickname: string; joinedAt: string };
 type PostRow = {
   id: string;
   authorId: string;
+  /** 어느 꿈에서 왔는가. 꿈당 한 글을 가르는 데만 쓴다 — 내용은 아래 복사본이다 */
+  dreamId: string;
   title: string | null;
   dreamText: string;
   body: string;
@@ -52,10 +73,18 @@ const BLIND_AT = 3;
 const PAGE = 20;
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
-const err = (status: number, code: string, message: string) => ({ status, code, message });
+/** 진짜 `request()`가 던지는 `ApiError`와 같은 모양. 덧붙는 필드는 `data`로(서버 계약 056 01장) */
+const err = (status: number, code: string, message: string, data?: Record<string, unknown>) => ({
+  status,
+  code,
+  message,
+  data: { code, message, ...data },
+});
 const wait = () => new Promise((r) => setTimeout(r, 120));
 
 const users = new Map<string, UserRow>();
+/** 차단한 사람 → 차단당한 사람들. 한쪽 방향이다 */
+const blocksBy = new Map<string, Set<string>>();
 const posts = new Map<string, PostRow>();
 const comments = new Map<string, CommentRow>();
 let seq = 0;
@@ -73,6 +102,7 @@ function seed() {
     posts.set(id, {
       id,
       authorId,
+      dreamId: `seed-${id}`,
       title,
       dreamText,
       body,
@@ -98,7 +128,8 @@ seed();
 
 async function me(): Promise<UserRow | null> {
   const s = await loadSession();
-  if (!s) return null;
+  // 만료된 토큰은 붙이지 않는다 — 서버는 보냈으면 맞아야 하므로(056), 앱은 읽기를 토큰 없이 보낸다
+  if (!s || isExpired(s)) return null;
   if (!users.has(s.user.id)) {
     users.set(s.user.id, { id: s.user.id, nickname: s.user.nickname, joinedAt: new Date().toISOString() });
   }
@@ -112,7 +143,12 @@ async function requireMe(): Promise<UserRow> {
 }
 
 const author = (id: string): Author => ({ id, nickname: users.get(id)?.nickname ?? '알 수 없음' });
-const visible = (p: PostRow) => !p.deleted && p.reporters.size < BLIND_AT;
+const isHidden = (p: PostRow) => p.reporters.size >= BLIND_AT;
+/** 모두에게 보이는 글 — 지우지 않았고 가려지지 않았다 */
+const visible = (p: PostRow) => !p.deleted && !isHidden(p);
+/** 이 사람에게 보이는 글 — 가려진 글은 작성자에게만 */
+const visibleTo = (p: PostRow, myId: string | null) => !p.deleted && (!isHidden(p) || p.authorId === myId);
+const blockedBy = (myId: string | null) => (myId ? (blocksBy.get(myId) ?? new Set<string>()) : new Set<string>());
 const liveComments = (postId: string) =>
   [...comments.values()].filter((c) => c.postId === postId && !c.deleted && c.reporters.size < BLIND_AT);
 
@@ -121,18 +157,32 @@ function summary(p: PostRow, myId: string | null): PostSummary {
     id: p.id,
     author: author(p.authorId),
     title: p.title,
-    excerpt: p.body.slice(0, 120),
+    // 목록은 꿈 내용을 보여 준다 — 한마디는 선택이라 비어 있을 수 있다(문서 055)
+    excerpt: p.dreamText.slice(0, 120),
     dreamRecordedAt: p.dreamRecordedAt,
     hasComic: false,
     likeCount: p.likes.size,
     commentCount: liveComments(p.id).length,
     likedByMe: myId != null && p.likes.has(myId),
     createdAt: p.createdAt,
+    hidden: isHidden(p),
   };
 }
 
-function page(rows: PostRow[], cursor: string | null | undefined, myId: string | null): Page<PostSummary> {
-  const sorted = rows.filter(visible).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+const newest = (a: PostRow, b: PostRow) => b.createdAt.localeCompare(a.createdAt);
+const ORDER: Record<FeedSort, (a: PostRow, b: PostRow) => number> = {
+  latest: newest,
+  empathy: (a, b) => b.likes.size - a.likes.size || newest(a, b),
+};
+
+function page(
+  rows: PostRow[],
+  sort: FeedSort,
+  cursor: string | null | undefined,
+  myId: string | null,
+  keep: (p: PostRow) => boolean = visible,
+): Page<PostSummary> {
+  const sorted = rows.filter(keep).sort(ORDER[sort]);
   const start = cursor ? Number(cursor) : 0;
   const slice = sorted.slice(start, start + PAGE);
   return {
@@ -142,9 +192,11 @@ function page(rows: PostRow[], cursor: string | null | undefined, myId: string |
 }
 
 /** 부모 바로 뒤에 답글을 둔다. 가려지거나 지운 부모에 살아 있는 답글이 있으면 자리를 남긴다 */
-function threaded(postId: string): Comment[] {
+function threaded(postId: string, myId: string | null): Comment[] {
   const all = [...comments.values()].filter((c) => c.postId === postId);
-  const alive = (c: CommentRow) => !c.deleted && c.reporters.size < BLIND_AT;
+  // 차단한 사람의 댓글은 지운 댓글과 같은 규칙 — 답글이 있으면 자리만, 없으면 빠진다(056 04장 1)
+  const blocked = blockedBy(myId);
+  const alive = (c: CommentRow) => !c.deleted && c.reporters.size < BLIND_AT && !blocked.has(c.authorId);
   const out: Comment[] = [];
   const tops = all.filter((c) => c.parentId == null).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   for (const t of tops) {
@@ -168,24 +220,34 @@ function threaded(postId: string): Comment[] {
   return out;
 }
 
+/**
+ * 이 꿈을 공유한, 지우지 않은 내 글. 신고로 가려진 글도 센다 — 가려졌다고 다시 올리게 하면
+ * 같은 꿈이 두 번 남는다
+ */
+const mineFor = (userId: string, dreamId: string) =>
+  [...posts.values()].find((p) => p.authorId === userId && p.dreamId === dreamId && !p.deleted) ?? null;
+
 export const fakeCommunity: CommunityApi = {
-  async feed(cursor) {
+  async feed(sort, cursor) {
     await wait();
     const m = await me();
-    return page([...posts.values()], cursor, m?.id ?? null);
+    const blocked = blockedBy(m?.id ?? null);
+    // 피드는 가려진 글을 모두에게서 빼고, 차단한 사람의 글도 뺀다 — 서버가 걸러 쪽이 비지 않는다
+    return page([...posts.values()], sort, cursor, m?.id ?? null, (p) => visible(p) && !blocked.has(p.authorId));
   },
 
   async post(id) {
     await wait();
     const p = posts.get(id);
-    if (!p || !visible(p)) return null;
     const m = await me();
+    const myId = m?.id ?? null;
+    if (!p || !visibleTo(p, myId)) return null;
     const detail: PostDetail = {
-      ...summary(p, m?.id ?? null),
+      ...summary(p, myId),
       dreamText: p.dreamText,
       body: p.body,
       comicUrl: null,
-      comments: threaded(id),
+      comments: threaded(id, myId),
     };
     return detail;
   },
@@ -193,9 +255,14 @@ export const fakeCommunity: CommunityApi = {
   async createPost(input: NewPost) {
     await wait();
     const m = await requireMe();
+    // 배포된 서버(9ce6fa8)와 같은 코드
+    if (!input.dreamRecordedAt) throw err(400, 'missing_dream_recorded_at', '꿈을 꾼 시각이 없습니다');
+    const existing = mineFor(m.id, input.dreamId);
+    if (existing) throw err(409, 'already_shared', '이미 공유한 꿈입니다', { postId: existing.id });
     const row: PostRow = {
       id: nextId('p'),
       authorId: m.id,
+      dreamId: input.dreamId,
       title: input.title,
       dreamText: input.dreamText,
       body: input.body,
@@ -209,12 +276,23 @@ export const fakeCommunity: CommunityApi = {
     return summary(row, m.id);
   },
 
+  async postForDream(dreamId) {
+    await wait();
+    const m = await me();
+    if (!m) return null;
+    return mineFor(m.id, dreamId)?.id ?? null;
+  },
+
   async deletePost(id) {
     await wait();
     const m = await requireMe();
     const p = posts.get(id);
-    if (!p) throw err(404, 'post_not_found', '글을 찾을 수 없습니다');
-    if (p.authorId !== m.id) throw err(403, 'not_owner', '내 글만 지울 수 있습니다');
+    if (!p || p.deleted) throw err(404, 'post_not_found', '글을 찾을 수 없습니다');
+    if (p.authorId !== m.id) {
+      // 남에게 가려진 글은 "없는 글"이다 — 403 으로 있다는 것을 알리지 않는다(서버와 같음)
+      if (isHidden(p)) throw err(404, 'post_not_found', '글을 찾을 수 없습니다');
+      throw err(403, 'not_owner', '내 글만 지울 수 있습니다');
+    }
     p.deleted = true;
   },
 
@@ -228,9 +306,13 @@ export const fakeCommunity: CommunityApi = {
     return { likeCount: p.likes.size, likedByMe: p.likes.has(m.id) };
   },
 
-  async addComment(postId, body, parentId) {
+  async addComment(postId, rawBody, parentId) {
     await wait();
     const m = await requireMe();
+    // 서버는 앞뒤 공백을 잘라 저장하고, 자른 뒤 1~500자로 잰다
+    const body = (rawBody ?? '').trim();
+    if (!body) throw err(400, 'comment_empty', '댓글을 적어 주세요');
+    if (body.length > MAX_COMMENT) throw err(400, 'comment_too_long', '댓글은 500자까지입니다');
     const p = posts.get(postId);
     if (!p || !visible(p)) throw err(404, 'post_not_found', '글을 찾을 수 없습니다');
     if (parentId) {
@@ -261,27 +343,79 @@ export const fakeCommunity: CommunityApi = {
     c.deleted = true;
   },
 
-  async report(target: ReportTarget, _reason: ReportReason) {
+  async report(target: ReportTarget, reason: ReportReason) {
     await wait();
     const m = await requireMe();
+    // 서버와 같은 순서 — 사유를 먼저, 그다음 종류, 없는 대상은 종류대로 404
+    if (!REPORT_REASON_VALUES.has(reason)) throw err(400, 'invalid_report', '신고 사유가 올바르지 않습니다');
+    if (target.type !== 'post' && target.type !== 'comment') {
+      throw err(400, 'invalid_report', '신고 대상은 post · comment 중 하나입니다');
+    }
     const row = target.type === 'post' ? posts.get(target.id) : comments.get(target.id);
-    if (!row) throw err(404, 'not_found', '대상을 찾을 수 없습니다');
+    if (!row || row.deleted) {
+      throw target.type === 'post'
+        ? err(404, 'post_not_found', '글을 찾을 수 없습니다')
+        : err(404, 'comment_not_found', '댓글을 찾을 수 없습니다');
+    }
     if (row.authorId === m.id) throw err(400, 'self_report', '내 글은 신고할 수 없습니다');
     row.reporters.add(m.id);
   },
 
   async profile(userId) {
     await wait();
-    const u = users.get(userId) ?? (await me());
+    const m = await me();
+    const u = users.get(userId) ?? m;
     if (!u || u.id !== userId) return null;
-    const postCount = [...posts.values()].filter((p) => p.authorId === userId && visible(p)).length;
+    // 내가 볼 때는 가려진 내 글도 센다(056 04장 3)
+    const postCount = [...posts.values()].filter((p) => p.authorId === userId && visibleTo(p, m?.id ?? null)).length;
     const result: Profile = { id: u.id, nickname: u.nickname, joinedAt: u.joinedAt, postCount };
     return result;
   },
 
-  async userPosts(userId, cursor) {
+  async userPosts(userId, sort, cursor) {
     await wait();
     const m = await me();
-    return page([...posts.values()].filter((p) => p.authorId === userId), cursor, m?.id ?? null);
+    const myId = m?.id ?? null;
+    return page(
+      [...posts.values()].filter((p) => p.authorId === userId),
+      sort,
+      cursor,
+      myId,
+      (p) => visibleTo(p, myId),
+    );
+  },
+
+  async blocks() {
+    await wait();
+    const m = await requireMe();
+    return [...blockedBy(m.id)].map(author);
+  },
+
+  async block(userId) {
+    await wait();
+    const m = await requireMe();
+    if (userId === m.id) throw err(400, 'self_block', '나를 차단할 수 없습니다');
+    if (!users.has(userId)) throw err(404, 'user_not_found', '사용자를 찾을 수 없습니다');
+    const set = blocksBy.get(m.id) ?? new Set<string>();
+    set.add(userId);
+    blocksBy.set(m.id, set);
+  },
+
+  async unblock(userId) {
+    await wait();
+    const m = await requireMe();
+    blocksBy.get(m.id)?.delete(userId);
+  },
+
+  async setNickname(nickname) {
+    await wait();
+    const m = await requireMe();
+    const next = nickname.trim();
+    const bad = /[\u0000-\u001f\u007f]/.test(next);
+    if (next.length < NICKNAME_MIN || next.length > NICKNAME_MAX || bad) {
+      throw err(400, 'nickname_invalid', `닉네임은 ${NICKNAME_MIN}~${NICKNAME_MAX}자로, 줄바꿈 없이 적어 주세요`);
+    }
+    m.nickname = next;
+    return author(m.id);
   },
 };

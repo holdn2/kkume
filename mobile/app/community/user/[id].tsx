@@ -1,50 +1,85 @@
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
-import { Avatar, Button, Card, Row, Screen, Stack } from '@components';
-import { getCommunityApi, setBlocked, useBlocked, useMe } from '@features/community';
+import { Avatar, Button, Card, Input, Row, Screen, Sheet, Stack } from '@components';
+import {
+  getCommunityApi,
+  setBlocked,
+  useBlocked,
+  useInvalidateCommunity,
+  useMe,
+  useProfile,
+  usePullRefresh,
+  useRefetchOnFocus,
+  useUserPosts,
+} from '@features/community';
 import { PostCard } from '@features/community/PostCard';
-import type { PostSummary, Profile } from '@shared/api/community';
+import { NICKNAME_MAX, NICKNAME_MIN } from '@shared/api/community';
+import { loadSession, saveSession } from '@shared/auth/session';
 import { AppText } from '@shared/ui';
 import { c, hit, sp } from '@theme/token';
 
 /**
  * COM-4. 프로필 — **내 것 · 남의 것이 같은 화면**(계획서 003, 구현을 절반으로).
- * 커뮤니티의 "내 글" 탭이 곧 내 프로필이다. 남이면 [차단], 나면 [프로필 편집].
+ * 남이면 [차단], 나면 [닉네임 바꾸기].
  *
- * 통계는 **글 수만** 둔다. 계획서 목업의 "기록 수 · 연속일"은 비공개인 꿈 기록에서 나오는 값이라
- * 남에게 보여도 되는지 서버에 물어 둔 상태다(문서 049 03장 3번).
- * 프로필 편집(닉네임 변경)은 서버에 API가 없어 아직 막아 둔다(같은 문서 4번).
+ * 통계는 **글 수만** 둔다(서버 계약 056 04장 3) — 기록 수 · 연속일은 비공개인 꿈 기록에서 나오는 값이다.
+ * 닉네임은 2~16자(056 04장 4). 글에 복사하지 않아 바꾸면 지난 글의 이름도 바뀐다.
+ * **차단한 사람의 프로필도 글을 보여 준다** — 서버가 거르지 않는 곳(일부러 찾아 들어온 경우)이라
+ * 맨 위에 "차단한 사용자입니다"만 둔다(056 04장 1 · 057 04장).
  */
 export default function ProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const me = useMe();
-  const blocked = useBlocked();
-  const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
-  const [posts, setPosts] = useState<PostSummary[]>([]);
-  const { reload: reloadBlocked } = blocked;
+  const meId = me === undefined ? undefined : (me?.id ?? null);
+  const blocked = useBlocked(meId);
+  const invalidate = useInvalidateCommunity();
+  const [renaming, setRenaming] = useState(false);
+  const [nickname, setNickname] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      const api = getCommunityApi();
-      api.profile(id).then(setProfile).catch(() => setProfile(null));
-      api
-        .userPosts(id)
-        .then((p) => setPosts(p.items))
-        .catch(() => setPosts([]));
-      reloadBlocked();
-    }, [id, reloadBlocked]),
-  );
+  // 프로필과 글 목록은 캐시에 있다. 글은 끝에 닿으면 다음 쪽을 잇는다
+  const profileQuery = useProfile(meId, id);
+  // 없는 사람이거나 못 불러왔으면 null — 화면이 "찾을 수 없는 사람"으로 그린다
+  // 한 번 받은 것이 있으면 다시 받다 실패해도 그대로 보여 준다
+  const profile = profileQuery.data ?? (profileQuery.error ? null : undefined);
+  const posts = useUserPosts(meId, id, 'latest');
+  useRefetchOnFocus(profileQuery.refetch, profileQuery.isStale);
+  useRefetchOnFocus(posts.refetch, posts.isStale);
+  const pull = usePullRefresh(() => Promise.all([profileQuery.refetch(), posts.refetch()]));
+
+  const trimmed = nickname.trim();
+  const nicknameOk = trimmed.length >= NICKNAME_MIN && trimmed.length <= NICKNAME_MAX && !nickname.includes('\n');
+
+  const saveNickname = () => {
+    if (!nicknameOk || saving) return;
+    setSaving(true);
+    getCommunityApi()
+      .setNickname(trimmed)
+      .then(async (a) => {
+        // 폰의 세션에 든 닉네임도 바꾼다 — "○○(으)로 올라갑니다"가 옛 이름을 보이지 않게
+        const s = await loadSession();
+        if (s) await saveSession({ ...s, user: { ...s.user, nickname: a.nickname } });
+        setRenaming(false);
+        // 닉네임은 글에 복사하지 않아 피드 · 댓글의 이름도 바뀐다 — 커뮤니티 캐시를 전부 다시 읽는다
+        void invalidate();
+      })
+      .catch((e) => setRenameError(e?.message ?? '바꾸지 못했습니다'))
+      .finally(() => setSaving(false));
+  };
 
   const mine = me?.id === id;
   const isBlocked = blocked.ids.has(id);
 
   const toggleBlock = () => {
     if (!profile) return;
-    void setBlocked({ id: profile.id, nickname: profile.nickname }, !isBlocked).then(reloadBlocked);
+    setBlocked({ id: profile.id, nickname: profile.nickname }, !isBlocked)
+      .then(() => invalidate())
+      .catch(() => {});
   };
 
   const header = (
@@ -69,8 +104,24 @@ export default function ProfileScreen() {
               </AppText>
             </Stack>
           </Row>
+          {isBlocked && (
+            <Card>
+              <AppText size="caption" color={c.fgMuted}>
+                차단한 사용자입니다. 피드와 댓글에서는 이 사람의 글이 보이지 않습니다.
+              </AppText>
+            </Card>
+          )}
           {mine ? (
-            <Button label="프로필 편집 — 준비 중" size="sm" variant="secondary" disabled onPress={() => {}} />
+            <Button
+              label="닉네임 바꾸기"
+              size="sm"
+              variant="secondary"
+              onPress={() => {
+                setNickname(profile.nickname);
+                setRenameError(null);
+                setRenaming(true);
+              }}
+            />
           ) : (
             <Button
               label={isBlocked ? '차단 풀기' : '차단하기'}
@@ -87,13 +138,10 @@ export default function ProfileScreen() {
     </Stack>
   );
 
-  // 차단한 사람의 프로필에는 글을 보이지 않는다 — 피드에서 숨긴 것이 여기서 새지 않게
-  const shown = isBlocked ? [] : posts;
-
   return (
     <Screen>
       <FlatList
-        data={profile ? shown : []}
+        data={profile ? posts.items : []}
         keyExtractor={(p) => p.id}
         ListHeaderComponent={header}
         ListHeaderComponentStyle={{ marginBottom: sp[4] }}
@@ -101,16 +149,42 @@ export default function ProfileScreen() {
         ItemSeparatorComponent={() => <View style={{ height: sp[3] }} />}
         contentContainerStyle={{ paddingBottom: sp[8] }}
         showsVerticalScrollIndicator={false}
+        onEndReached={posts.more}
+        onEndReachedThreshold={0.4}
+        refreshControl={
+          <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} tintColor={c.fgMuted} />
+        }
+        ListFooterComponent={posts.isFetchingNextPage ? <ActivityIndicator color={c.fgMuted} style={{ padding: sp[4] }} /> : null}
         ListEmptyComponent={
-          profile ? (
+          profile && !posts.isPending ? (
             <Card>
               <AppText size="caption" color={c.fgFaint}>
-                {isBlocked ? '차단한 사람의 글은 보이지 않습니다.' : '아직 올린 글이 없습니다.'}
+                아직 올린 글이 없습니다.
               </AppText>
             </Card>
           ) : null
         }
       />
+
+      <Sheet visible={renaming} onClose={() => setRenaming(false)} title="닉네임 바꾸기">
+        <Stack gap={sp[3]}>
+          <Input
+            value={nickname}
+            onChangeText={(v) => {
+              setNickname(v);
+              setRenameError(null);
+            }}
+            maxLength={NICKNAME_MAX}
+            counter
+            autoFocus
+            error={renameError ?? undefined}
+          />
+          <AppText size="caption" color={c.fgFaint}>
+            {NICKNAME_MIN}~{NICKNAME_MAX}자. 바꾸면 지난 글과 댓글의 이름도 새 이름으로 보입니다.
+          </AppText>
+          <Button label={saving ? '바꾸는 중' : '바꾸기'} disabled={!nicknameOk || saving} onPress={saveNickname} />
+        </Stack>
+      </Sheet>
     </Screen>
   );
 }
