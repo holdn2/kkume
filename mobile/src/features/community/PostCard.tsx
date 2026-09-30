@@ -24,6 +24,8 @@ export function PostCard({ post, onPress }: { post: PostSummary; onPress: () => 
           <AppText size="caption" color={c.fgMuted} style={{ flex: 1 }} numberOfLines={1}>
             {post.author.nickname} · {ago(post.createdAt)}
           </AppText>
+          {/* 신고가 쌓여 가려진 내 글 — 나에게만 이 표시와 함께 보인다(056 04장 2) */}
+          {post.hidden && <Badge label="다른 사람에게 안 보임" tone="warning" />}
           {post.hasComic && <Badge label="만화" tone="neutral" />}
         </Row>
         <AppText size="label" weight="semibold" numberOfLines={1}>

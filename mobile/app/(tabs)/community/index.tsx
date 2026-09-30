@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { Button, Card, Radio, Row, Screen, Segmented, Sheet, Stack, Title } from '@components';
-import { getCommunityApi, useBlocked, useMe } from '@features/community';
+import { getCommunityApi, mergePage, useBlocked, useMe } from '@features/community';
 import { PostCard } from '@features/community/PostCard';
 import type { FeedSort, PostSummary } from '@shared/api/community';
 import { AppText } from '@shared/ui';
@@ -26,13 +26,12 @@ const SORTS: FeedSort[] = ['latest', 'empathy'];
  * 해몽은 댓글에서 자유롭게 오간다. 위쪽 한 줄 — 왼쪽 「전체 / 내 글」, 오른쪽 정렬(「최신순 ▾」).
  * 「내 글」은 예전처럼 프로필로 보내지 않고 **이 피드 안에서 걸러 본다** — 같은 정렬로 보려는 것이다.
  *
- * **차단한 사람의 글은 여기서 거른다**(계획서 001 — 앱에서 거름). 서버에 둘지는 문서 049에서 묻는다.
+ * **차단한 사람의 글은 서버가 거른다**(서버 계약 056 04장 1) — 앱에서 거르면 쪽이 비어 온다.
  * 지금은 가짜 서버가 답한다(`@features/community/fake`).
  */
 export default function CommunityScreen() {
   const router = useRouter();
   const me = useMe();
-  const blocked = useBlocked();
   const [scope, setScope] = useState<Scope>('all');
   const [sort, setSort] = useState<FeedSort>('latest');
   const [sorting, setSorting] = useState(false);
@@ -40,7 +39,8 @@ export default function CommunityScreen() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [needLogin, setNeedLogin] = useState(false);
-  const { reload: reloadBlocked } = blocked;
+  // 차단 목록은 여기서 거르지 않는다(서버가 거름, 056). 읽기만 해서 폰에 남은 옛 차단을 서버로 옮긴다
+  const { reload: reloadBlocked } = useBlocked();
 
   const fetchPage = useCallback(
     (from: string | null) => {
@@ -77,7 +77,8 @@ export default function CommunityScreen() {
     if (!cursor) return;
     fetchPage(cursor)
       .then((page) => {
-        setItems((prev) => [...(prev ?? []), ...page.items]);
+        // 공감순은 쪽 사이에 순서가 움직여 같은 글이 또 올 수 있다 — id 로 거른다(056)
+        setItems((prev) => mergePage(prev ?? [], page.items));
         setCursor(page.nextCursor);
       })
       .catch(() => {});
@@ -96,7 +97,7 @@ export default function CommunityScreen() {
     setScope(next);
   };
 
-  const visible = (items ?? []).filter((p) => !blocked.ids.has(p.author.id));
+  const visible = items ?? [];
 
   return (
     <Screen>

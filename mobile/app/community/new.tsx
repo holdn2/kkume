@@ -4,11 +4,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet } from 'react-native';
 
 import { Button, Card, Input, Radio, Row, Screen, Sheet, Stack, Switch, Title } from '@components';
-import { getCommunityApi, useMe } from '@features/community';
+import { getCommunityApi, shareDream, useMe } from '@features/community';
 import { isApiError } from '@shared/api/client';
 import { MAX_POST_BODY, MAX_POST_DREAM_TEXT } from '@shared/api/community';
 import { MAX_TITLE_LENGTH } from '@shared/api/sync';
 import { getDreamRepo, type Dream } from '@shared/db';
+import { syncIfSignedIn } from '@shared/sync';
 import { AppText } from '@shared/ui';
 import { c, hit, sp } from '@theme/token';
 
@@ -82,14 +83,14 @@ export default function NewPostScreen() {
   const post = () => {
     if (!picked || !canPost) return;
     setPosting(true);
-    getCommunityApi()
-      .createPost({
-        dreamId: picked.id,
-        title: title.trim() || null,
-        dreamText: dreamText.trim(),
-        dreamRecordedAt: picked.recordedAt,
-        body: body.trim(),
-      })
+    // 동기화 뒤에 올린다 — 서버는 그 꿈이 내 것인지 확인해서, 방금 남긴 꿈은 아직 서버에 없을 수 있다(056)
+    shareDream(getCommunityApi(), syncIfSignedIn, {
+      dreamId: picked.id,
+      title: title.trim() || null,
+      dreamText: dreamText.trim(),
+      dreamRecordedAt: picked.recordedAt,
+      body: body.trim(),
+    })
       .then((p) => router.replace(`/community/${p.id}`))
       .catch((e) => {
         // 그 사이 다른 곳에서 공유했으면 그 글로 안내한다. 글 id 는 오류 본문에 덧붙어 온다(서버 계약 056)

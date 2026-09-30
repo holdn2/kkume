@@ -49,6 +49,12 @@ export type PostSummary = {
   commentCount: number;
   likedByMe: boolean;
   createdAt: string;
+  /**
+   * 신고가 쌓여 가려진 **내** 글일 때만 true(서버 계약 056 04장 2). 남에게는 목록에서 빠지고 상세가 404 다.
+   * 작성자에게 보이는 이유 — 꿈당 한 글이라, 숨기면 같은 꿈을 다시 올릴 때 409 가 가리키는 글을 열 수 없다.
+   * 가려진 글은 공감 · 댓글을 받지 않는다(작성자 포함 404)
+   */
+  hidden: boolean;
 };
 
 /** 댓글. `parentId` 가 있으면 답글이다 — 답글의 답글은 없다 */
@@ -122,11 +128,31 @@ export interface CommunityApi {
   /** 같은 사람이 같은 대상을 두 번 신고해도 한 번으로 센다 */
   report(target: ReportTarget, reason: ReportReason): Promise<void>;
   profile(userId: string): Promise<Profile | null>;
+  /** 프로필 · 사용자 글은 차단한 사람이어도 거르지 않는다 — 일부러 찾아 들어간 경우다(056 04장 1) */
   userPosts(userId: string, sort: FeedSort, cursor?: string | null): Promise<Page<PostSummary>>;
+  /**
+   * 차단은 **서버에** 둔다(056 04장 1) — 앱을 지우면 사라지고, 앱에서 거르면 쪽이 비어 온다.
+   * 서버가 피드와 글 상세의 댓글을 거른다(답글 달린 댓글은 자리만). 한쪽 방향이고 상대에게 알리지 않는다
+   */
+  blocks(): Promise<Author[]>;
+  /** 나를 차단하면 `400 self_block` */
+  block(userId: string): Promise<void>;
+  unblock(userId: string): Promise<void>;
+  /**
+   * 닉네임 바꾸기(`PATCH /api/me`, 056 04장 4). 앞뒤 공백을 잘라 2~16자, 줄바꿈 · 제어문자는
+   * `400 nickname_invalid`. 중복 허용. 글에 복사하지 않아 지난 글 · 댓글의 이름도 바뀐다
+   */
+  setNickname(nickname: string): Promise<Author>;
 }
+
+export const NICKNAME_MIN = 2;
+export const NICKNAME_MAX = 16;
 
 /** 서버와 같은 상한. 제목은 동기화의 제목 상한과 같게 둔다 */
 export const MAX_POST_BODY = 2_000;
-/** 공유할 때 고친 꿈 내용의 상한. 꿈 기록 본문 상한(`MAX_TEXT_LENGTH`)과 같게 둔다 */
+/**
+ * 공유 편집칸의 꿈 내용 상한. 꿈 기록 본문 상한(`MAX_TEXT_LENGTH`)과 같게 두고, 받아쓰기로 더 길어진
+ * 꿈은 화면이 연 시점 길이까지 연다. 서버는 20,000자까지 받는다(056 가안, 057에서 수용)
+ */
 export const MAX_POST_DREAM_TEXT = 5_000;
 export const MAX_COMMENT = 500;

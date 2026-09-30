@@ -114,12 +114,24 @@ export default function PostScreen() {
 
   const block = (user: Author) => {
     setMenuOpen(false);
-    void setBlocked(user, true).then(() => {
-      blocked.reload();
-      // 글쓴이를 차단했으면 이 글도 내 화면에서 사라져야 한다
-      if (post && user.id === post.author.id) router.back();
-      else setNotice(`${user.nickname}님을 차단했습니다. 그 사람의 글과 댓글이 보이지 않습니다.`);
-    });
+    setBlocked(user, true)
+      .then(() => {
+        blocked.reload();
+        // 글쓴이를 차단했으면 피드로 돌아간다 — 피드에서는 서버가 그 사람 글을 뺀다
+        if (post && user.id === post.author.id) router.back();
+        else {
+          setNotice(`${user.nickname}님을 차단했습니다. 그 사람의 글과 댓글이 보이지 않습니다.`);
+          load();
+        }
+      })
+      .catch((e) => setNotice(e?.message ?? '차단하지 못했습니다'));
+  };
+
+  const unblockAuthor = () => {
+    if (!post) return;
+    setBlocked(post.author, false)
+      .then(blocked.reload)
+      .catch((e) => setNotice(e?.message ?? '차단을 풀지 못했습니다'));
   };
 
   const openReport = (target: Reporting) => {
@@ -159,19 +171,21 @@ export default function PostScreen() {
     );
   }
 
-  if (post === null || blocked.ids.has(post.author.id)) {
+  if (post === null) {
     return (
       <Screen>
         <Back onPress={() => router.back()} />
-        <AppText color={c.fgMuted}>
-          {post === null ? '지워졌거나 가려진 글입니다.' : '차단한 사람의 글입니다.'}
-        </AppText>
+        <AppText color={c.fgMuted}>지워졌거나 가려진 글입니다.</AppText>
       </Screen>
     );
   }
 
   const mine = me?.id === post.author.id;
-  const thread = visibleThread(post.comments, blocked.ids);
+  // 차단한 사람의 글이어도 링크로 들어왔으면 보여 준다 — 서버가 거르지 않는 자리다(056 04장 1)
+  const authorBlocked = blocked.ids.has(post.author.id);
+  // 가려진 내 글은 공감 · 댓글을 받지 않는다(서버가 404) — 버튼을 끈다(056 04장 2)
+  const closed = post.hidden;
+  const thread = visibleThread(post.comments);
 
   return (
     <Screen scroll>
@@ -189,6 +203,26 @@ export default function PostScreen() {
               <MoreHorizontal size={22} strokeWidth={1.75} color={c.fgMuted} />
             </Pressable>
           </Row>
+
+          {post.hidden && (
+            <Card>
+              <AppText size="label" weight="semibold">
+                신고가 쌓여 다른 사람에게는 보이지 않습니다
+              </AppText>
+              <AppText size="caption" color={c.fgFaint}>
+                공감과 댓글을 더 받지 않습니다. 오른쪽 위 메뉴에서 지울 수 있고, 지우면 같은 꿈을 다시 나눌 수 있습니다.
+              </AppText>
+            </Card>
+          )}
+
+          {authorBlocked && (
+            <Card>
+              <AppText size="label" weight="semibold">
+                차단한 사용자의 글입니다
+              </AppText>
+              <Button label="차단 풀기" size="sm" variant="secondary" onPress={unblockAuthor} />
+            </Card>
+          )}
 
           <Pressable
             onPress={() => router.push(`/community/user/${post.author.id}`)}
@@ -226,6 +260,7 @@ export default function PostScreen() {
           <Row gap={sp[5]}>
             <Pressable
               onPress={toggleLike}
+              disabled={closed}
               accessibilityRole="button"
               accessibilityLabel={post.likedByMe ? `공감 취소 · ${post.likeCount}` : `공감 · ${post.likeCount}`}
               style={({ pressed }) => [s.action, pressed && { opacity: press }]}>
@@ -274,6 +309,7 @@ export default function PostScreen() {
             ))}
           </Stack>
 
+          {!closed && (
           <Stack gap={sp[2]}>
             {replyTo && (
               <Row gap={sp[2]}>
@@ -294,6 +330,7 @@ export default function PostScreen() {
             />
             <Button label={sending ? '올리는 중' : '댓글 달기'} size="sm" disabled={!draft.trim() || sending} onPress={send} />
           </Stack>
+          )}
         </Stack>
       </KeyboardAvoidingView>
 
@@ -347,20 +384,15 @@ function Back({ onPress }: { onPress: () => void }) {
 }
 
 /**
- * 차단한 사람의 댓글을 거른다. **답글이 달린 댓글은 자리를 남긴다** — 부모를 통째로 빼면
- * 남의 답글이 누구에게 한 말인지 모르게 된다. 차단한 사람의 답글은 그냥 뺀다
+ * 댓글을 부모 · 답글 순으로 늘어놓는다. **차단한 사람의 댓글은 서버가 거른다**(056 04장 1) — 지운 댓글과
+ * 같은 규칙이라 답글 달린 댓글은 `deleted` 자리로 오고, 아니면 아예 안 온다. 화면은 거르지 않는다
  */
-function visibleThread(comments: Comment[], blockedIds: Set<string>) {
+function visibleThread(comments: Comment[]) {
   const out: { comment: Comment; placeholder: string | null }[] = [];
   const tops = comments.filter((x) => x.parentId == null);
   for (const t of tops) {
-    const replies = comments.filter((x) => x.parentId === t.id && !blockedIds.has(x.author.id));
-    const hidden = blockedIds.has(t.author.id);
-    if (hidden && replies.length === 0) continue;
-    out.push({
-      comment: t,
-      placeholder: hidden ? '차단한 사람의 댓글입니다' : t.deleted ? '삭제되거나 가려진 댓글입니다' : null,
-    });
+    const replies = comments.filter((x) => x.parentId === t.id);
+    out.push({ comment: t, placeholder: t.deleted ? '삭제되었거나 볼 수 없는 댓글입니다' : null });
     for (const r of replies) out.push({ comment: r, placeholder: null });
   }
   return out;
