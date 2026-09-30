@@ -5,6 +5,7 @@ import { KeyboardAvoidingView, Platform, Pressable, StyleSheet } from 'react-nat
 
 import { Button, Card, Input, Radio, Row, Screen, Sheet, Stack, Switch, Title } from '@components';
 import { getCommunityApi, useMe } from '@features/community';
+import { isApiError } from '@shared/api/client';
 import { MAX_POST_BODY, MAX_POST_DREAM_TEXT } from '@shared/api/community';
 import { MAX_TITLE_LENGTH } from '@shared/api/sync';
 import { getDreamRepo, type Dream } from '@shared/db';
@@ -74,8 +75,9 @@ export default function NewPostScreen() {
     };
   }, [dreamId, pick]);
 
-  const canPost =
-    !!picked && sharedPostId === null && (!!title.trim() || !!dreamText.trim()) && !posting;
+  // 꿈 내용은 한 글자 이상이어야 한다 — 목록이 꿈 내용을 보여 주고, 서버도 비면 400 dream_text_empty(계약 056).
+  // 녹음만 남긴 꿈(글 없음)은 내용을 적어야 나눌 수 있다
+  const canPost = !!picked && sharedPostId === null && !!dreamText.trim() && !posting;
 
   const post = () => {
     if (!picked || !canPost) return;
@@ -90,9 +92,10 @@ export default function NewPostScreen() {
       })
       .then((p) => router.replace(`/community/${p.id}`))
       .catch((e) => {
-        // 그 사이 다른 곳에서 공유했으면 그 글로 안내한다
-        if (e?.code === 'already_shared' && e?.postId) {
-          setSharedPostId(e.postId);
+        // 그 사이 다른 곳에서 공유했으면 그 글로 안내한다. 글 id 는 오류 본문에 덧붙어 온다(서버 계약 056)
+        const postId = isApiError(e) && e.code === 'already_shared' ? e.data?.postId : undefined;
+        if (typeof postId === 'string') {
+          setSharedPostId(postId);
           return;
         }
         setError(e?.message ?? '올리지 못했습니다');
@@ -192,7 +195,7 @@ export default function NewPostScreen() {
                   multiline
                   value={dreamText}
                   onChangeText={setDreamText}
-                  placeholder="나누고 싶은 만큼 적어 주세요"
+                  placeholder="나누고 싶은 꿈 내용을 적어 주세요 (필수)"
                   maxLength={Math.max(MAX_POST_DREAM_TEXT, openedTextLength)}
                 />
                 <AppText size="caption" color={c.fgFaint}>

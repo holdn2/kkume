@@ -59,7 +59,13 @@ const BLIND_AT = 3;
 const PAGE = 20;
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
-const err = (status: number, code: string, message: string) => ({ status, code, message });
+/** 진짜 `request()`가 던지는 `ApiError`와 같은 모양. 덧붙는 필드는 `data`로(서버 계약 056 01장) */
+const err = (status: number, code: string, message: string, data?: Record<string, unknown>) => ({
+  status,
+  code,
+  message,
+  data: { code, message, ...data },
+});
 const wait = () => new Promise((r) => setTimeout(r, 120));
 
 const users = new Map<string, UserRow>();
@@ -221,7 +227,7 @@ export const fakeCommunity: CommunityApi = {
     await wait();
     const m = await requireMe();
     const existing = mineFor(m.id, input.dreamId);
-    if (existing) throw { ...err(409, 'already_shared', '이미 공유한 꿈입니다'), postId: existing.id };
+    if (existing) throw err(409, 'already_shared', '이미 공유한 꿈입니다', { postId: existing.id });
     const row: PostRow = {
       id: nextId('p'),
       authorId: m.id,
