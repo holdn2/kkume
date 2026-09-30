@@ -5,6 +5,7 @@
  * N1~N9 는 055 의 새 규칙이고 **구현보다 먼저 넣었다** — 꿈 공유 · 꿈당 한 글 · 정렬 두 가지.
  */
 import { fakeCommunity as api } from '@features/community/fake';
+import { request } from '@shared/api/client';
 import { clearSession, saveSession } from '@shared/auth/session';
 
 let failed = 0;
@@ -92,7 +93,8 @@ const dup = await (async () => {
     return e;
   }
 })();
-check('N4', '같은 꿈을 두 번 공유하면 409 already_shared 와 그 글 id', dup?.code === 'already_shared' && dup?.status === 409 && dup?.postId === shared.id, JSON.stringify(dup));
+// 서버 계약(056)처럼 덧붙는 필드는 ApiError.data 로 온다 — 진짜 request() 와 같은 모양
+check('N4', '같은 꿈을 두 번 공유하면 409 already_shared 와 data.postId', dup?.code === 'already_shared' && dup?.status === 409 && dup?.data?.postId === shared.id, JSON.stringify(dup));
 check('N5', 'postForDream 은 공유한 글 id', (await api.postForDream('d-share')) === shared.id);
 check('N6', '공유하지 않은 꿈은 null', (await api.postForDream('d-none')) === null);
 await api.deletePost(shared.id);
@@ -112,6 +114,26 @@ check(
 );
 const myList = (await api.userPosts('u-me', 'latest', null)).items;
 check('N10', '내 글 목록도 정렬을 받는다', myList.every((p) => p.author.id === 'u-me') && myList.length >= 1);
+
+// ---- 진짜 request() 가 오류 본문의 덧붙은 필드를 넘기는가(서버 계약 056 01장) ----
+// 서버는 409 already_shared 에 postId 를 싣는다. code · message 만 남기면 화면이 그 글로 안내하지 못한다
+const realFetch = globalThis.fetch;
+globalThis.fetch = async () =>
+  new Response(JSON.stringify({ code: 'already_shared', message: '이미 공유한 꿈입니다', postId: 'p-42' }), {
+    status: 409,
+    headers: { 'Content-Type': 'application/json' },
+  });
+const apiErr = await request('/api/community/posts', { method: 'POST', body: {} }).then(
+  () => null,
+  (e) => e,
+);
+globalThis.fetch = realFetch;
+check(
+  'A1',
+  'request() 오류에 본문의 나머지 필드가 data 로 온다',
+  apiErr?.code === 'already_shared' && apiErr?.status === 409 && apiErr?.data?.postId === 'p-42',
+  JSON.stringify(apiErr),
+);
 
 console.log(`\n${total}개 중 실패 ${failed}개`);
 if (failed) process.exitCode = 1;
