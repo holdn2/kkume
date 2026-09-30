@@ -7,7 +7,7 @@ import {
   type InfiniteData,
 } from '@tanstack/react-query';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
 import { isApiError } from '@shared/api/client';
@@ -67,17 +67,35 @@ export function useInvalidateCommunity() {
  * 화면에 다시 돌아오면 오래된 것만 다시 읽는다. 처음 열 때는 쿼리가 알아서 읽으므로 건너뛴다.
  * 다른 화면에서 쓴 것은 무효로 표시돼 있어 여기서 다시 읽힌다
  */
-export function useRefetchOnFocus(refetch: () => unknown, isStale: boolean) {
+export function useRefetchOnFocus(refetch: (o?: { cancelRefetch?: boolean }) => unknown, isStale: boolean) {
   const first = useRef(true);
+  // 값은 ref 로 읽는다. 콜백 의존성에 넣으면 포커스된 채로 isStale 이 바뀔 때마다(30초마다, 처음 켜질 때)
+  // useFocusEffect 가 다시 돌아 화면에 머무는 동안에도 다시 받았다(리뷰 지적, 0b7301b)
+  const latest = useRef({ refetch, isStale });
+  // 렌더 중에는 ref 를 쓰지 않는다. 이 effect 가 아래 포커스 effect 보다 먼저 선언돼 먼저 돈다
+  useEffect(() => {
+    latest.current = { refetch, isStale };
+  });
   useFocusEffect(
     useCallback(() => {
       if (first.current) {
         first.current = false;
         return;
       }
-      if (isStale) void refetch();
-    }, [refetch, isStale]),
+      // 이미 받는 중이면 끊지 않는다 — 기본값(cancelRefetch: true)은 막 시작한 요청을 취소하고 다시 보낸다
+      if (latest.current.isStale) void latest.current.refetch({ cancelRefetch: false });
+    }, []),
   );
+}
+
+/** 당겨서 새로고침. 스피너는 사용자가 당겼을 때만 — 뒤에서 다시 받을 때 켜면 목록이 스피너만큼 밀린다 */
+export function usePullRefresh(refetch: () => Promise<unknown>) {
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    void refetch().finally(() => setRefreshing(false));
+  }, [refetch]);
+  return { refreshing, onRefresh };
 }
 
 type PageFetcher = (cursor: string | null) => Promise<Page<PostSummary>>;
@@ -140,15 +158,14 @@ export function usePostForDream(meId: string | null | undefined, dreamId: string
 }
 
 /**
- * 공감을 먼저 그려 둔다. 글 상세와, 캐시에 있는 목록들(피드 · 내 글 · 프로필)의 같은 글을 함께 고친다.
- * 돌려준 되돌리기 함수는 실패했을 때 부른다
+ * 글 하나를 캐시 곳곳에서 함께 고친다 — 글 상세와, 캐시에 있는 목록들(피드 · 내 글 · 프로필)의 같은 글.
+ * 공감을 먼저 그려 둘 때 쓴다. 실패하면 반대 패치로 되돌린다(스냅샷 통째 복원은 그 사이 바뀐 것까지 덮는다)
  */
 export function patchPostEverywhere(
   qc: QueryClient,
   postId: string,
   patch: (p: PostSummary) => Partial<PostSummary>,
-): () => void {
-  const snapshots = qc.getQueriesData({ queryKey: communityKeys.all });
+): void {
   qc.setQueriesData<PostDetail | null>({ queryKey: communityKeys.all, predicate: (q) => q.queryKey[2] === 'post' }, (old) =>
     old && old.id === postId ? { ...old, ...patch(old) } : old,
   );
@@ -163,7 +180,4 @@ export function patchPostEverywhere(
         })),
       },
   );
-  return () => {
-    for (const [key, data] of snapshots) qc.setQueryData(key, data);
-  };
 }

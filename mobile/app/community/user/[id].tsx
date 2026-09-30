@@ -11,6 +11,7 @@ import {
   useInvalidateCommunity,
   useMe,
   useProfile,
+  usePullRefresh,
   useRefetchOnFocus,
   useUserPosts,
 } from '@features/community';
@@ -44,10 +45,12 @@ export default function ProfileScreen() {
   // 프로필과 글 목록은 캐시에 있다. 글은 끝에 닿으면 다음 쪽을 잇는다
   const profileQuery = useProfile(meId, id);
   // 없는 사람이거나 못 불러왔으면 null — 화면이 "찾을 수 없는 사람"으로 그린다
-  const profile = profileQuery.error ? null : profileQuery.data;
+  // 한 번 받은 것이 있으면 다시 받다 실패해도 그대로 보여 준다
+  const profile = profileQuery.data ?? (profileQuery.error ? null : undefined);
   const posts = useUserPosts(meId, id, 'latest');
   useRefetchOnFocus(profileQuery.refetch, profileQuery.isStale);
   useRefetchOnFocus(posts.refetch, posts.isStale);
+  const pull = usePullRefresh(() => Promise.all([profileQuery.refetch(), posts.refetch()]));
 
   const trimmed = nickname.trim();
   const nicknameOk = trimmed.length >= NICKNAME_MIN && trimmed.length <= NICKNAME_MAX && !nickname.includes('\n');
@@ -149,14 +152,7 @@ export default function ProfileScreen() {
         onEndReached={posts.more}
         onEndReachedThreshold={0.4}
         refreshControl={
-          <RefreshControl
-            refreshing={posts.isRefetching && !posts.isFetchingNextPage}
-            onRefresh={() => {
-              void profileQuery.refetch();
-              void posts.refetch();
-            }}
-            tintColor={c.fgMuted}
-          />
+          <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} tintColor={c.fgMuted} />
         }
         ListFooterComponent={posts.isFetchingNextPage ? <ActivityIndicator color={c.fgMuted} style={{ padding: sp[4] }} /> : null}
         ListEmptyComponent={

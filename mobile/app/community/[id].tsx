@@ -7,6 +7,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Button, Card, Input, Radio, Row, Screen, Sheet, Stack, Switch } from '@components';
 import {
   ago,
+  communityKeys,
   getCommunityApi,
   patchPostEverywhere,
   REPORT_REASONS,
@@ -70,6 +71,8 @@ export default function PostScreen() {
   const error = query.error ? ((query.error as { message?: string }).message ?? String(query.error)) : null;
   useRefetchOnFocus(query.refetch, query.isStale);
   const [notice, setNotice] = useState<string | null>(null);
+  /** 공감 요청이 나가 있는 동안은 다시 받지 않는다 — 빠르게 두 번 누르면 응답 순서에 따라 결과가 틀린다 */
+  const [liking, setLiking] = useState(false);
 
   const [draft, setDraft] = useState('');
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
@@ -88,20 +91,26 @@ export default function PostScreen() {
   };
 
   const toggleLike = () => {
-    if (!post || !needMe()) return;
+    if (!post || liking || !needMe()) return;
     const next = !post.likedByMe;
-    // 먼저 그려 놓고 서버 값으로 맞춘다 — 글 상세와 캐시에 든 목록을 함께. 실패하면 되돌린다
-    const undo = patchPostEverywhere(qc, post.id, (p) => ({
-      likedByMe: next,
-      likeCount: p.likeCount + (next === p.likedByMe ? 0 : next ? 1 : -1),
-    }));
+    const flip = (to: boolean) => (p: { likedByMe: boolean; likeCount: number }) => ({
+      likedByMe: to,
+      likeCount: p.likeCount + (to === p.likedByMe ? 0 : to ? 1 : -1),
+    });
+    setLiking(true);
+    // 먼저 그려 놓고 서버 값으로 맞춘다 — 글 상세와 캐시에 든 목록을 함께.
+    // 실패하면 이 글의 공감만 반대로 되돌리고 다시 읽는다 — 통째로 되돌리면 그 사이 달린 댓글까지 사라진다
+    void qc.cancelQueries({ queryKey: communityKeys.all });
+    patchPostEverywhere(qc, post.id, flip(next));
     getCommunityApi()
       .setLiked(post.id, next)
       .then((r) => patchPostEverywhere(qc, post.id, () => r))
       .catch((e) => {
-        undo();
+        patchPostEverywhere(qc, post.id, flip(!next));
+        void invalidate();
         setNotice(e?.message ?? '반영하지 못했습니다');
-      });
+      })
+      .finally(() => setLiking(false));
   };
 
   const send = () => {

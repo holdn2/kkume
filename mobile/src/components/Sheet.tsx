@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Animated,
+  Dimensions,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -16,8 +17,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@shared/ui';
 import { c, dur, r, sp } from '@theme/token';
 
-/** 첫 프레임에도 화면 밖에 있도록 넉넉히 잡은 값 */
-const HIDDEN = 700;
+/**
+ * 첫 프레임과 닫힌 뒤에 화면 밖에 있도록 — 시트가 화면 높이까지 커질 수 있어(최대 높이, 2026-09-30)
+ * 고정값(700)이면 긴 시트의 윗부분이 닫힌 뒤에도 남았다가 툭 사라졌다
+ */
+const HIDDEN = Dimensions.get('window').height;
 /** 이만큼 끌어내리면 닫는다 */
 const CLOSE_DY = 90;
 /** 짧게 튕겨도 닫히도록 — 거리를 못 채워도 속도가 빠르면 닫을 뜻이다 */

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Button, Card, Radio, Row, Screen, Segmented, Sheet, Stack, Title } from '@components';
-import { useFeed, useMe, useRefetchOnFocus, useUserPosts } from '@features/community';
+import { useFeed, useMe, usePullRefresh, useRefetchOnFocus, useUserPosts } from '@features/community';
 import { PostCard } from '@features/community/PostCard';
 import type { FeedSort } from '@shared/api/community';
 import { AppText } from '@shared/ui';
@@ -36,7 +36,6 @@ export default function CommunityScreen() {
   const [scope, setScope] = useState<Scope>('all');
   const [sort, setSort] = useState<FeedSort>('latest');
   const [sorting, setSorting] = useState(false);
-  const [needLogin, setNeedLogin] = useState(false);
 
   // 쪽은 TanStack Query 가 들고 있다 — 탭을 오가도 다시 받지 않고, 끝에 닿으면 다음 쪽을 잇는다.
   // 「내 글」은 로그인했을 때만 켠다. 로그아웃하면 전체로 돌아간다
@@ -45,17 +44,15 @@ export default function CommunityScreen() {
   const minePages = useUserPosts(meId, mine ? meId : null, sort);
   const list = mine ? minePages : all;
   useRefetchOnFocus(list.refetch, list.isStale);
+  const pull = usePullRefresh(list.refetch);
 
+  // 로그인 전이면 위쪽 안내 카드가 이미 떠 있다. 로그인 여부를 읽는 중(undefined)의 탭은 무시한다
   const guard = (go: () => void) => {
     if (me) go();
-    else setNeedLogin(true);
   };
 
   const onScope = (next: Scope) => {
-    if (next === 'mine' && !me) {
-      setNeedLogin(true);
-      return;
-    }
+    if (next === 'mine' && !me) return;
     setScope(next);
   };
 
@@ -86,7 +83,7 @@ export default function CommunityScreen() {
       </Row>
 
       {/* 로그인 전인 것과 로그인했는데 글이 없는 것을 가른다 — 로그인 전이면 늘 이 카드가 보인다 */}
-      {(me === null || needLogin) && (
+      {me === null && (
         <Card>
           <AppText size="label" weight="semibold">
             로그인이 필요합니다
@@ -118,11 +115,7 @@ export default function CommunityScreen() {
         onEndReached={list.more}
         onEndReachedThreshold={0.4}
         refreshControl={
-          <RefreshControl
-            refreshing={list.isRefetching && !list.isFetchingNextPage}
-            onRefresh={() => void list.refetch()}
-            tintColor={c.fgMuted}
-          />
+          <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} tintColor={c.fgMuted} />
         }
         ListFooterComponent={list.isFetchingNextPage ? <ActivityIndicator color={c.fgMuted} style={{ padding: sp[4] }} /> : null}
         ListEmptyComponent={
