@@ -5,7 +5,7 @@
  * N1~N9 는 055 의 새 규칙이고 **구현보다 먼저 넣었다** — 꿈 공유 · 꿈당 한 글 · 정렬 두 가지.
  */
 import { fakeCommunity as api } from '@features/community/fake';
-import { mergePage, migrateLocalBlocks, shareDream } from '@features/community/logic';
+import { mergePage, migrateLocalBlocks, nicknameProblem, shareDream } from '@features/community/logic';
 import { request } from '@shared/api/client';
 import { createHttpCommunity } from '@shared/api/communityHttp';
 import { clearSession, saveSession } from '@shared/auth/session';
@@ -228,6 +228,13 @@ check('H1', '다음 쪽을 붙일 때 이미 있는 id 는 버린다(공감순 �
   const r5 = await migrateLocalBlocks(expired, settings);
   check('H8', '401 · 네트워크는 여전히 실패로 두고 남긴다', r5.failed === 1 && JSON.parse(store.get('blocked_users')).length === 1, JSON.stringify(r5));
 }
+
+// 닉네임 검사 — 서버(PATCH /api/me, 056 04장 4)와 같은 규칙을 마이 탭 · 프로필이 함께 쓴다(이슈 #63)
+check('H9', '앞뒤 공백을 자르고 2자면 된다', nicknameProblem('  잠꾸  ') === null);
+check('H10', '자른 뒤 1자면 막는다', nicknameProblem(' 잠 ') !== null);
+check('H11', '16자는 되고 17자는 막는다', nicknameProblem('가'.repeat(16)) === null && nicknameProblem('가'.repeat(17)) !== null);
+check('H12', '줄바꿈 · 제어문자는 막는다', nicknameProblem('잠꾸\n러기') !== null && nicknameProblem('잠꾸\u0007러기') !== null);
+check('H13', '가운데 공백은 된다', nicknameProblem('잠 꾸 러 기') === null);
 
 // ---- 진짜 request() 가 오류 본문의 덧붙은 필드를 넘기는가(서버 계약 056 01장) ----
 // 서버는 409 already_shared 에 postId 를 싣는다. code · message 만 남기면 화면이 그 글로 안내하지 못한다

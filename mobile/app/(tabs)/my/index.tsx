@@ -1,7 +1,9 @@
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { LayoutGrid } from 'lucide-react-native';
+import { useCallback, useState } from 'react';
 
 import { Button, Card, ListRow, Row, Screen, Stack, Title } from '@components';
+import { NicknameSheet } from '@features/community/NicknameSheet';
 import { useAuth } from '@shared/auth';
 import { STORYBOOK_ENABLED } from '@shared/storybook';
 import { AppText } from '@shared/ui';
@@ -11,6 +13,15 @@ import { c, sp } from '@theme/token';
 export default function MyScreen() {
   const router = useRouter();
   const auth = useAuth();
+  const [renaming, setRenaming] = useState(false);
+  const { refresh } = auth;
+
+  // 탭은 떠 있는 채로 남는다. 프로필에서 닉네임을 바꾸고 돌아와도 새 이름이 보이게 세션을 다시 읽는다
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
 
   return (
     <Screen scroll>
@@ -27,10 +38,12 @@ export default function MyScreen() {
           </AppText>
         ) : auth.session ? (
           <Stack gap={sp[3]}>
+            {/* 닉네임을 커뮤니티를 거치지 않고 여기서도 바꾼다(이슈 #63). 프로필과 같은 시트다 */}
             <Row gap={sp[2]}>
-              <AppText size="label" weight="semibold" style={{ flex: 1 }}>
+              <AppText size="label" weight="semibold" style={{ flex: 1 }} numberOfLines={1}>
                 {auth.session.user.nickname}
               </AppText>
+              <Button label="닉네임 바꾸기" variant="secondary" size="sm" onPress={() => setRenaming(true)} />
             </Row>
             <AppText size="caption" color={c.fgFaint}>
               기록이 서버에 함께 보관됩니다
@@ -100,6 +113,14 @@ export default function MyScreen() {
       <AppText size="caption" color={c.fgFaint}>
         프로필과 알림 설정은 뒤에 들어옵니다
       </AppText>
+
+      {/* 시트가 세션을 저장한 뒤 이 탭이 들고 있는 세션도 다시 읽는다 */}
+      <NicknameSheet
+        visible={renaming}
+        onClose={() => setRenaming(false)}
+        current={auth.session?.user.nickname ?? ''}
+        onSaved={() => void refresh()}
+      />
     </Screen>
   );
 }
