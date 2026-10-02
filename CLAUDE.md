@@ -216,9 +216,15 @@ EAS 무료 플랜을 쓴다. **iOS · Android 각각 월 15회**가 전부다.
 
 ```
 cd mobile
-$env:EXPO_PUBLIC_STORYBOOK_ENABLED = "false"
+$env:EXPO_PUBLIC_STORYBOOK_ENABLED = "true"
 eas update --branch=preview --environment=preview --non-interactive --message="english message"
 ```
+
+**스토리북은 켠 채로(`"true"`) 보낸다**(2026-09-17 사용자 — *"preview에서도 스토리북 보고 싶은데"*).
+이 줄이 한동안 `"false"`로 남아 있었는데, 그대로 따르면 마이 탭의 「스토리북 열기」가 **조용히 사라진다**
+(튕기지는 않는다 — 아래 `STORYBOOK_ENABLED` 가드). 켠 번들은 약 2배(6.7MB · 끈 것 3.7MB)다.
+**끄는 것은 시연처럼 콜드 스타트가 중요한 번들뿐이다**(2026-10-01 시연 번들 `"false"`).
+`eas.json` preview 빌드 env는 아직 `"false"`라 **다음 빌드 전에 맞출지 정한다.**
 
 **`eas`는 전역에 깔려 있다. `npm exec --`로 부르지 않는다.** `npm exec`를 거치면
 뒤쪽 플래그가 삼켜진다 — `--message`와 `--non-interactive`가 무시돼 프롬프트가 뜨고,

@@ -203,6 +203,17 @@ export function createSqliteRepo(db: Db): DreamRepo {
       return rows.map(toDream);
     },
 
+    async counts(query?: string) {
+      const q = query?.trim() ?? '';
+      const match = q ? " AND (instr(coalesce(title, ''), ?) > 0 OR instr(coalesce(text, ''), ?) > 0)" : '';
+      const row = await db.getFirstAsync<{ total: number; unread: number }>(
+        `SELECT count(*) AS total, coalesce(sum(CASE WHEN reviewed_at IS NULL THEN 1 ELSE 0 END), 0) AS unread
+         FROM dreams WHERE deleted_at IS NULL${match}`,
+        q ? [q, q] : [],
+      );
+      return { total: Number(row?.total ?? 0), unread: Number(row?.unread ?? 0) };
+    },
+
     async softDelete(id: string) {
       const current = await this.get(id);
       if (!current) return;

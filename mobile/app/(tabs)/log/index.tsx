@@ -1,13 +1,13 @@
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Mic } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { Card, Input, Screen, Title } from '@components';
 import { DictationPrompt } from '@features/log/DictationPrompt';
 import { DreamCard } from '@features/log/DreamCard';
+import { useDreamPages } from '@features/log/useDreamPages';
 import { repairRecordingPaths } from '@shared/audio/paths';
-import { getDreamRepo, type Dream } from '@shared/db';
 import { syncIfSignedIn } from '@shared/sync';
 import { AppText } from '@shared/ui';
 import { c, hit, press, r, sp } from '@theme/token';
@@ -28,31 +28,10 @@ export default function LogScreen() {
   // 파라미터는 **이 화면의** navigation으로 지운다. 전역 router.setParams는 그 순간 포커스된 화면에
   // 붙는데, blur는 다음 화면으로 넘어간 뒤에 와서 엉뚱한 화면의 파라미터를 지웠다(검증 레인 C 3차 1)
   const navigation = useNavigation<{ setParams: (p: { from?: string }) => void }>();
-  const [rows, setRows] = useState<Dream[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  /** 목록을 읽을 때 쓰는 검색어. 입력이 멈춘 뒤의 값이다 — 렌더가 아니라 읽기에서만 쓰므로 ref */
-  const applied = useRef('');
   const searching = query.trim().length > 0;
-
-  const load = useCallback(() => {
-    getDreamRepo()
-      .then((repo) => repo.list({ limit: 100, query: applied.current }))
-      .then((list) => {
-        setRows(list);
-        setError(null);
-      })
-      .catch((e) => setError(String(e)));
-  }, []);
-
-  // 검색어는 입력이 멈추면 적용한다. 목록은 폰의 SQLite 에서 찾는다 — 서버를 거치지 않는다
-  useEffect(() => {
-    const t = setTimeout(() => {
-      applied.current = query;
-      load();
-    }, 200);
-    return () => clearTimeout(t);
-  }, [query, load]);
+  // 30건씩 읽고 끝에 닿으면 잇는다. 검색은 폰의 SQLite 에서 — 서버를 거치지 않는다(`useDreamPages`)
+  const { rows, hasMore, counts, error, reload, more } = useDreamPages(query);
 
   // 기록하고 돌아오면 목록에 있어야 한다. 화면에 들어올 때마다 다시 읽는다 —
   // 기록 화면은 저장하고 router.replace로 이 화면에 떨어뜨리므로 마운트가 새로 일어나지 않는다
@@ -63,26 +42,26 @@ export default function LogScreen() {
   // **로컬을 먼저 그리고 동기화는 뒤에 돈다.** 서버를 기다리면 목록이 늦게 뜬다
   useFocusEffect(
     useCallback(() => {
-      load();
+      reload();
       // 녹음 경로 정리가 먼저다 — 캐시 폴더의 녹음을 옮긴 뒤라야 업로드가 옮긴 경로로 올린다.
       // 로그인과 상관없이 돈다. 원본을 지키는 일이라 동기화보다 앞선다(절대 규칙 2)
       void repairRecordingPaths()
         .then(() => syncIfSignedIn())
         .then((r) => {
         // 뭔가 바뀌었을 때만 다시 읽는다. 매번 읽으면 목록이 한 번 깜빡인다
-        if (r && (r.pulled > 0 || r.pushed > 0)) load();
+        if (r && (r.pulled > 0 || r.pushed > 0)) reload();
       });
       // 화면을 떠나면 `from=record`를 지운다. 탭은 파라미터를 들고 있어서, 안 지우면 앱을 다시 켤 때까지
       // 카드가 안 뜨고 — 이미 온보딩을 지난 폰은 받아쓰기 권한을 물을 곳이 없어진다(검증 레인 C 2차 B-2)
       return () => {
         if (from) navigation.setParams({ from: undefined });
       };
-    }, [load, from, navigation]),
+    }, [reload, from, navigation]),
   );
 
   return (
     <Screen>
-      <Title sub={searching ? `검색 결과 ${rows?.length ?? 0}건` : sub(rows)}>꿈 로그</Title>
+      <Title sub={sub(counts, searching)}>꿈 로그</Title>
 
       <Pressable
         onPress={() => router.push('/record')}
@@ -99,7 +78,7 @@ export default function LogScreen() {
       {from !== 'record' && <DictationPrompt />}
 
       {/* 꿈 로그 검색 — 제목 · 본문에 든 말로 찾는다. 기록이 하나도 없으면 찾을 것이 없어 숨긴다 */}
-      {(searching || (rows?.length ?? 0) > 0) && (
+      {(searching || (counts?.total ?? 0) > 0) && (
         <Input
           value={query}
           onChangeText={setQuery}
@@ -129,6 +108,9 @@ export default function LogScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        onEndReached={more}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={hasMore ? <ActivityIndicator color={c.fgMuted} style={{ padding: sp[4] }} /> : null}
         ListEmptyComponent={
           rows === null ? null : searching ? (
             <Card>
@@ -145,11 +127,11 @@ export default function LogScreen() {
   );
 }
 
-function sub(rows: Dream[] | null) {
-  if (rows === null) return undefined;
-  if (rows.length === 0) return '아직 비어 있습니다';
-  const unread = rows.filter((d) => d.reviewedAt == null).length;
-  return unread > 0 ? `${rows.length}건 · 미확인 ${unread}건` : `${rows.length}건`;
+function sub(counts: { total: number; unread: number } | null, searching: boolean) {
+  if (counts === null) return undefined;
+  if (searching) return `검색 결과 ${counts.total}건`;
+  if (counts.total === 0) return '아직 비어 있습니다';
+  return counts.unread > 0 ? `${counts.total}건 · 미확인 ${counts.unread}건` : `${counts.total}건`;
 }
 
 /**
