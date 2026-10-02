@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { LayoutGrid } from 'lucide-react-native';
+import { LayoutGrid, UserX } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 
 import { Button, Card, ListRow, Row, Screen, Stack, Title } from '@components';
@@ -9,7 +9,10 @@ import { STORYBOOK_ENABLED } from '@shared/storybook';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 
-/** MY-1. 11주차에 실제로 채운다 */
+/**
+ * MY-1. 계정(로그인 · 닉네임) · 위젯 설치 다시 보기 · 차단한 사용자 · 개발용 줄.
+ * 계정 삭제 · 약관은 앱 심사 항목이라 마지막에 몰아서 넣는다(보고서 053 8장)
+ */
 export default function MyScreen() {
   const router = useRouter();
   const auth = useAuth();
@@ -88,6 +91,8 @@ export default function MyScreen() {
           onPress={() => router.push('/onboarding?step=widget')}
           highlight
         />
+        {/* 차단은 서버에 있어 로그인해야 의미가 있다. 전에는 그 사람의 프로필까지 가야 풀 수 있었다 */}
+        {!!auth.session && <ListRow icon={UserX} label="차단한 사용자" onPress={() => router.push('/blocks')} />}
       </Stack>
 
       {/* "기상 시각"과 "기상 알림"이 여기 있었다. 만들다 만 것이 아니라
@@ -109,10 +114,6 @@ export default function MyScreen() {
         {/* 스토리북은 preview 빌드에서 꺼진다. 정작 판정이 필요한 빌드라 진단은 따로 둔다 */}
         <ListRow label="빌드 진단" onPress={() => router.push('/diag')} />
       </Stack>
-
-      <AppText size="caption" color={c.fgFaint}>
-        프로필과 알림 설정은 뒤에 들어옵니다
-      </AppText>
 
       {/* 시트가 세션을 저장한 뒤 이 탭이 들고 있는 세션도 다시 읽는다 */}
       <NicknameSheet

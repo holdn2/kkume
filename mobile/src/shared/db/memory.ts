@@ -69,8 +69,11 @@ export function createMemoryRepo(): DreamRepo {
 
     async list(options: ListOptions = {}) {
       const { includeDeleted = false, limit, offset = 0 } = options;
+      const query = options.query?.trim() ?? '';
       const filtered = rows
         .filter((r) => includeDeleted || !r.deletedAt)
+        // SQLite 쪽(instr)과 같이 글자 그대로 찾는다
+        .filter((r) => !query || (r.title ?? '').includes(query) || (r.text ?? '').includes(query))
         .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
       return filtered.slice(offset, limit == null ? undefined : offset + limit);
     },

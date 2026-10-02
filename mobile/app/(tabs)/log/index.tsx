@@ -1,9 +1,9 @@
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Mic } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
-import { Card, Screen, Title } from '@components';
+import { Card, Input, Screen, Title } from '@components';
 import { DictationPrompt } from '@features/log/DictationPrompt';
 import { DreamCard } from '@features/log/DreamCard';
 import { repairRecordingPaths } from '@shared/audio/paths';
@@ -30,16 +30,29 @@ export default function LogScreen() {
   const navigation = useNavigation<{ setParams: (p: { from?: string }) => void }>();
   const [rows, setRows] = useState<Dream[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  /** 목록을 읽을 때 쓰는 검색어. 입력이 멈춘 뒤의 값이다 — 렌더가 아니라 읽기에서만 쓰므로 ref */
+  const applied = useRef('');
+  const searching = query.trim().length > 0;
 
   const load = useCallback(() => {
     getDreamRepo()
-      .then((repo) => repo.list({ limit: 100 }))
+      .then((repo) => repo.list({ limit: 100, query: applied.current }))
       .then((list) => {
         setRows(list);
         setError(null);
       })
       .catch((e) => setError(String(e)));
   }, []);
+
+  // 검색어는 입력이 멈추면 적용한다. 목록은 폰의 SQLite 에서 찾는다 — 서버를 거치지 않는다
+  useEffect(() => {
+    const t = setTimeout(() => {
+      applied.current = query;
+      load();
+    }, 200);
+    return () => clearTimeout(t);
+  }, [query, load]);
 
   // 기록하고 돌아오면 목록에 있어야 한다. 화면에 들어올 때마다 다시 읽는다 —
   // 기록 화면은 저장하고 router.replace로 이 화면에 떨어뜨리므로 마운트가 새로 일어나지 않는다
@@ -69,7 +82,7 @@ export default function LogScreen() {
 
   return (
     <Screen>
-      <Title sub={sub(rows)}>꿈 로그</Title>
+      <Title sub={searching ? `검색 결과 ${rows?.length ?? 0}건` : sub(rows)}>꿈 로그</Title>
 
       <Pressable
         onPress={() => router.push('/record')}
@@ -84,6 +97,17 @@ export default function LogScreen() {
 
       {/* 받아쓰기 권한을 낮에 한 번 묻는다. 새벽 녹음 화면은 권한을 조회만 한다(절대 규칙 7) */}
       {from !== 'record' && <DictationPrompt />}
+
+      {/* 꿈 로그 검색 — 제목 · 본문에 든 말로 찾는다. 기록이 하나도 없으면 찾을 것이 없어 숨긴다 */}
+      {(searching || (rows?.length ?? 0) > 0) && (
+        <Input
+          value={query}
+          onChangeText={setQuery}
+          placeholder="꿈 검색 — 제목이나 내용으로"
+          returnKeyType="search"
+          accessibilityLabel="꿈 검색"
+        />
+      )}
 
       {!!error && (
         <Card>
@@ -103,7 +127,19 @@ export default function LogScreen() {
         ItemSeparatorComponent={() => <View style={{ height: sp[3] }} />}
         contentContainerStyle={{ paddingBottom: sp[6] }}
         showsVerticalScrollIndicator={false}
-        ListEmptyComponent={rows === null ? null : <Empty />}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        ListEmptyComponent={
+          rows === null ? null : searching ? (
+            <Card>
+              <AppText size="body" color={c.fgMuted}>
+                「{query.trim()}」이(가) 든 꿈이 없습니다.
+              </AppText>
+            </Card>
+          ) : (
+            <Empty />
+          )
+        }
       />
     </Screen>
   );

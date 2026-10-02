@@ -114,6 +114,11 @@ export type ListOptions = {
   includeDeleted?: boolean;
   limit?: number;
   offset?: number;
+  /**
+   * 꿈 로그 검색. 제목이나 본문에 이 말이 든 기록만. 앞뒤 공백은 자르고, 비면 거르지 않는다.
+   * **글자 그대로 찾는다** — `%` · `_`도 와일드카드가 아니다(그래서 LIKE 가 아니라 instr)
+   */
+  query?: string;
 };
 
 /**
