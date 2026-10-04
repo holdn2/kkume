@@ -85,6 +85,8 @@ export default function LogScreen() {
           placeholder="꿈 검색 — 제목이나 내용으로"
           returnKeyType="search"
           accessibilityLabel="꿈 검색"
+          clearable
+          bordered
         />
       )}
 

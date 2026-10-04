@@ -3,7 +3,7 @@ import { Trash2 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 
-import { Badge, Button, Input, Row, Screen, Sheet, Stack } from '@components';
+import { Badge, Button, Header, Input, Row, Screen, Sheet, Stack } from '@components';
 import { useMe, usePostForDream, useRefetchOnFocus } from '@features/community';
 import { PlayerBar } from '@features/log/PlayerBar';
 import { MAX_TEXT_LENGTH, MAX_TITLE_LENGTH } from '@shared/api/sync';
@@ -116,9 +116,12 @@ export default function DreamDetail() {
     })();
   };
 
+  // 위에 고정 — 긴 본문을 고치다가도 뒤로 갈 수 있게(2026-10-03). 전에는 뒤로 버튼이 아예 없어 쓸어 넘기기만 됐다
+  const goBack = () => (router.canGoBack() ? router.back() : router.replace('/log'));
+
   if (dream === null) {
     return (
-      <Screen>
+      <Screen header={<Header onBack={goBack} />}>
         <AppText color={c.fgMuted}>{error ?? '불러오는 중입니다'}</AppText>
         <Button label="목록으로" variant="ghost" onPress={() => router.replace('/log')} />
       </Screen>
@@ -128,16 +131,24 @@ export default function DreamDetail() {
   const unread = dream.reviewedAt == null;
 
   return (
-    <Screen scroll>
+    <Screen
+      scroll
+      header={
+        <Header
+          onBack={goBack}
+          right={
+            <Row gap={sp[2]}>
+              <AppText size="caption" color={c.fgFaint}>
+                {dream.recordedAt.slice(0, 16).replace('T', ' ')}
+              </AppText>
+              {unread ? <Badge label="미확인" tone="running" /> : <Badge label="확인함" tone="neutral" />}
+            </Row>
+          }
+        />
+      }>
       {/* 덩어리 사이를 넉넉히 띄운다. 읽는 것 · 듣는 것 · 결정하는 것이
           같은 간격으로 붙어 있으면 화면이 목록처럼 읽힌다 */}
       <Stack gap={sp[6]}>
-        <Row>
-          <AppText size="caption" color={c.fgFaint} style={{ flex: 1 }}>
-            {dream.recordedAt.slice(0, 16).replace('T', ' ')}
-          </AppText>
-          {unread ? <Badge label="미확인" tone="running" /> : <Badge label="확인함" tone="neutral" />}
-        </Row>
 
         <Stack gap={sp[3]}>
           {/* 서버가 255자를 넘는 제목을 거절한다(title_too_long). 거절된 수정은 폰에만 남아

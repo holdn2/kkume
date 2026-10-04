@@ -162,7 +162,11 @@ function SheetBody({ closing, onExited, onClose, title, description, children, o
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={[s.avoid, { paddingTop: insets.top + sp[4] }]}
         pointerEvents="box-none">
+        {/* 시트 안의 빈 곳(제목 · 여백)을 누르면 키보드를 내린다(2026-10-03 사용자 요청).
+            버튼 · 입력칸 · 안쪽 스크롤은 더 안쪽이라 먼저 받는다 */}
         <Animated.View
+          onStartShouldSetResponder={() => true}
+          onResponderRelease={() => Keyboard.dismiss()}
           style={[
             s.sheet,
             { paddingBottom: keyboardUp ? sp[4] : insets.bottom + sp[5], transform: [{ translateY: y }] },

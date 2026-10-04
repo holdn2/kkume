@@ -1,8 +1,8 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { LayoutGrid, UserX } from 'lucide-react-native';
+import { LayoutGrid, Pencil, UserX } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 
-import { Button, Card, ListRow, Row, Screen, Stack, Title } from '@components';
+import { Button, Card, Chip, ListRow, Row, Screen, Stack, Title } from '@components';
 import { NicknameSheet } from '@features/community/NicknameSheet';
 import { useAuth } from '@shared/auth';
 import { STORYBOOK_ENABLED } from '@shared/storybook';
@@ -27,8 +27,8 @@ export default function MyScreen() {
   );
 
   return (
-    <Screen scroll>
-      <Title>마이</Title>
+    // 탭 제목도 위에 고정한다 — 다른 탭(꿈 로그 · 꿈 나눔)은 목록만 스크롤돼 이미 그렇다(2026-10-03)
+    <Screen scroll header={<Title>마이</Title>}>
 
       {/* **로그인이 여기 있는 이유.** 새벽 흐름에는 로그인을 두지 않는다 —
           위젯을 눌렀는데 로그인 화면이 뜨면 그 기록이 사라진다(절대 규칙 1).
@@ -46,7 +46,8 @@ export default function MyScreen() {
               <AppText size="label" weight="semibold" style={{ flex: 1 }} numberOfLines={1}>
                 {auth.session.user.nickname}
               </AppText>
-              <Button label="닉네임 바꾸기" variant="secondary" size="sm" onPress={() => setRenaming(true)} />
+              {/* 곁가지 동작이라 큰 버튼이 아니라 이름 옆의 작은 칩(2026-10-03 사용자 요청) */}
+              <Chip label="닉네임 바꾸기" icon={Pencil} onPress={() => setRenaming(true)} />
             </Row>
             <AppText size="caption" color={c.fgFaint}>
               기록이 서버에 함께 보관됩니다

@@ -1,8 +1,9 @@
+import { X } from 'lucide-react-native';
 import { useState } from 'react';
-import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { AppText } from '@shared/ui';
-import { c, font, hit, r, sp, type as ty } from '@theme/token';
+import { c, font, hit, press, r, sp, type as ty } from '@theme/token';
 
 import { Row, Spacer } from './layout';
 
@@ -18,6 +19,13 @@ type Props = TextInputProps & {
    * 안내 문구가 붙어 보이던 것을 막는다(2026-09-30)
    */
   rows?: 1;
+  /** 오른쪽에 한 번에 지우는 × 버튼(글자가 있을 때만). 검색칸에 쓴다 */
+  clearable?: boolean;
+  /**
+   * 쉬는 상태에도 옅은 테두리. **같은 색 바탕(시트 · 카드) 위에서는 채움이 묻혀 칸이 안 보인다** —
+   * 시트 안 검색칸이 그랬다(2026-10-03). 화면 바탕 위의 칸은 채움만으로 충분해 기본은 끈다
+   */
+  bordered?: boolean;
 };
 
 /**
@@ -36,6 +44,8 @@ export function Input({
   counter,
   multiline,
   rows,
+  clearable,
+  bordered,
   style,
   onFocus,
   onBlur,
@@ -58,6 +68,8 @@ export function Input({
    */
   const oneLine = !multiline;
   const { onChangeText, submitBehavior, returnKeyType } = rest;
+  // 한 번에 지우는 버튼(검색칸). 글자가 있을 때만 — 빈 칸에 × 가 있으면 누를 것이 하나 더 생긴다
+  const showClear = !!clearable && !!value;
 
   return (
     <View style={{ gap: sp[2] }}>
@@ -67,6 +79,7 @@ export function Input({
         </AppText>
       )}
 
+      <View>
       <TextInput
         {...rest}
         value={value}
@@ -87,12 +100,26 @@ export function Input({
         style={[
           s.base,
           multiline && rows !== 1 ? s.multiline : s.growing,
+          bordered && { borderColor: c.line },
+          // 지우기 버튼 자리만큼 글자가 덜 간다 — 긴 글이 아이콘 밑으로 들어가지 않게
+          showClear && { paddingRight: hit.min },
           focused && { borderColor: c.action },
           // 에러가 포커스를 이긴다. 고쳐야 할 것이 우선이다
           !!error && { borderColor: c.danger },
           style,
         ]}
       />
+      {showClear && (
+        <Pressable
+          onPress={() => onChangeText?.('')}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="입력 지우기"
+          style={({ pressed }) => [s.clear, pressed && { opacity: press }]}>
+          <X size={18} strokeWidth={2} color={c.fgMuted} aria-hidden />
+        </Pressable>
+      )}
+      </View>
 
       {(!!error || showCounter) && (
         <Row>
@@ -121,6 +148,8 @@ const BORDER = 1.5;
 const FONT_LINE = (ty.body.fontSize * (1950 + 494)) / 2048;
 
 const s = StyleSheet.create({
+  // 지우기 버튼은 칸의 오른쪽 위 한 줄 높이 안에서 가운데 — 칸이 여러 줄로 늘어나도 첫 줄 옆에 남는다
+  clear: { position: 'absolute', right: 0, top: 0, width: hit.min, height: hit.base, alignItems: 'center', justifyContent: 'center' },
   base: {
     backgroundColor: c.surface,
     borderRadius: r.control,

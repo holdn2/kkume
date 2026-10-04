@@ -1,9 +1,8 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
+import { ActivityIndicator } from 'react-native';
 
-import { Button, Card, Input, Radio, Row, Screen, Sheet, Stack, Switch, Title } from '@components';
+import { Button, Card, Header, Input, Radio, Row, Screen, Sheet, Stack, Switch } from '@components';
 import { getCommunityApi, shareDream, useInvalidateCommunity, useMe } from '@features/community';
 import { useDreamPages } from '@features/log/useDreamPages';
 import { isApiError } from '@shared/api/client';
@@ -12,7 +11,7 @@ import { MAX_TITLE_LENGTH } from '@shared/api/sync';
 import { getDreamRepo, type Dream } from '@shared/db';
 import { syncIfSignedIn } from '@shared/sync';
 import { AppText } from '@shared/ui';
-import { c, hit, sp } from '@theme/token';
+import { c, sp } from '@theme/token';
 
 /**
  * COM-3. 꿈 공유하기.
@@ -115,17 +114,12 @@ export default function NewPostScreen() {
       .finally(() => setPosting(false));
   };
 
-  const back = (
-    <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
-      <ChevronLeft size={24} strokeWidth={1.75} color={c.fg} />
-    </Pressable>
-  );
+  // 위에 고정된다 — 긴 꿈 내용을 고치다가도 바로 나갈 수 있게(2026-10-03)
+  const header = <Header title="꿈 공유하기" onBack={() => router.back()} />;
 
   if (me === null) {
     return (
-      <Screen>
-        {back}
-        <Title>꿈 공유하기</Title>
+      <Screen header={header}>
         <Card>
           <AppText size="label" weight="semibold">
             로그인하면 꿈을 나눌 수 있습니다
@@ -137,10 +131,8 @@ export default function NewPostScreen() {
   }
 
   return (
-    <Screen scroll>
+    <Screen scroll header={header}>
       <Stack gap={sp[5]}>
-        {back}
-        <Title>꿈 공유하기</Title>
 
         <Stack gap={sp[2]}>
           <AppText size="label" weight="semibold">
@@ -260,6 +252,8 @@ export default function NewPostScreen() {
             placeholder="꿈 검색 — 제목이나 내용으로"
             returnKeyType="search"
             accessibilityLabel="꿈 검색"
+            clearable
+            bordered
           />
           {pages.rows !== null && pages.rows.length === 0 && (
             <AppText size="caption" color={c.fgFaint}>
@@ -293,7 +287,3 @@ function dreamTitle(d: Dream) {
   if (first) return first;
   return d.audioPath ? '음성으로 남긴 꿈' : '내용 없는 꿈';
 }
-
-const s = StyleSheet.create({
-  back: { height: hit.min, justifyContent: 'center', alignSelf: 'flex-start' },
-});

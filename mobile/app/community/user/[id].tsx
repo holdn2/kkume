@@ -1,9 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
+import { Pencil } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, View } from 'react-native';
 
-import { Avatar, Button, Card, Row, Screen, Stack } from '@components';
+import { Avatar, Button, Card, Chip, Header, Row, Screen, Stack } from '@components';
 import {
   setBlocked,
   useBlocked,
@@ -17,7 +17,7 @@ import {
 import { NicknameSheet } from '@features/community/NicknameSheet';
 import { PostCard } from '@features/community/PostCard';
 import { AppText } from '@shared/ui';
-import { c, hit, sp } from '@theme/token';
+import { c, sp } from '@theme/token';
 
 /**
  * COM-4. 프로필 — **내 것 · 남의 것이 같은 화면**(계획서 003, 구현을 절반으로).
@@ -59,9 +59,6 @@ export default function ProfileScreen() {
 
   const header = (
     <Stack gap={sp[4]}>
-      <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
-        <ChevronLeft size={24} strokeWidth={1.75} color={c.fg} />
-      </Pressable>
       {profile === undefined ? (
         <AppText color={c.fgMuted}>불러오는 중입니다</AppText>
       ) : profile === null ? (
@@ -78,6 +75,8 @@ export default function ProfileScreen() {
                 {joined(profile.joinedAt)} 가입 · 글 {profile.postCount}
               </AppText>
             </Stack>
+            {/* 내 프로필이면 이름 옆의 작은 칩 — 마이 탭과 같은 모양(2026-10-03) */}
+            {mine && <Chip label="닉네임 바꾸기" icon={Pencil} onPress={() => setRenaming(true)} />}
           </Row>
           {isBlocked && (
             <Card>
@@ -86,14 +85,7 @@ export default function ProfileScreen() {
               </AppText>
             </Card>
           )}
-          {mine ? (
-            <Button
-              label="닉네임 바꾸기"
-              size="sm"
-              variant="secondary"
-              onPress={() => setRenaming(true)}
-            />
-          ) : (
+          {!mine && (
             <Button
               label={isBlocked ? '차단 풀기' : '차단하기'}
               size="sm"
@@ -110,7 +102,7 @@ export default function ProfileScreen() {
   );
 
   return (
-    <Screen>
+    <Screen header={<Header onBack={() => router.back()} />}>
       <FlatList
         data={profile ? posts.items : []}
         keyExtractor={(p) => p.id}
@@ -147,7 +139,3 @@ function joined(iso: string) {
   const d = new Date(iso);
   return `${d.getFullYear()}년 ${d.getMonth() + 1}월`;
 }
-
-const s = StyleSheet.create({
-  back: { height: hit.min, justifyContent: 'center', alignSelf: 'flex-start' },
-});

@@ -3,8 +3,7 @@ import { useState } from 'react';
 import { Button, Input, Sheet, Stack } from '@components';
 import { NICKNAME_MAX, NICKNAME_MIN, type Author } from '@shared/api/community';
 import { loadSession, saveSession } from '@shared/auth/session';
-import { AppText } from '@shared/ui';
-import { c, sp } from '@theme/token';
+import { sp } from '@theme/token';
 
 import { getCommunityApi } from './api';
 import { nicknameProblem } from './logic';
@@ -73,13 +72,14 @@ export function NicknameSheet({ visible, onClose, current, onSaved }: Props) {
           maxLength={NICKNAME_MAX}
           counter
           autoFocus
+          // 시트 바탕과 칸 채움이 같은 색이라 테두리가 있어야 칸이 보인다
+          bordered
+          clearable
           onSubmitEditing={save}
           // 입력 중에는 길이만 센다. 규칙 위반 문구는 짧을 때가 아니라 보낼 수 없는 문자가 있을 때만
           error={error ?? (value.trim().length >= NICKNAME_MIN && problem ? problem : undefined)}
         />
-        <AppText size="caption" color={c.fgFaint}>
-          {NICKNAME_MIN}~{NICKNAME_MAX}자. 바꾸면 지난 글과 댓글의 이름도 새 이름으로 보입니다.
-        </AppText>
+        {/* "2~16자 · 지난 글 이름도 바뀜" 안내는 뺐다(2026-10-03 사용자 — 당연한 것). 길이는 글자수가 알린다 */}
         <Button label={saving ? '바꾸는 중' : '바꾸기'} disabled={!!problem || unchanged || saving} onPress={save} />
       </Stack>
     </Sheet>

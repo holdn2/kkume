@@ -1,4 +1,5 @@
-import { ScrollView, View, type ViewProps } from 'react-native';
+import type { ReactNode } from 'react';
+import { Keyboard, Pressable, ScrollView, View, type ViewProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@shared/ui';
@@ -14,10 +15,16 @@ import { c, sp } from '@theme/token';
 export function Screen({
   night,
   scroll,
+  header,
   style,
   children,
   ...rest
-}: ViewProps & { night?: boolean; scroll?: boolean }) {
+}: ViewProps & {
+  night?: boolean;
+  scroll?: boolean;
+  /** 스크롤 바깥 맨 위에 붙는 줄(`Header` · 탭 화면의 `Title`). 내용이 길어도 위에 남는다 */
+  header?: ReactNode;
+}) {
   const insets = useSafeAreaInsets();
 
   // `SafeAreaView` 대신 값을 직접 읽는다. 전체화면 모달(`/record`)에서
@@ -37,9 +44,15 @@ export function Screen({
     </View>
   );
 
+  // 빈 곳을 누르면 키보드를 내린다(2026-10-03 사용자 요청). 안쪽 버튼 · 입력칸이 먼저 받으므로 그것들은 그대로다.
+  // 새벽 화면(night)은 건드리지 않는다 — 기록 화면은 따로 짜여 있고, 거기서 키보드는 적기 그 자체다
+  const Root = night ? View : Pressable;
   return (
-    <View
+    <Root
+      onPress={night ? undefined : Keyboard.dismiss}
+      accessible={false}
       style={{ flex: 1, paddingTop: top, paddingBottom: bottom, backgroundColor: night ? c.night : c.bg }}>
+      {!!header && <View style={{ paddingHorizontal: sp[5], paddingBottom: sp[2] }}>{header}</View>}
       {/* 키보드는 여기서 한 번에 받는다(2026-09-30). 화면마다 KeyboardAvoidingView 를 ScrollView **안에** 두던 것은
           키보드 높이만큼 끝에 여백을 붙일 뿐 입력칸을 끌어올리지 못했다. iOS ScrollView 의
           `automaticallyAdjustKeyboardInsets`는 키보드만큼 안쪽 여백을 주고 **포커스된 입력칸을 보이는 곳까지 올린다**
@@ -56,7 +69,7 @@ export function Screen({
       ) : (
         inner
       )}
-    </View>
+    </Root>
   );
 }
 

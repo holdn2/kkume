@@ -1,9 +1,8 @@
 import { useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
 import { useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { FlatList, StyleSheet, View } from 'react-native';
 
-import { Avatar, Button, Card, Row, Screen, Title } from '@components';
+import { Avatar, Button, Card, Header, Row, Screen } from '@components';
 import { setBlocked, useBlocked, useInvalidateCommunity, useMe, useRefetchOnFocus } from '@features/community';
 import type { Author } from '@shared/api/community';
 import { AppText } from '@shared/ui';
@@ -36,13 +35,10 @@ export default function BlocksScreen() {
   };
 
   return (
-    <Screen>
-      <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
-        <ChevronLeft size={24} strokeWidth={1.75} color={c.fg} />
-      </Pressable>
-      <Title sub="차단하면 그 사람의 글과 댓글이 꿈 나눔에서 보이지 않습니다. 상대에게는 알리지 않습니다">
-        차단한 사용자
-      </Title>
+    <Screen header={<Header title="차단한 사용자" onBack={() => router.back()} />}>
+      <AppText size="caption" color={c.fgFaint}>
+        차단하면 그 사람의 글과 댓글이 꿈 나눔에서 보이지 않습니다. 상대에게는 알리지 않습니다.
+      </AppText>
 
       {!!error && (
         <AppText size="caption" color={c.danger}>
@@ -93,6 +89,5 @@ export default function BlocksScreen() {
 }
 
 const s = StyleSheet.create({
-  back: { height: hit.min, justifyContent: 'center', alignSelf: 'flex-start' },
   row: { minHeight: hit.min },
 });
