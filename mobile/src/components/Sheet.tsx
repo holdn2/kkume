@@ -174,10 +174,7 @@ function SheetBody({ closing, onExited, onClose, title, description, children, o
           {/* 제목 쪽을 누르면 키보드를 내린다(2026-10-03 사용자 요청). 시트 전체를 감싸지 않는다 —
               안쪽 스크롤과 다툰다(Screen 과 같은 이유). 목록 쪽 빈 곳은 안쪽 ScrollView 의 handled 가 내린다 */}
           {(!!title || !!description) && (
-            <View
-              style={{ gap: sp[2], paddingBottom: sp[2] }}
-              onStartShouldSetResponder={() => true}
-              onResponderRelease={() => Keyboard.dismiss()}>
+            <View style={{ gap: sp[2], paddingBottom: sp[2] }} onTouchEnd={() => Keyboard.dismiss()}>
               {!!title && (
                 <AppText size="heading" weight="semibold">
                   {title}

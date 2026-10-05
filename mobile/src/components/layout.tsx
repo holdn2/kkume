@@ -54,10 +54,9 @@ export function Screen({
   return (
     <View style={{ flex: 1, paddingTop: top, paddingBottom: bottom, backgroundColor: night ? c.night : c.bg }}>
       {!!header && (
-        <View
-          style={{ paddingHorizontal: sp[5], paddingBottom: sp[2] }}
-          onStartShouldSetResponder={() => true}
-          onResponderRelease={() => Keyboard.dismiss()}>
+        // onTouchEnd 는 안쪽 버튼(뒤로 · ⋯)이 받은 탭에도 온다 — 응답자가 되지 않아 버튼을 막지 않는다.
+        // 응답자로 받으면 버튼 탭에는 안 와서, 댓글을 치다 ⋯ 를 누르면 키보드가 남은 채 메뉴가 떴다(PR #64 리뷰)
+        <View style={{ paddingHorizontal: sp[5], paddingBottom: sp[2] }} onTouchEnd={() => Keyboard.dismiss()}>
           {header}
         </View>
       )}

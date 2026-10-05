@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
 
 import { Avatar, Button, Card, Header, Row, Screen } from '@components';
 import { setBlocked, useBlocked, useInvalidateCommunity, useMe, useRefetchOnFocus } from '@features/community';
@@ -74,7 +74,16 @@ export default function BlocksScreen() {
           ItemSeparatorComponent={() => <View style={{ height: sp[2] }} />}
           contentContainerStyle={{ paddingBottom: sp[8] }}
           ListEmptyComponent={
-            me === undefined ? null : (
+            me === undefined || blocked.loading ? (
+              <ActivityIndicator color={c.fgMuted} style={{ padding: sp[6] }} />
+            ) : blocked.failed ? (
+              <Card>
+                <AppText size="body" color={c.danger}>
+                  차단 목록을 불러오지 못했습니다.
+                </AppText>
+                <Button label="다시 불러오기" size="sm" variant="secondary" onPress={() => void blocked.reload()} />
+              </Card>
+            ) : (
               <Card>
                 <AppText size="body" color={c.fgMuted}>
                   차단한 사용자가 없습니다.
