@@ -186,12 +186,32 @@ export function createSqliteRepo(db: Db): DreamRepo {
 
     async list(options: ListOptions = {}) {
       const { includeDeleted = false, limit, offset = 0 } = options;
-      const where = includeDeleted ? '' : 'WHERE deleted_at IS NULL';
+      const query = options.query?.trim() ?? '';
+      const conds: string[] = [];
+      const params: unknown[] = [];
+      if (!includeDeleted) conds.push('deleted_at IS NULL');
+      if (query) {
+        // instr 는 글자 그대로 찾는다 — LIKE 처럼 % · _ 를 이스케이프할 필요가 없다. 한글은 대소문자가 없다
+        conds.push("(instr(coalesce(title, ''), ?) > 0 OR instr(coalesce(text, ''), ?) > 0)");
+        params.push(query, query);
+      }
+      const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
       const rows = await db.getAllAsync<Row>(
         `SELECT ${COLS} FROM dreams ${where} ORDER BY recorded_at DESC LIMIT ? OFFSET ?`,
-        [limit ?? -1, offset],
+        [...params, limit ?? -1, offset],
       );
       return rows.map(toDream);
+    },
+
+    async counts(query?: string) {
+      const q = query?.trim() ?? '';
+      const match = q ? " AND (instr(coalesce(title, ''), ?) > 0 OR instr(coalesce(text, ''), ?) > 0)" : '';
+      const row = await db.getFirstAsync<{ total: number; unread: number }>(
+        `SELECT count(*) AS total, coalesce(sum(CASE WHEN reviewed_at IS NULL THEN 1 ELSE 0 END), 0) AS unread
+         FROM dreams WHERE deleted_at IS NULL${match}`,
+        q ? [q, q] : [],
+      );
+      return { total: Number(row?.total ?? 0), unread: Number(row?.unread ?? 0) };
     },
 
     async softDelete(id: string) {

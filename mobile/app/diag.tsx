@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 
-import { Badge, Button, Card, Row, Screen, Stack, Title } from '@components';
+import { Badge, Button, Card, Header, Row, Screen, Stack } from '@components';
 import { audioBackend, mmss, probeAudioUpload } from '@shared/audio';
 import { formatRecordingFacts, inspectRecordings } from '@shared/audio/inspect';
 import { repairRecordingPaths } from '@shared/audio/paths';
@@ -183,8 +183,12 @@ export default function DiagScreen() {
   };
 
   return (
-    <Screen scroll>
-      <Title sub="preview 빌드에서 네이티브가 실제로 붙었는지 본다">빌드 진단</Title>
+    <Screen
+      scroll
+      header={<Header title="빌드 진단" onBack={() => router.back()} />}>
+      <AppText size="caption" color={c.fgFaint}>
+        preview 빌드에서 네이티브가 실제로 붙었는지 본다
+      </AppText>
 
       <Stack gap={sp[3]}>
         <Row>

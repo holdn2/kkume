@@ -73,7 +73,8 @@ export function useBlocked(meId: string | null | undefined) {
   });
   const list = meId ? (query.data ?? []) : [];
   const ids = new Set(list.map((u) => u.id));
-  return { list, ids, reload: query.refetch };
+  // 받는 중 · 실패를 빈 목록과 가른다 — 차단 목록 화면이 "없습니다"를 응답 전에 띄우지 않게(PR #64 리뷰)
+  return { list, ids, reload: query.refetch, loading: !!meId && query.isPending, failed: !!meId && query.isError };
 }
 
 export { mergePage, shareDream } from './logic';

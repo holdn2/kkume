@@ -1,10 +1,10 @@
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { ChevronLeft, CornerDownRight, Flag, Heart, MoreHorizontal, X } from 'lucide-react-native';
+import { CornerDownRight, Flag, Heart, MoreHorizontal, X } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, Card, Input, Radio, Row, Screen, Sheet, Stack, Switch } from '@components';
+import { Button, Card, Header, Input, Radio, Row, Screen, Sheet, Stack, Switch } from '@components';
 import {
   ago,
   communityKeys,
@@ -198,8 +198,7 @@ export default function PostScreen() {
 
   if (post === undefined) {
     return (
-      <Screen>
-        <Back onPress={goBack} />
+      <Screen header={<Header onBack={goBack} />}>
         <AppText color={c.fgMuted}>{error ?? '불러오는 중입니다'}</AppText>
       </Screen>
     );
@@ -207,8 +206,7 @@ export default function PostScreen() {
 
   if (post === null) {
     return (
-      <Screen>
-        <Back onPress={goBack} />
+      <Screen header={<Header onBack={goBack} />}>
         <AppText color={c.fgMuted}>지워졌거나 가려진 글입니다.</AppText>
       </Screen>
     );
@@ -222,20 +220,25 @@ export default function PostScreen() {
   const thread = visibleThread(post.comments);
 
   return (
-    <Screen scroll>
+    <Screen
+      scroll
+      // 위에 고정 — 긴 글과 댓글을 내려 읽다가도 뒤로 · ⋯(지우기 · 차단)에 바로 닿는다(2026-10-03)
+      header={
+        <Header
+          onBack={goBack}
+          right={
+            <Pressable
+              onPress={() => setMenuOpen(true)}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="더 보기"
+              style={({ pressed }) => pressed && { opacity: press }}>
+              <MoreHorizontal size={22} strokeWidth={1.75} color={c.fgMuted} />
+            </Pressable>
+          }
+        />
+      }>
       <Stack gap={sp[5]}>
-        <Row>
-          <Back onPress={goBack} />
-          <View style={{ flex: 1 }} />
-          <Pressable
-            onPress={() => setMenuOpen(true)}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="더 보기"
-            style={({ pressed }) => pressed && { opacity: press }}>
-            <MoreHorizontal size={22} strokeWidth={1.75} color={c.fgMuted} />
-          </Pressable>
-        </Row>
 
         {post.hidden && (
           <Card>
@@ -408,14 +411,6 @@ export default function PostScreen() {
   );
 }
 
-function Back({ onPress }: { onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} hitSlop={12} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
-      <ChevronLeft size={24} strokeWidth={1.75} color={c.fg} />
-    </Pressable>
-  );
-}
-
 /**
  * 댓글을 부모 · 답글 순으로 늘어놓는다. **차단한 사람의 댓글은 서버가 거른다**(056 04장 1) — 지운 댓글과
  * 같은 규칙이라 답글 달린 댓글은 `deleted` 자리로 오고, 아니면 아예 안 온다. 화면은 거르지 않는다
@@ -478,7 +473,6 @@ function TextAction({ label, onPress }: { label: string; onPress: () => void }) 
 }
 
 const s = StyleSheet.create({
-  back: { height: hit.min, justifyContent: 'center' },
   action: { flexDirection: 'row', alignItems: 'center', gap: sp[1], minHeight: hit.min },
   comment: { flexDirection: 'row', gap: sp[2] },
   reply: { paddingLeft: sp[4] },

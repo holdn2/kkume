@@ -1,17 +1,17 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { ActivityIndicator } from 'react-native';
 
-import { Button, Card, Input, Radio, Row, Screen, Sheet, Stack, Switch, Title } from '@components';
+import { Button, Card, Header, Input, Radio, Row, Screen, Sheet, Stack, Switch } from '@components';
 import { getCommunityApi, shareDream, useInvalidateCommunity, useMe } from '@features/community';
+import { useDreamPages } from '@features/log/useDreamPages';
 import { isApiError } from '@shared/api/client';
 import { MAX_POST_BODY, MAX_POST_DREAM_TEXT } from '@shared/api/community';
 import { MAX_TITLE_LENGTH } from '@shared/api/sync';
 import { getDreamRepo, type Dream } from '@shared/db';
 import { syncIfSignedIn } from '@shared/sync';
 import { AppText } from '@shared/ui';
-import { c, hit, sp } from '@theme/token';
+import { c, sp } from '@theme/token';
 
 /**
  * COM-3. 꿈 공유하기.
@@ -34,7 +34,11 @@ export default function NewPostScreen() {
   const me = useMe();
   const invalidate = useInvalidateCommunity();
 
-  const [dreams, setDreams] = useState<Dream[] | null>(null);
+  /** 지운 것을 뺀 꿈 개수. 0이면 "아직 남긴 꿈이 없습니다" */
+  const [total, setTotal] = useState<number | null>(null);
+  /** 꿈 고르기 시트 — 30건씩 이어 읽고 제목 · 내용으로 찾는다(`useDreamPages`). 전에는 30건만 보였다 */
+  const [pickQuery, setPickQuery] = useState('');
+  const pages = useDreamPages(pickQuery);
   const [picked, setPicked] = useState<Dream | null>(null);
   const [choosing, setChoosing] = useState(false);
   const [title, setTitle] = useState('');
@@ -63,13 +67,13 @@ export default function NewPostScreen() {
 
   useEffect(() => {
     let alive = true;
+    // 꿈 상세에서 들어왔으면 그 꿈을 직접 읽는다 — 목록 앞쪽에 있는지와 상관없이
     getDreamRepo()
-      .then((repo) => repo.list({ limit: 100 }))
-      .then((list) => {
+      .then(async (repo) => {
+        const [n, from] = await Promise.all([repo.counts(), dreamId ? repo.get(dreamId) : Promise.resolve(null)]);
         if (!alive) return;
-        setDreams(list);
-        const from = dreamId ? list.find((d) => d.id === dreamId) : undefined;
-        if (from) pick(from);
+        setTotal(n.total);
+        if (from && !from.deletedAt) pick(from);
       })
       .catch((e) => alive && setError(String(e)));
     return () => {
@@ -110,17 +114,12 @@ export default function NewPostScreen() {
       .finally(() => setPosting(false));
   };
 
-  const back = (
-    <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
-      <ChevronLeft size={24} strokeWidth={1.75} color={c.fg} />
-    </Pressable>
-  );
+  // 위에 고정된다 — 긴 꿈 내용을 고치다가도 바로 나갈 수 있게(2026-10-03)
+  const header = <Header title="꿈 공유하기" onBack={() => router.back()} />;
 
   if (me === null) {
     return (
-      <Screen>
-        {back}
-        <Title>꿈 공유하기</Title>
+      <Screen header={header}>
         <Card>
           <AppText size="label" weight="semibold">
             로그인하면 꿈을 나눌 수 있습니다
@@ -132,16 +131,34 @@ export default function NewPostScreen() {
   }
 
   return (
-    <Screen scroll>
+    <Screen
+      scroll
+      header={header}
+      // 「공유하기」와 "○○(으)로 올라갑니다"는 아래에 고정한다(2026-10-05 사용자 요청) — 긴 꿈 내용을 고친 뒤
+      // 끝까지 내려가지 않아도 누구 이름으로 올라가는지 보고 바로 올린다
+      footer={
+        picked && sharedPostId === null ? (
+          <Stack gap={sp[2]}>
+            {/* 게시 바로 앞에서 누구 이름으로 올라가는지 보인다(계획서 003 — 실명 노출 방지) */}
+            <Row>
+              <AppText size="caption" color={c.fgMuted} style={{ flex: 1 }}>
+                <AppText size="caption" weight="semibold">
+                  {me?.nickname ?? '…'}
+                </AppText>
+                (으)로 올라갑니다
+              </AppText>
+            </Row>
+            <Button label={posting ? '올리는 중' : '공유하기'} disabled={!canPost} onPress={post} />
+          </Stack>
+        ) : undefined
+      }>
       <Stack gap={sp[5]}>
-        {back}
-        <Title>꿈 공유하기</Title>
 
         <Stack gap={sp[2]}>
           <AppText size="label" weight="semibold">
             어떤 꿈을 나눌까요?
           </AppText>
-          {dreams !== null && dreams.length === 0 ? (
+          {total === 0 ? (
             <Card>
               <AppText size="body" color={c.fgMuted}>
                 아직 남긴 꿈이 없습니다. 꿈을 먼저 기록한 뒤 나눌 수 있습니다.
@@ -159,7 +176,7 @@ export default function NewPostScreen() {
               </Stack>
             </Card>
           ) : null}
-          {(dreams?.length ?? 0) > 0 && (
+          {(total ?? 0) > 0 && (
             <Button
               label={picked ? '다른 꿈 고르기' : '꿈 고르기'}
               size="sm"
@@ -230,26 +247,27 @@ export default function NewPostScreen() {
           </AppText>
         )}
 
-        {picked && sharedPostId === null && (
-          <Stack gap={sp[2]}>
-            {/* 게시 바로 앞에서 누구 이름으로 올라가는지 보인다(계획서 003 — 실명 노출 방지).
-                닉네임 변경은 서버에 아직 없어 [변경]을 두지 않는다(문서 049 03장 4번) */}
-            <Row>
-              <AppText size="caption" color={c.fgMuted} style={{ flex: 1 }}>
-                <AppText size="caption" weight="semibold">
-                  {me?.nickname ?? '…'}
-                </AppText>
-                (으)로 올라갑니다
-              </AppText>
-            </Row>
-            <Button label={posting ? '올리는 중' : '공유하기'} disabled={!canPost} onPress={post} />
-          </Stack>
-        )}
       </Stack>
 
-      <Sheet visible={choosing} onClose={() => setChoosing(false)} title="꿈 고르기">
+      <Sheet visible={choosing} onClose={() => setChoosing(false)} title="꿈 고르기" onEndReached={pages.more}>
+        <Stack gap={sp[2]}>
+          <Input
+            value={pickQuery}
+            onChangeText={setPickQuery}
+            placeholder="꿈 검색 — 제목이나 내용으로"
+            returnKeyType="search"
+            accessibilityLabel="꿈 검색"
+            clearable
+            bordered
+          />
+          {pages.rows !== null && pages.rows.length === 0 && (
+            <AppText size="caption" color={c.fgFaint}>
+              {pickQuery.trim() ? `「${pickQuery.trim()}」이(가) 든 꿈이 없습니다.` : '아직 남긴 꿈이 없습니다.'}
+            </AppText>
+          )}
+        </Stack>
         <Stack gap={sp[1]}>
-          {(dreams ?? []).slice(0, 30).map((d) => (
+          {(pages.rows ?? []).map((d) => (
             <Radio
               key={d.id}
               label={dreamTitle(d)}
@@ -261,6 +279,7 @@ export default function NewPostScreen() {
               }}
             />
           ))}
+          {pages.hasMore && <ActivityIndicator color={c.fgMuted} style={{ padding: sp[3] }} />}
         </Stack>
       </Sheet>
     </Screen>
@@ -273,7 +292,3 @@ function dreamTitle(d: Dream) {
   if (first) return first;
   return d.audioPath ? '음성으로 남긴 꿈' : '내용 없는 꿈';
 }
-
-const s = StyleSheet.create({
-  back: { height: hit.min, justifyContent: 'center', alignSelf: 'flex-start' },
-});

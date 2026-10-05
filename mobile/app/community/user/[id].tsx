@@ -1,11 +1,10 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
+import { Pencil } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, View } from 'react-native';
 
-import { Avatar, Button, Card, Input, Row, Screen, Sheet, Stack } from '@components';
+import { Avatar, Button, Card, Chip, Header, Row, Screen, Stack } from '@components';
 import {
-  getCommunityApi,
   setBlocked,
   useBlocked,
   useInvalidateCommunity,
@@ -15,11 +14,10 @@ import {
   useRefetchOnFocus,
   useUserPosts,
 } from '@features/community';
+import { NicknameSheet } from '@features/community/NicknameSheet';
 import { PostCard } from '@features/community/PostCard';
-import { NICKNAME_MAX, NICKNAME_MIN } from '@shared/api/community';
-import { loadSession, saveSession } from '@shared/auth/session';
 import { AppText } from '@shared/ui';
-import { c, hit, sp } from '@theme/token';
+import { c, sp } from '@theme/token';
 
 /**
  * COM-4. 프로필 — **내 것 · 남의 것이 같은 화면**(계획서 003, 구현을 절반으로).
@@ -38,9 +36,6 @@ export default function ProfileScreen() {
   const blocked = useBlocked(meId);
   const invalidate = useInvalidateCommunity();
   const [renaming, setRenaming] = useState(false);
-  const [nickname, setNickname] = useState('');
-  const [renameError, setRenameError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
   // 프로필과 글 목록은 캐시에 있다. 글은 끝에 닿으면 다음 쪽을 잇는다
   const profileQuery = useProfile(meId, id);
@@ -51,26 +46,6 @@ export default function ProfileScreen() {
   useRefetchOnFocus(profileQuery.refetch, profileQuery.isStale);
   useRefetchOnFocus(posts.refetch, posts.isStale);
   const pull = usePullRefresh(() => Promise.all([profileQuery.refetch(), posts.refetch()]));
-
-  const trimmed = nickname.trim();
-  const nicknameOk = trimmed.length >= NICKNAME_MIN && trimmed.length <= NICKNAME_MAX && !nickname.includes('\n');
-
-  const saveNickname = () => {
-    if (!nicknameOk || saving) return;
-    setSaving(true);
-    getCommunityApi()
-      .setNickname(trimmed)
-      .then(async (a) => {
-        // 폰의 세션에 든 닉네임도 바꾼다 — "○○(으)로 올라갑니다"가 옛 이름을 보이지 않게
-        const s = await loadSession();
-        if (s) await saveSession({ ...s, user: { ...s.user, nickname: a.nickname } });
-        setRenaming(false);
-        // 닉네임은 글에 복사하지 않아 피드 · 댓글의 이름도 바뀐다 — 커뮤니티 캐시를 전부 다시 읽는다
-        void invalidate();
-      })
-      .catch((e) => setRenameError(e?.message ?? '바꾸지 못했습니다'))
-      .finally(() => setSaving(false));
-  };
 
   const mine = me?.id === id;
   const isBlocked = blocked.ids.has(id);
@@ -84,9 +59,6 @@ export default function ProfileScreen() {
 
   const header = (
     <Stack gap={sp[4]}>
-      <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="뒤로" style={s.back}>
-        <ChevronLeft size={24} strokeWidth={1.75} color={c.fg} />
-      </Pressable>
       {profile === undefined ? (
         <AppText color={c.fgMuted}>불러오는 중입니다</AppText>
       ) : profile === null ? (
@@ -103,6 +75,8 @@ export default function ProfileScreen() {
                 {joined(profile.joinedAt)} 가입 · 글 {profile.postCount}
               </AppText>
             </Stack>
+            {/* 내 프로필이면 이름 옆의 작은 칩 — 마이 탭과 같은 모양(2026-10-03) */}
+            {mine && <Chip label="닉네임 바꾸기" icon={Pencil} iconOnly onPress={() => setRenaming(true)} />}
           </Row>
           {isBlocked && (
             <Card>
@@ -111,18 +85,7 @@ export default function ProfileScreen() {
               </AppText>
             </Card>
           )}
-          {mine ? (
-            <Button
-              label="닉네임 바꾸기"
-              size="sm"
-              variant="secondary"
-              onPress={() => {
-                setNickname(profile.nickname);
-                setRenameError(null);
-                setRenaming(true);
-              }}
-            />
-          ) : (
+          {!mine && (
             <Button
               label={isBlocked ? '차단 풀기' : '차단하기'}
               size="sm"
@@ -139,7 +102,7 @@ export default function ProfileScreen() {
   );
 
   return (
-    <Screen>
+    <Screen header={<Header onBack={() => router.back()} />}>
       <FlatList
         data={profile ? posts.items : []}
         keyExtractor={(p) => p.id}
@@ -166,25 +129,8 @@ export default function ProfileScreen() {
         }
       />
 
-      <Sheet visible={renaming} onClose={() => setRenaming(false)} title="닉네임 바꾸기">
-        <Stack gap={sp[3]}>
-          <Input
-            value={nickname}
-            onChangeText={(v) => {
-              setNickname(v);
-              setRenameError(null);
-            }}
-            maxLength={NICKNAME_MAX}
-            counter
-            autoFocus
-            error={renameError ?? undefined}
-          />
-          <AppText size="caption" color={c.fgFaint}>
-            {NICKNAME_MIN}~{NICKNAME_MAX}자. 바꾸면 지난 글과 댓글의 이름도 새 이름으로 보입니다.
-          </AppText>
-          <Button label={saving ? '바꾸는 중' : '바꾸기'} disabled={!nicknameOk || saving} onPress={saveNickname} />
-        </Stack>
-      </Sheet>
+      {/* 마이 탭과 같은 시트다(이슈 #63). 세션 · 커뮤니티 캐시는 시트가 고친다 */}
+      <NicknameSheet visible={renaming} onClose={() => setRenaming(false)} current={profile?.nickname ?? ''} />
     </Screen>
   );
 }
@@ -193,7 +139,3 @@ function joined(iso: string) {
   const d = new Date(iso);
   return `${d.getFullYear()}년 ${d.getMonth() + 1}월`;
 }
-
-const s = StyleSheet.create({
-  back: { height: hit.min, justifyContent: 'center', alignSelf: 'flex-start' },
-});

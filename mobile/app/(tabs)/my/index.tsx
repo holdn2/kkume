@@ -1,20 +1,34 @@
-import { useRouter } from 'expo-router';
-import { LayoutGrid } from 'lucide-react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { LayoutGrid, Pencil, UserX } from 'lucide-react-native';
+import { useCallback, useState } from 'react';
 
-import { Button, Card, ListRow, Row, Screen, Stack, Title } from '@components';
+import { Button, Card, Chip, ListRow, Row, Screen, Stack, Title } from '@components';
+import { NicknameSheet } from '@features/community/NicknameSheet';
 import { useAuth } from '@shared/auth';
 import { STORYBOOK_ENABLED } from '@shared/storybook';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 
-/** MY-1. 11주차에 실제로 채운다 */
+/**
+ * MY-1. 계정(로그인 · 닉네임) · 위젯 설치 다시 보기 · 차단한 사용자 · 개발용 줄.
+ * 계정 삭제 · 약관은 앱 심사 항목이라 마지막에 몰아서 넣는다(보고서 053 8장)
+ */
 export default function MyScreen() {
   const router = useRouter();
   const auth = useAuth();
+  const [renaming, setRenaming] = useState(false);
+  const { refresh } = auth;
+
+  // 탭은 떠 있는 채로 남는다. 프로필에서 닉네임을 바꾸고 돌아와도 새 이름이 보이게 세션을 다시 읽는다
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
 
   return (
-    <Screen scroll>
-      <Title>마이</Title>
+    // 탭 제목도 위에 고정한다 — 다른 탭(꿈 로그 · 꿈 나눔)은 목록만 스크롤돼 이미 그렇다(2026-10-03)
+    <Screen scroll header={<Title>마이</Title>}>
 
       {/* **로그인이 여기 있는 이유.** 새벽 흐름에는 로그인을 두지 않는다 —
           위젯을 눌렀는데 로그인 화면이 뜨면 그 기록이 사라진다(절대 규칙 1).
@@ -27,10 +41,13 @@ export default function MyScreen() {
           </AppText>
         ) : auth.session ? (
           <Stack gap={sp[3]}>
+            {/* 닉네임을 커뮤니티를 거치지 않고 여기서도 바꾼다(이슈 #63). 프로필과 같은 시트다 */}
             <Row gap={sp[2]}>
-              <AppText size="label" weight="semibold" style={{ flex: 1 }}>
+              <AppText size="label" weight="semibold" style={{ flex: 1 }} numberOfLines={1}>
                 {auth.session.user.nickname}
               </AppText>
+              {/* 곁가지 동작이라 큰 버튼이 아니라 이름 옆의 작은 칩(2026-10-03 사용자 요청) */}
+              <Chip label="닉네임 바꾸기" icon={Pencil} iconOnly onPress={() => setRenaming(true)} />
             </Row>
             <AppText size="caption" color={c.fgFaint}>
               기록이 서버에 함께 보관됩니다
@@ -75,6 +92,8 @@ export default function MyScreen() {
           onPress={() => router.push('/onboarding?step=widget')}
           highlight
         />
+        {/* 차단은 서버에 있어 로그인해야 의미가 있다. 전에는 그 사람의 프로필까지 가야 풀 수 있었다 */}
+        {!!auth.session && <ListRow icon={UserX} label="차단한 사용자" onPress={() => router.push('/blocks')} />}
       </Stack>
 
       {/* "기상 시각"과 "기상 알림"이 여기 있었다. 만들다 만 것이 아니라
@@ -97,9 +116,13 @@ export default function MyScreen() {
         <ListRow label="빌드 진단" onPress={() => router.push('/diag')} />
       </Stack>
 
-      <AppText size="caption" color={c.fgFaint}>
-        프로필과 알림 설정은 뒤에 들어옵니다
-      </AppText>
+      {/* 시트가 세션을 저장한 뒤 이 탭이 들고 있는 세션도 다시 읽는다 */}
+      <NicknameSheet
+        visible={renaming}
+        onClose={() => setRenaming(false)}
+        current={auth.session?.user.nickname ?? ''}
+        onSaved={() => void refresh()}
+      />
     </Screen>
   );
 }

@@ -22,6 +22,8 @@ import { c, dur, r, sp } from '@theme/token';
  * 고정값(700)이면 긴 시트의 윗부분이 닫힌 뒤에도 남았다가 툭 사라졌다
  */
 const HIDDEN = Dimensions.get('window').height;
+/** 안쪽 스크롤이 끝에서 이만큼 안쪽으로 들어오면 다음 것을 읽는다 */
+const END_REACHED_PX = 200;
 /** 이만큼 끌어내리면 닫는다 */
 const CLOSE_DY = 90;
 /** 짧게 튕겨도 닫히도록 — 거리를 못 채워도 속도가 빠르면 닫을 뜻이다 */
@@ -36,6 +38,8 @@ type Props = {
   title?: string;
   description?: string;
   children?: ReactNode;
+  /** 안쪽 스크롤이 끝에 가까워지면 부른다 — 긴 목록을 이어 읽을 때(꿈 고르기) */
+  onEndReached?: () => void;
 };
 
 /**
@@ -51,7 +55,7 @@ type Props = {
  * 붙을 뷰가 하나도 없는 상태에서 — 네이티브에 등록돼 버리고, 나중에 뷰가 생겨도
  * 그 값이 뷰를 움직이지 못한다.
  */
-export function Sheet({ visible, onClose, title, description, children }: Props) {
+export function Sheet({ visible, onClose, title, description, children, onEndReached }: Props) {
   const [showing, setShowing] = useState(visible);
   const [prevVisible, setPrevVisible] = useState(visible);
 
@@ -77,7 +81,8 @@ export function Sheet({ visible, onClose, title, description, children }: Props)
           onExited={handleExited}
           onClose={onClose}
           title={title}
-          description={description}>
+          description={description}
+          onEndReached={onEndReached}>
           {children}
         </SheetBody>
       )}
@@ -87,7 +92,7 @@ export function Sheet({ visible, onClose, title, description, children }: Props)
 
 type BodyProps = Omit<Props, 'visible'> & { closing: boolean; onExited: () => void };
 
-function SheetBody({ closing, onExited, onClose, title, description, children }: BodyProps) {
+function SheetBody({ closing, onExited, onClose, title, description, children, onEndReached }: BodyProps) {
   const insets = useSafeAreaInsets();
   const [y] = useState(() => new Animated.Value(HIDDEN));
   // 키보드가 떠 있으면 홈 인디케이터 여백이 필요 없다 — 두면 시트와 키보드 사이가 크게 벌어진다
@@ -166,8 +171,10 @@ function SheetBody({ closing, onExited, onClose, title, description, children }:
             <View style={s.grip} />
           </View>
 
+          {/* 제목 쪽을 누르면 키보드를 내린다(2026-10-03 사용자 요청). 시트 전체를 감싸지 않는다 —
+              안쪽 스크롤과 다툰다(Screen 과 같은 이유). 목록 쪽 빈 곳은 안쪽 ScrollView 의 handled 가 내린다 */}
           {(!!title || !!description) && (
-            <View style={{ gap: sp[2], paddingBottom: sp[2] }}>
+            <View style={{ gap: sp[2], paddingBottom: sp[2] }} onTouchEnd={() => Keyboard.dismiss()}>
               {!!title && (
                 <AppText size="heading" weight="semibold">
                   {title}
@@ -182,7 +189,17 @@ function SheetBody({ closing, onExited, onClose, title, description, children }:
             style={s.body}
             bounces={false}
             keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}>
+            showsVerticalScrollIndicator={false}
+            scrollEventThrottle={100}
+            onScroll={
+              onEndReached
+                ? ({ nativeEvent: e }) => {
+                    if (e.layoutMeasurement.height + e.contentOffset.y >= e.contentSize.height - END_REACHED_PX) {
+                      onEndReached();
+                    }
+                  }
+                : undefined
+            }>
             {children}
           </ScrollView>
         </Animated.View>

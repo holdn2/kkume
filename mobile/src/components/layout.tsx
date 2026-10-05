@@ -1,4 +1,5 @@
-import { ScrollView, View, type ViewProps } from 'react-native';
+import type { ReactNode } from 'react';
+import { Keyboard, ScrollView, StyleSheet, View, type ViewProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@shared/ui';
@@ -14,10 +15,19 @@ import { c, sp } from '@theme/token';
 export function Screen({
   night,
   scroll,
+  header,
+  footer,
   style,
   children,
   ...rest
-}: ViewProps & { night?: boolean; scroll?: boolean }) {
+}: ViewProps & {
+  night?: boolean;
+  scroll?: boolean;
+  /** 스크롤 바깥 맨 위에 붙는 줄(`Header` · 탭 화면의 `Title`). 내용이 길어도 위에 남는다 */
+  header?: ReactNode;
+  /** 스크롤 바깥 맨 아래에 붙는 줄 — 화면의 주된 버튼(꿈 공유의 「공유하기」). 내용이 길어도 아래에 남는다 */
+  footer?: ReactNode;
+}) {
   const insets = useSafeAreaInsets();
 
   // `SafeAreaView` 대신 값을 직접 읽는다. 전체화면 모달(`/record`)에서
@@ -37,9 +47,19 @@ export function Screen({
     </View>
   );
 
+  // 빈 곳을 누르면 키보드를 내린다(2026-10-03 사용자 요청).
+  // **화면 전체를 누르는 영역으로 감싸지 않는다.** b82b801 에서 그렇게 했더니 "들어갔을 때 간혹 스크롤이 안 된다"는
+  // 확인이 왔다(2026-10-05) — 모든 터치를 먼저 받는 층이 스크롤과 다툰다. 스크롤 영역은 아래 ScrollView 의
+  // `keyboardShouldPersistTaps="handled"`가 이미 빈 곳 탭에 키보드를 내리므로, 스크롤 바깥인 헤더 줄에만 단다
   return (
-    <View
-      style={{ flex: 1, paddingTop: top, paddingBottom: bottom, backgroundColor: night ? c.night : c.bg }}>
+    <View style={{ flex: 1, paddingTop: top, paddingBottom: bottom, backgroundColor: night ? c.night : c.bg }}>
+      {!!header && (
+        // onTouchEnd 는 안쪽 버튼(뒤로 · ⋯)이 받은 탭에도 온다 — 응답자가 되지 않아 버튼을 막지 않는다.
+        // 응답자로 받으면 버튼 탭에는 안 와서, 댓글을 치다 ⋯ 를 누르면 키보드가 남은 채 메뉴가 떴다(PR #64 리뷰)
+        <View style={{ paddingHorizontal: sp[5], paddingBottom: sp[2] }} onTouchEnd={() => Keyboard.dismiss()}>
+          {header}
+        </View>
+      )}
       {/* 키보드는 여기서 한 번에 받는다(2026-09-30). 화면마다 KeyboardAvoidingView 를 ScrollView **안에** 두던 것은
           키보드 높이만큼 끝에 여백을 붙일 뿐 입력칸을 끌어올리지 못했다. iOS ScrollView 의
           `automaticallyAdjustKeyboardInsets`는 키보드만큼 안쪽 여백을 주고 **포커스된 입력칸을 보이는 곳까지 올린다**
@@ -55,6 +75,19 @@ export function Screen({
         </ScrollView>
       ) : (
         inner
+      )}
+      {/* 위쪽에 머리카락 굵기의 선 하나 — 스크롤되는 내용과 고정된 줄을 가른다(2026-10-05 사용자 요청).
+          화면 끝에서 끝까지, 색은 경계용 line. 그림자는 무채색 화면에서 번져 보여 쓰지 않는다 */}
+      {!!footer && (
+        <View
+          style={{
+            paddingHorizontal: sp[5],
+            paddingTop: sp[3],
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: c.line,
+          }}>
+          {footer}
+        </View>
       )}
     </View>
   );

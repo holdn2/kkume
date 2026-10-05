@@ -18,6 +18,8 @@ export type AuthState = {
   error: string | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
+  /** 저장된 세션을 다시 읽는다 */
+  refresh: () => Promise<void>;
 };
 
 /**
@@ -113,7 +115,16 @@ export function useAuth(): AuthState {
     }
   }, []);
 
-  return { session, loading, busy, error, signIn, signOut };
+  /**
+   * 저장된 세션을 다시 읽는다. 다른 곳이 세션을 고쳤을 때 쓴다 — 닉네임 바꾸기(이슈 #63)가
+   * 세션의 닉네임을 바꿔 저장하면, 이 훅이 들고 있던 옛 닉네임을 새로 맞춘다
+   */
+  const refresh = useCallback(async () => {
+    const s = await loadSession();
+    setSession(s && !isExpired(s) ? s : null);
+  }, []);
+
+  return { session, loading, busy, error, signIn, signOut, refresh };
 }
 
 /**

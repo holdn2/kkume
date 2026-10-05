@@ -3,7 +3,7 @@ import { Trash2 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 
-import { Badge, Button, Input, Row, Screen, Sheet, Stack } from '@components';
+import { Badge, Button, Header, Input, Row, Screen, Sheet, Stack } from '@components';
 import { useMe, usePostForDream, useRefetchOnFocus } from '@features/community';
 import { PlayerBar } from '@features/log/PlayerBar';
 import { MAX_TEXT_LENGTH, MAX_TITLE_LENGTH } from '@shared/api/sync';
@@ -95,6 +95,25 @@ export default function DreamDetail() {
     return () => clearTimeout(t);
   }, [title, text, saved, save]);
 
+  /**
+   * **나갈 때 아직 안 쓴 고침을 저장한다**(PR #64 리뷰, 2026-10-05). 위의 저장은 입력이 1.2초 멈춰야 돌고,
+   * 화면이 닫히면 그 타이머가 지워진다 — 고치고 1.2초 안에 나가면(뒤로 · 쓸어 넘기기 · 탭 이동) 고친 것이
+   * 사라졌다. "나가면 저장됩니다"라고 써 두고 지키지 못한 것이고, 절대 규칙 1이 막으려는 유실이다.
+   * 콜백 · 정리 함수에서 최신 값을 읽으려고 ref 로 든다(렌더 중에는 읽지 않는다)
+   */
+  const latest = useRef({ title, text, saved, gone: false });
+  useEffect(() => {
+    latest.current = { ...latest.current, title, text, saved };
+  });
+  const flush = useCallback(() => {
+    const { title: t, text: x, saved: sv, gone } = latest.current;
+    if (gone || sv === null || (sv.title === t && sv.text === x)) return Promise.resolve();
+    latest.current = { ...latest.current, saved: { title: t, text: x } };
+    return save({ title: t.trim() || null, text: x });
+  }, [save]);
+  // 어떤 길로 나가든(쓸어 넘기기 · 탭 이동 포함) 화면이 내려갈 때 한 번 더 — 저장소는 화면 밖에서도 돈다
+  useEffect(() => () => void flush().catch(() => {}), [flush]);
+
   const review = () => {
     save({ title: title.trim() || null, text, reviewedAt: nowIso() })
       .then((d) => {
@@ -108,6 +127,8 @@ export default function DreamDetail() {
     void (async () => {
       try {
         const repo = await getDreamRepo();
+        // 지운 기록에 나갈 때 저장이 덧쓰지 않게 — 지운 뒤 고침을 쓰면 다시 동기화 대상이 된다
+        latest.current = { ...latest.current, gone: true };
         await repo.softDelete(id);
         router.replace('/log');
       } catch (e) {
@@ -116,9 +137,17 @@ export default function DreamDetail() {
     })();
   };
 
+  // 위에 고정 — 긴 본문을 고치다가도 뒤로 갈 수 있게(2026-10-03). 전에는 뒤로 버튼이 아예 없어 쓸어 넘기기만 됐다
+  // 고친 것을 먼저 저장하고 나간다. 저장이 실패하면 나가지 않고 이유를 보인다
+  const goBack = () => {
+    flush()
+      .then(() => (router.canGoBack() ? router.back() : router.replace('/log')))
+      .catch((e) => setError(String(e)));
+  };
+
   if (dream === null) {
     return (
-      <Screen>
+      <Screen header={<Header onBack={goBack} />}>
         <AppText color={c.fgMuted}>{error ?? '불러오는 중입니다'}</AppText>
         <Button label="목록으로" variant="ghost" onPress={() => router.replace('/log')} />
       </Screen>
@@ -128,16 +157,24 @@ export default function DreamDetail() {
   const unread = dream.reviewedAt == null;
 
   return (
-    <Screen scroll>
+    <Screen
+      scroll
+      header={
+        <Header
+          onBack={goBack}
+          right={
+            <Row gap={sp[2]}>
+              <AppText size="caption" color={c.fgFaint}>
+                {dream.recordedAt.slice(0, 16).replace('T', ' ')}
+              </AppText>
+              {unread ? <Badge label="미확인" tone="running" /> : <Badge label="확인함" tone="neutral" />}
+            </Row>
+          }
+        />
+      }>
       {/* 덩어리 사이를 넉넉히 띄운다. 읽는 것 · 듣는 것 · 결정하는 것이
           같은 간격으로 붙어 있으면 화면이 목록처럼 읽힌다 */}
       <Stack gap={sp[6]}>
-        <Row>
-          <AppText size="caption" color={c.fgFaint} style={{ flex: 1 }}>
-            {dream.recordedAt.slice(0, 16).replace('T', ' ')}
-          </AppText>
-          {unread ? <Badge label="미확인" tone="running" /> : <Badge label="확인함" tone="neutral" />}
-        </Row>
 
         <Stack gap={sp[3]}>
           {/* 서버가 255자를 넘는 제목을 거절한다(title_too_long). 거절된 수정은 폰에만 남아

@@ -114,6 +114,11 @@ export type ListOptions = {
   includeDeleted?: boolean;
   limit?: number;
   offset?: number;
+  /**
+   * 꿈 로그 검색. 제목이나 본문에 이 말이 든 기록만. 앞뒤 공백은 자르고, 비면 거르지 않는다.
+   * **글자 그대로 찾는다** — `%` · `_`도 와일드카드가 아니다(그래서 LIKE 가 아니라 instr)
+   */
+  query?: string;
 };
 
 /**
@@ -128,6 +133,11 @@ export interface DreamRepo {
   update(id: string, patch: DreamPatch): Promise<Dream | null>;
   get(id: string): Promise<Dream | null>;
   list(options?: ListOptions): Promise<Dream[]>;
+  /**
+   * 지운 것을 뺀 개수와 그중 미확인(`reviewed_at` 없음). 검색어가 있으면 그 결과만 센다.
+   * 목록을 쪽으로 나눠 읽으므로 「N건 · 미확인 N건」은 읽은 행이 아니라 이것으로 센다
+   */
+  counts(query?: string): Promise<{ total: number; unread: number }>;
   softDelete(id: string): Promise<void>;
   /** 검수용. 화면에서 부르지 않는다 */
   clear(): Promise<void>;
