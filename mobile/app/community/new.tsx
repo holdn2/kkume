@@ -131,7 +131,27 @@ export default function NewPostScreen() {
   }
 
   return (
-    <Screen scroll header={header}>
+    <Screen
+      scroll
+      header={header}
+      // 「공유하기」와 "○○(으)로 올라갑니다"는 아래에 고정한다(2026-10-05 사용자 요청) — 긴 꿈 내용을 고친 뒤
+      // 끝까지 내려가지 않아도 누구 이름으로 올라가는지 보고 바로 올린다
+      footer={
+        picked && sharedPostId === null ? (
+          <Stack gap={sp[2]}>
+            {/* 게시 바로 앞에서 누구 이름으로 올라가는지 보인다(계획서 003 — 실명 노출 방지) */}
+            <Row>
+              <AppText size="caption" color={c.fgMuted} style={{ flex: 1 }}>
+                <AppText size="caption" weight="semibold">
+                  {me?.nickname ?? '…'}
+                </AppText>
+                (으)로 올라갑니다
+              </AppText>
+            </Row>
+            <Button label={posting ? '올리는 중' : '공유하기'} disabled={!canPost} onPress={post} />
+          </Stack>
+        ) : undefined
+      }>
       <Stack gap={sp[5]}>
 
         <Stack gap={sp[2]}>
@@ -227,21 +247,6 @@ export default function NewPostScreen() {
           </AppText>
         )}
 
-        {picked && sharedPostId === null && (
-          <Stack gap={sp[2]}>
-            {/* 게시 바로 앞에서 누구 이름으로 올라가는지 보인다(계획서 003 — 실명 노출 방지).
-                닉네임 변경은 서버에 아직 없어 [변경]을 두지 않는다(문서 049 03장 4번) */}
-            <Row>
-              <AppText size="caption" color={c.fgMuted} style={{ flex: 1 }}>
-                <AppText size="caption" weight="semibold">
-                  {me?.nickname ?? '…'}
-                </AppText>
-                (으)로 올라갑니다
-              </AppText>
-            </Row>
-            <Button label={posting ? '올리는 중' : '공유하기'} disabled={!canPost} onPress={post} />
-          </Stack>
-        )}
       </Stack>
 
       <Sheet visible={choosing} onClose={() => setChoosing(false)} title="꿈 고르기" onEndReached={pages.more}>

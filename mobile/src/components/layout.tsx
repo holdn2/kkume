@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Keyboard, Pressable, ScrollView, View, type ViewProps } from 'react-native';
+import { Keyboard, ScrollView, View, type ViewProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@shared/ui';
@@ -16,6 +16,7 @@ export function Screen({
   night,
   scroll,
   header,
+  footer,
   style,
   children,
   ...rest
@@ -24,6 +25,8 @@ export function Screen({
   scroll?: boolean;
   /** 스크롤 바깥 맨 위에 붙는 줄(`Header` · 탭 화면의 `Title`). 내용이 길어도 위에 남는다 */
   header?: ReactNode;
+  /** 스크롤 바깥 맨 아래에 붙는 줄 — 화면의 주된 버튼(꿈 공유의 「공유하기」). 내용이 길어도 아래에 남는다 */
+  footer?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
 
@@ -44,15 +47,20 @@ export function Screen({
     </View>
   );
 
-  // 빈 곳을 누르면 키보드를 내린다(2026-10-03 사용자 요청). 안쪽 버튼 · 입력칸이 먼저 받으므로 그것들은 그대로다.
-  // 새벽 화면(night)은 건드리지 않는다 — 기록 화면은 따로 짜여 있고, 거기서 키보드는 적기 그 자체다
-  const Root = night ? View : Pressable;
+  // 빈 곳을 누르면 키보드를 내린다(2026-10-03 사용자 요청).
+  // **화면 전체를 누르는 영역으로 감싸지 않는다.** b82b801 에서 그렇게 했더니 "들어갔을 때 간혹 스크롤이 안 된다"는
+  // 확인이 왔다(2026-10-05) — 모든 터치를 먼저 받는 층이 스크롤과 다툰다. 스크롤 영역은 아래 ScrollView 의
+  // `keyboardShouldPersistTaps="handled"`가 이미 빈 곳 탭에 키보드를 내리므로, 스크롤 바깥인 헤더 줄에만 단다
   return (
-    <Root
-      onPress={night ? undefined : Keyboard.dismiss}
-      accessible={false}
-      style={{ flex: 1, paddingTop: top, paddingBottom: bottom, backgroundColor: night ? c.night : c.bg }}>
-      {!!header && <View style={{ paddingHorizontal: sp[5], paddingBottom: sp[2] }}>{header}</View>}
+    <View style={{ flex: 1, paddingTop: top, paddingBottom: bottom, backgroundColor: night ? c.night : c.bg }}>
+      {!!header && (
+        <View
+          style={{ paddingHorizontal: sp[5], paddingBottom: sp[2] }}
+          onStartShouldSetResponder={() => true}
+          onResponderRelease={() => Keyboard.dismiss()}>
+          {header}
+        </View>
+      )}
       {/* 키보드는 여기서 한 번에 받는다(2026-09-30). 화면마다 KeyboardAvoidingView 를 ScrollView **안에** 두던 것은
           키보드 높이만큼 끝에 여백을 붙일 뿐 입력칸을 끌어올리지 못했다. iOS ScrollView 의
           `automaticallyAdjustKeyboardInsets`는 키보드만큼 안쪽 여백을 주고 **포커스된 입력칸을 보이는 곳까지 올린다**
@@ -69,7 +77,8 @@ export function Screen({
       ) : (
         inner
       )}
-    </Root>
+      {!!footer && <View style={{ paddingHorizontal: sp[5], paddingTop: sp[3] }}>{footer}</View>}
+    </View>
   );
 }
 

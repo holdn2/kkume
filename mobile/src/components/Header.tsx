@@ -43,18 +43,31 @@ export function Header({ title, onBack, right }: { title?: string; onBack?: () =
  * 작은 알약 버튼 — 카드 안 이름 옆처럼 **주된 동작이 아닌 곁가지**에 쓴다(마이 탭 「닉네임 바꾸기」).
  * 큰 버튼과 섞이지 않게 한 단계 밝은 채움(`raised`)에 아이콘을 붙인다. 잡는 자리는 hitSlop 으로 넓힌다
  */
-export function Chip({ label, icon: Icon, onPress }: { label: string; icon?: LucideIcon; onPress: () => void }) {
+export function Chip({
+  label,
+  icon: Icon,
+  onPress,
+  iconOnly,
+}: {
+  label: string;
+  icon?: LucideIcon;
+  onPress: () => void;
+  /** 아이콘만 그린다(동그라미). 글자는 접근성 이름으로만 남는다 — 마이 탭 닉네임 옆(2026-10-05 사용자 요청) */
+  iconOnly?: boolean;
+}) {
   return (
     <Pressable
       onPress={onPress}
       hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => [s.chip, pressed && { opacity: press }]}>
-      {Icon && <Icon size={14} strokeWidth={2} color={c.fg} />}
-      <AppText size="caption" weight="semibold">
-        {label}
-      </AppText>
+      style={({ pressed }) => [s.chip, iconOnly && s.round, pressed && { opacity: press }]}>
+      {Icon && <Icon size={iconOnly ? 16 : 14} strokeWidth={2} color={c.fg} aria-hidden />}
+      {!iconOnly && (
+        <AppText size="caption" weight="semibold">
+          {label}
+        </AppText>
+      )}
     </Pressable>
   );
 }
@@ -71,4 +84,5 @@ const s = StyleSheet.create({
     borderRadius: r.chip,
     backgroundColor: c.raised,
   },
+  round: { width: 32, paddingHorizontal: 0, justifyContent: 'center' },
 });

@@ -47,7 +47,7 @@ export default function MyScreen() {
                 {auth.session.user.nickname}
               </AppText>
               {/* 곁가지 동작이라 큰 버튼이 아니라 이름 옆의 작은 칩(2026-10-03 사용자 요청) */}
-              <Chip label="닉네임 바꾸기" icon={Pencil} onPress={() => setRenaming(true)} />
+              <Chip label="닉네임 바꾸기" icon={Pencil} iconOnly onPress={() => setRenaming(true)} />
             </Row>
             <AppText size="caption" color={c.fgFaint}>
               기록이 서버에 함께 보관됩니다

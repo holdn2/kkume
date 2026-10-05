@@ -76,7 +76,7 @@ export default function ProfileScreen() {
               </AppText>
             </Stack>
             {/* 내 프로필이면 이름 옆의 작은 칩 — 마이 탭과 같은 모양(2026-10-03) */}
-            {mine && <Chip label="닉네임 바꾸기" icon={Pencil} onPress={() => setRenaming(true)} />}
+            {mine && <Chip label="닉네임 바꾸기" icon={Pencil} iconOnly onPress={() => setRenaming(true)} />}
           </Row>
           {isBlocked && (
             <Card>
