@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Keyboard, ScrollView, View, type ViewProps } from 'react-native';
+import { Keyboard, ScrollView, StyleSheet, View, type ViewProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@shared/ui';
@@ -77,7 +77,19 @@ export function Screen({
       ) : (
         inner
       )}
-      {!!footer && <View style={{ paddingHorizontal: sp[5], paddingTop: sp[3] }}>{footer}</View>}
+      {/* 위쪽에 머리카락 굵기의 선 하나 — 스크롤되는 내용과 고정된 줄을 가른다(2026-10-05 사용자 요청).
+          화면 끝에서 끝까지, 색은 경계용 line. 그림자는 무채색 화면에서 번져 보여 쓰지 않는다 */}
+      {!!footer && (
+        <View
+          style={{
+            paddingHorizontal: sp[5],
+            paddingTop: sp[3],
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: c.line,
+          }}>
+          {footer}
+        </View>
+      )}
     </View>
   );
 }
