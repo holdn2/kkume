@@ -323,7 +323,26 @@ let inFlight: Promise<SyncReport | null> | null = null;
  * - **잦은 호출** — 탭을 오갈 때마다 부르면 무료 플랜 서버(t3.micro)에 부담이다.
  *   `force`가 아니면 30초 안에 다시 돌지 않는다
  */
+/**
+ * 계정 삭제 동안 동기화를 멈춘다(이슈 #65 · 계약 065 02장). 돌던 회차가 끝나기를 기다린 뒤 돌아오고,
+ * 그 뒤로는 다시 켤 때까지 새 회차를 시작하지 않는다 — 삭제와 겹친 올리기가 지운 것을 되살리지 않게.
+ * 녹음 올리기도 회차 안에서 돌므로 함께 멈춘다. 돌려준 함수로 다시 켠다
+ */
+let paused = 0;
+
+export async function pauseSync(): Promise<() => void> {
+  paused += 1;
+  if (inFlight) await inFlight.catch(() => null);
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    paused -= 1;
+  };
+}
+
 export function syncIfSignedIn(opts: { force?: boolean } = {}): Promise<SyncReport | null> {
+  if (paused > 0) return Promise.resolve(null);
   if (inFlight) return inFlight;
   if (!HAS_API) return Promise.resolve(null);
   if (!opts.force && Date.now() - lastRunAt < MIN_INTERVAL_MS) return Promise.resolve(null);

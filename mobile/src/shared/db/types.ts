@@ -189,6 +189,14 @@ export interface DreamRepo {
   markAudioUploaded(id: string, at: string): Promise<void>;
 
   /**
+   * 계정을 지운 뒤 — **"올렸음" 표시(`syncedAt` · `audioUploadedAt`)를 지운다**(이슈 #65 · 서버 계약 064).
+   * 서버의 기록은 실제로 지워졌는데 폰에 "이미 올렸다"가 남으면, 새 계정으로 로그인했을 때 그 기록들이
+   * 영영 안 올라간다. 지우면 처음부터 다시 올라간다(서버에 하나도 없으므로 겹치지 않음).
+   * **폰에서 지운 기록은 건드리지 않는다** — 새 계정에 지운 기록을 올릴 까닭이 없다. 내용 · 녹음 경로는 그대로다
+   */
+  clearUploadMarks(): Promise<void>;
+
+  /**
    * 변환 상태만 바꾼다. **`updatedAt`을 올리지 않는다** — 로컬 `sttStatus`는 "이 폰에서
    * 합쳤음" 표시라 서버로 올릴 변경이 아니다(문서 039 C3). 본문을 합친 경우는 `update`로
    * 올려서 다음 회차에 나가게 한다

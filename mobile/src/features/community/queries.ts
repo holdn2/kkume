@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
 import { isApiError } from '@shared/api/client';
+import { onAccountGone } from '@shared/auth';
 import type { FeedSort, Page, PostDetail, PostSummary } from '@shared/api/community';
 
 import { getCommunityApi } from './api';
@@ -42,6 +43,9 @@ focusManager.setEventListener((setFocused) => {
   const sub = AppState.addEventListener('change', (s) => setFocused(s === 'active'));
   return () => sub.remove();
 });
+
+// 계정이 없어지면 남의 눈에 보이던 내 정보(공감 · 숨긴 내 글 · 차단 목록)를 캐시에서 비운다(이슈 #65)
+onAccountGone(() => queryClient.clear());
 
 const who = (meId: string | null | undefined) => meId ?? 'anon';
 
