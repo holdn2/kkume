@@ -312,6 +312,10 @@ export function createSqliteRepo(db: Db): DreamRepo {
       await db.runAsync('UPDATE dreams SET audio_uploaded_at = ? WHERE id = ?', [at, id]);
     },
 
+    async clearUploadMarks() {
+      await db.runAsync('UPDATE dreams SET synced_at = NULL, audio_uploaded_at = NULL WHERE deleted_at IS NULL');
+    },
+
     async setAudioPath(id: string, path: string) {
       // updated_at 은 그대로 둔다. 서버로 올릴 변경이 아니다(DreamRepo 주석)
       await db.runAsync('UPDATE dreams SET audio_path = ? WHERE id = ?', [path, id]);

@@ -1,8 +1,8 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { LayoutGrid, Pencil, UserX } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { LayoutGrid, Pencil, UserMinus, UserX } from 'lucide-react-native';
+import { useCallback, useRef, useState } from 'react';
 
-import { Button, Card, Chip, ListRow, Row, Screen, Stack, Title } from '@components';
+import { Button, Card, Chip, ListRow, Row, Screen, Sheet, Stack, Title } from '@components';
 import { NicknameSheet } from '@features/community/NicknameSheet';
 import { useAuth } from '@shared/auth';
 import { STORYBOOK_ENABLED } from '@shared/storybook';
@@ -10,14 +10,39 @@ import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 
 /**
- * MY-1. 계정(로그인 · 닉네임) · 위젯 설치 다시 보기 · 차단한 사용자 · 개발용 줄.
- * 계정 삭제 · 약관은 앱 심사 항목이라 마지막에 몰아서 넣는다(보고서 053 8장)
+ * MY-1. 계정(로그인 · 닉네임) · 위젯 설치 다시 보기 · 차단한 사용자 · 개발용 줄 · 계정 삭제(MY-5, 이슈 #65).
+ * 약관은 앱 심사 항목이라 마지막에 몰아서 넣는다(보고서 053 8장)
  */
 export default function MyScreen() {
   const router = useRouter();
   const auth = useAuth();
   const [renaming, setRenaming] = useState(false);
   const { refresh } = auth;
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletedNotice, setDeletedNotice] = useState<string | null>(null);
+
+  // 빠르게 두 번 누르면 `auth.busy`가 버튼을 끄기 전에 두 번 들어온다 — 다시 그리기를 기다리지 않는 ref 로 막는다(PR #68 리뷰)
+  const deletingNow = useRef(false);
+  const confirmDelete = () => {
+    if (deletingNow.current) return;
+    deletingNow.current = true;
+    setDeleteError(null);
+    void auth
+      .deleteAccount()
+      .finally(() => {
+        deletingNow.current = false;
+      })
+      .then((r) => {
+      if (r.result === 'deleted') {
+        setDeleting(false);
+        setDeletedNotice('계정을 삭제했습니다. 폰에 있는 기록은 그대로 남아 있습니다.');
+      } else {
+        // 다시 로그인 · 실패 — 세션은 그대로라 시트를 열어 둔 채 이유만 보인다
+        setDeleteError(r.message);
+      }
+    });
+  };
 
   // 탭은 떠 있는 채로 남는다. 프로필에서 닉네임을 바꾸고 돌아와도 새 이름이 보이게 세션을 다시 읽는다
   useFocusEffect(
@@ -115,6 +140,42 @@ export default function MyScreen() {
         {/* 스토리북은 preview 빌드에서 꺼진다. 정작 판정이 필요한 빌드라 진단은 따로 둔다 */}
         <ListRow label="빌드 진단" onPress={() => router.push('/diag')} />
       </Stack>
+
+      {/* MY-5 계정 삭제 — 맨 아래, 다른 줄과 떨어진 위험색(계획서 001 · 003). 로그인했을 때만 */}
+      {!!auth.session && (
+        <Stack gap={sp[3]} style={{ marginTop: sp[6] }}>
+          <ListRow icon={UserMinus} label="계정 삭제" danger onPress={() => setDeleting(true)} />
+        </Stack>
+      )}
+      {!!deletedNotice && (
+        <Card>
+          <AppText size="caption" color={c.fgMuted}>
+            {deletedNotice}
+          </AppText>
+        </Card>
+      )}
+
+      {/* 지워지는 것과 남는 것을 먼저 말한다(계약 064 06장). 낮 화면이라 확인 한 번은 절대 규칙 7에 걸리지 않는다 */}
+      <Sheet visible={deleting} onClose={() => !auth.busy && setDeleting(false)} title="계정을 삭제할까요">
+        <Stack gap={sp[5]}>
+          <Stack gap={sp[2]}>
+            <AppText color={c.fgMuted}>
+              서버에 있는 꿈 기록 · 녹음 · 꿈 나눔 글 · 댓글 · 공감 · 차단 목록이{' '}
+              <AppText weight="semibold">바로 지워지고 되돌릴 수 없습니다.</AppText>
+            </AppText>
+            <AppText color={c.fgMuted}>폰에 있는 꿈 기록과 녹음은 그대로 남습니다.</AppText>
+            {!!deleteError && (
+              <AppText size="caption" color={c.danger}>
+                {deleteError}
+              </AppText>
+            )}
+          </Stack>
+          <Stack gap={sp[2]}>
+            <Button label={auth.busy ? '지우는 중' : '계정 삭제'} variant="danger" disabled={auth.busy} onPress={confirmDelete} />
+            <Button label="그만두기" variant="ghost" disabled={auth.busy} onPress={() => setDeleting(false)} />
+          </Stack>
+        </Stack>
+      </Sheet>
 
       {/* 시트가 세션을 저장한 뒤 이 탭이 들고 있는 세션도 다시 읽는다 */}
       <NicknameSheet

@@ -341,6 +341,7 @@ export default function PostScreen() {
               }}
               onReport={() => openReport({ type: 'comment', id: comment.id, author: comment.author })}
               onDelete={() => removeComment(comment)}
+              onAuthor={() => router.push(`/community/user/${comment.author.id}`)}
             />
           ))}
         </Stack>
@@ -433,6 +434,8 @@ function CommentItem(props: {
   onReply: () => void;
   onReport: () => void;
   onDelete: () => void;
+  /** 작성자 이름을 누르면 그 사람의 프로필로 — 글쓴이 이름과 같다(2026-10-06 사용자 요청) */
+  onAuthor: () => void;
 }) {
   const { comment, placeholder, mine } = props;
   const isReply = comment.parentId != null;
@@ -446,9 +449,21 @@ function CommentItem(props: {
           </AppText>
         ) : (
           <>
-            <AppText size="caption" color={c.fgMuted}>
-              {comment.author.nickname} · {ago(comment.createdAt)}
-            </AppText>
+            <Row gap={sp[1]}>
+              <Pressable
+                onPress={props.onAuthor}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`${comment.author.nickname} 프로필`}
+                style={({ pressed }) => pressed && { opacity: press }}>
+                <AppText size="caption" weight="semibold" color={c.fgMuted}>
+                  {comment.author.nickname}
+                </AppText>
+              </Pressable>
+              <AppText size="caption" color={c.fgFaint}>
+                · {ago(comment.createdAt)}
+              </AppText>
+            </Row>
             <AppText size="body">{comment.body}</AppText>
             <Row gap={sp[4]}>
               {/* 답글에는 답글이 없다 — 한 단계까지(2026-09-24 사용자 결정) */}

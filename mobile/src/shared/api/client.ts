@@ -59,6 +59,18 @@ export function isApiError(e: unknown): e is ApiError {
   return typeof e === 'object' && e !== null && 'code' in e && 'status' in e;
 }
 
+/**
+ * 지운 계정의 토큰으로 요청하면 서버는 어디서든 `401 account_deleted`를 준다(계정 삭제 계약 064 · 066).
+ * 다른 기기에서 지운 계정이 이 기기에 로그인된 채 남아 있을 수 있어, **모든 요청이 지나는 여기서** 잡아
+ * 로그아웃과 같은 정리를 부른다. 정리는 `@shared/auth`가 맡는다 — 이 파일이 그쪽을 import 하면 순환이 생겨
+ * 거꾸로 등록받는다. 오류는 그대로 던진다(부른 쪽이 할 일을 멈추게)
+ */
+let accountDeletedHandler: (() => void) | null = null;
+
+export function setAccountDeletedHandler(fn: (() => void) | null) {
+  accountDeletedHandler = fn;
+}
+
 /** 네트워크가 느려도 새벽 화면을 붙잡지 않는다. 기록은 서버를 기다리지 않는다 */
 const TIMEOUT_MS = 15_000;
 
@@ -94,6 +106,7 @@ export async function request<T>(
       } catch {
         /* 형식이 아닌 응답. 아래에서 status로만 말한다 */
       }
+      if (body.code === 'account_deleted') accountDeletedHandler?.();
       throw {
         code: body.code ?? 'http_error',
         message: body.message ?? '서버와 통신하지 못했습니다',

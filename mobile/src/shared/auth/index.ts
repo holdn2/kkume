@@ -1,11 +1,45 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { loginWithGoogle } from '@shared/api/auth';
-import { isApiError } from '@shared/api/client';
-import { resetSyncPosition, syncIfSignedIn } from '@shared/sync';
+import { deleteMe, loginWithGoogle } from '@shared/api/auth';
+import { isApiError, setAccountDeletedHandler } from '@shared/api/client';
+import { getDreamRepo } from '@shared/db';
+import { pauseSync, resetSyncPosition, syncIfSignedIn } from '@shared/sync';
 
+import { deleteAccount as runDeletion, onceAtATime, runSteps, type DeletionResult } from './deletion';
 import { signInWithGoogle, signOutFromGoogle } from './google';
 import { clearSession, isExpired, loadSession, saveSession, toSession, type Session } from './session';
+
+export type { DeletionResult } from './deletion';
+
+/**
+ * 계정이 없어졌을 때(이 기기에서 지웠거나, 다른 기기에서 지운 계정의 토큰이 `401 account_deleted`를 받았을 때)
+ * 이 기기의 계정 흔적을 지운다 — 구글 로그아웃 · 세션 · 받기 위치 · "올렸음" 표시. **폰의 기록은 남긴다**
+ * (2026-10-05 사용자 결정 · 계약 064). 여러 요청이 한꺼번에 받아도 한 번만 돈다
+ */
+const goneListeners = new Set<() => void>();
+
+/** 계정이 없어지면 부른다 — 화면의 세션 상태 · 커뮤니티 캐시가 듣는다. 듣기를 그만두는 함수를 돌려준다 */
+export function onAccountGone(fn: () => void): () => void {
+  goneListeners.add(fn);
+  return () => goneListeners.delete(fn);
+}
+
+export const forgetAccount = onceAtATime(() =>
+  runSteps(
+    [
+      () => signOutFromGoogle(),
+      () => clearSession(),
+      () => resetSyncPosition(),
+      // 서버의 기록은 지워졌다 — "이미 올렸다"가 남으면 새 계정으로 로그인했을 때 영영 안 올라간다(계약 064 06장)
+      async () => (await getDreamRepo()).clearUploadMarks(),
+    ],
+    // 한 단계가 실패해도 화면 · 캐시에는 알린다 — 세션은 이미 지웠는데 화면만 로그인한 채로 남지 않게(PR #68 리뷰)
+    () => goneListeners.forEach((fn) => fn()),
+  ),
+);
+
+// 모든 요청이 지나는 `request()`가 `account_deleted`를 보면 여기로 온다(계약 064 06장)
+setAccountDeletedHandler(() => void forgetAccount().catch(() => {}));
 
 export { googleBackend, HAS_NATIVE_GOOGLE } from './google';
 export { sessionBackend, type Session } from './session';
@@ -18,6 +52,8 @@ export type AuthState = {
   error: string | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
+  /** 계정 삭제(MY-5, 이슈 #65). 성공하면 이 훅의 세션도 비워진다 */
+  deleteAccount: () => Promise<DeletionResult>;
   /** 저장된 세션을 다시 읽는다 */
   refresh: () => Promise<void>;
 };
@@ -124,7 +160,29 @@ export function useAuth(): AuthState {
     setSession(s && !isExpired(s) ? s : null);
   }, []);
 
-  return { session, loading, busy, error, signIn, signOut, refresh };
+  // 계정이 없어지면(여기서 지웠든, 다른 기기에서 지운 것을 요청이 알아챘든) 로그인 전으로
+  useEffect(() => onAccountGone(() => setSession(null)), []);
+
+  const deleteAccount = useCallback(async () => {
+    setBusy(true);
+    try {
+      return await runDeletion({
+        pauseSync,
+        callDelete: async () => {
+          const s = await loadSession();
+          // 만료된 토큰을 보내면 서버가 401 unauthorized — 같은 안내로 간다
+          if (!s || isExpired(s)) throw { code: 'unauthorized', message: '', status: 401 };
+          await deleteMe(s.accessToken);
+        },
+        // 서버는 이미 지웠다 — 이 기기 정리의 한 단계가 실패해도 결과는 "지웠음"이다(알림은 runSteps 가 보장)
+        forget: () => forgetAccount().catch(() => {}),
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  return { session, loading, busy, error, signIn, signOut, deleteAccount, refresh };
 }
 
 /**

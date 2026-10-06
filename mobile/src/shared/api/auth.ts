@@ -34,3 +34,11 @@ export type Me = { id: string; nickname: string };
 export function fetchMe(token: string) {
   return request<Me>('/api/me', { token });
 }
+
+/**
+ * 계정 삭제(서버 계약 064 · 066). `204`면 서버가 그 자리에서 다 지웠다 — 유예 없음.
+ * `401 account_deleted`(이미 지움)도 성공이다. 해석은 `@shared/auth/deletion`이 한다
+ */
+export function deleteMe(token: string) {
+  return request<void>('/api/me', { method: 'DELETE', token });
+}

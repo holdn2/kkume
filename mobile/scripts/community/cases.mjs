@@ -235,6 +235,9 @@ check('H10', '자른 뒤 1자면 막는다', nicknameProblem(' 잠 ') !== null);
 check('H11', '16자는 되고 17자는 막는다', nicknameProblem('가'.repeat(16)) === null && nicknameProblem('가'.repeat(17)) !== null);
 check('H12', '줄바꿈 · 제어문자는 막는다', nicknameProblem('잠꾸\n러기') !== null && nicknameProblem('잠꾸\u0007러기') !== null);
 check('H13', '가운데 공백은 된다', nicknameProblem('잠 꾸 러 기') === null);
+// 서버 계약 066 02장 — 공백을 모두 뺀 값이 "탈퇴한사용자"면 400 nickname_invalid(익명화한 이름이 진짜 탈퇴만 뜻하게)
+check('H14', '「탈퇴한 사용자」는 띄어쓰기와 상관없이 막는다', ['탈퇴한 사용자', '탈퇴한사용자', ' 탈 퇴 한 사 용 자 '].every((v) => nicknameProblem(v) !== null));
+check('H15', '비슷하지만 다른 이름은 된다', nicknameProblem('탈퇴한 사람') === null && nicknameProblem('사용자') === null);
 
 // ---- 진짜 request() 가 오류 본문의 덧붙은 필드를 넘기는가(서버 계약 056 01장) ----
 // 서버는 409 already_shared 에 postId 를 싣는다. code · message 만 남기면 화면이 그 글로 안내하지 못한다
