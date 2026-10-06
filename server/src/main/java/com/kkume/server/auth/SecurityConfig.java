@@ -2,6 +2,7 @@ package com.kkume.server.auth;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import java.security.SecureRandom;
 import java.util.HexFormat;
 
@@ -18,18 +19,25 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+
+import com.kkume.server.user.AccountGuard;
 
 /**
  * 인증 설정. 계획서가 "Spring Security 최소화"로 못 박은 구간이라 최소 구성으로 둔다.
@@ -46,7 +54,7 @@ public class SecurityConfig {
 	private static final int MIN_SECRET_BYTES = 32;
 
 	@Bean
-	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+	SecurityFilterChain securityFilterChain(HttpSecurity http, AccountGuard accounts) throws Exception {
 		return http
 			// 브라우저 세션이 없으므로 CSRF 토큰이 지킬 대상도 없다
 			.csrf(csrf -> csrf.disable())
@@ -62,12 +70,41 @@ public class SecurityConfig {
 						"/api/users/*/profile", "/api/users/*/posts").permitAll()
 				.anyRequest().authenticated())
 			.exceptionHandling(e -> e.authenticationEntryPoint(SecurityConfig::unauthorized))
-			.oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {
-			}).authenticationEntryPoint(SecurityConfig::unauthorized))
+			.oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(activeAccount(accounts)))
+				.authenticationEntryPoint(SecurityConfig::unauthorized))
 			.build();
 	}
 
 	private static final BearerTokenAuthenticationEntryPoint BEARER = new BearerTokenAuthenticationEntryPoint();
+
+	/**
+	 * 서명이 맞아도 지운 계정의 토큰이면 막는다(문서 064 · 066). 토큰은 30일짜리라 서버가 끊을 수단이 이것뿐이다.
+	 * 기본 키 조회 하나라 요청 비용은 거의 없다. 로그인 없이 되는 읽기도 토큰을 붙였으면 여기를 지난다.
+	 */
+	private static Converter<Jwt, AbstractAuthenticationToken> activeAccount(AccountGuard accounts) {
+		JwtAuthenticationConverter delegate = new JwtAuthenticationConverter();
+		return jwt -> {
+			UUID userId;
+			try {
+				userId = UUID.fromString(jwt.getSubject());
+			}
+			catch (IllegalArgumentException | NullPointerException ex) {
+				throw new InvalidBearerTokenException("토큰의 사용자를 읽을 수 없습니다");
+			}
+			if (!accounts.isActive(userId)) {
+				throw new AccountDeletedAuthenticationException();
+			}
+			return delegate.convert(jwt);
+		};
+	}
+
+	/** 지운 계정의 토큰. 401 본문의 코드를 {@code account_deleted}로 가르는 데만 쓴다 */
+	static class AccountDeletedAuthenticationException extends AuthenticationException {
+
+		AccountDeletedAuthenticationException() {
+			super("삭제된 계정입니다");
+		}
+	}
 
 	/**
 	 * 401 에 다른 오류와 같은 모양의 본문을 붙인다. 앱은 {@code code}로 가르는데, 본문이 비면
@@ -79,6 +116,11 @@ public class SecurityConfig {
 		BEARER.commence(request, response, ex);
 		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+		// 앱은 이 둘을 다르게 마무리한다 — 지운 계정은 "삭제됐습니다", 나머지는 "다시 로그인"
+		if (ex instanceof AccountDeletedAuthenticationException) {
+			response.getWriter().write("{\"code\":\"account_deleted\",\"message\":\"삭제된 계정입니다\"}");
+			return;
+		}
 		response.getWriter().write("{\"code\":\"unauthorized\",\"message\":\"로그인이 필요합니다\"}");
 	}
 

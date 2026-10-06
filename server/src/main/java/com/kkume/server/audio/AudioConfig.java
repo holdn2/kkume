@@ -54,6 +54,11 @@ class AudioConfig {
 			throw unavailable();
 		}
 
+		/** 버킷이 없는 서버에는 올라간 녹음도 없다. 계정 삭제를 막지 않는다 */
+		@Override
+		public void deleteAll(String prefix) {
+		}
+
 		@Override
 		public String location(String key) {
 			throw unavailable();

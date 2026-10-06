@@ -8,6 +8,8 @@ import java.util.UUID;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+
+import com.kkume.server.user.AccountGuard;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -34,7 +36,10 @@ public class SyncService {
 
 	private final TransactionTemplate transactions;
 
-	public SyncService(DreamRepository dreams, TransactionTemplate transactions) {
+	private final AccountGuard accounts;
+
+	public SyncService(DreamRepository dreams, TransactionTemplate transactions, AccountGuard accounts) {
+		this.accounts = accounts;
 		this.dreams = dreams;
 		this.transactions = transactions;
 	}
@@ -85,6 +90,8 @@ public class SyncService {
 	}
 
 	private SyncResult applyOne(UUID userId, DreamPayload payload) {
+		// 기록마다 다시 본다. 삭제가 끝난 뒤 커밋하면 지운 꿈이 되살아난다(문서 066)
+		this.accounts.lockActive(userId);
 		String reason = validate(payload);
 		if (reason != null) {
 			return SyncResult.rejected(payload == null ? null : payload.id(), reason);
