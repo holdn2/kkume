@@ -1,17 +1,18 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { LayoutGrid, Pencil, UserMinus, UserX } from 'lucide-react-native';
+import { FileText, LayoutGrid, Pencil, Shield, UserMinus, UserX } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 
 import { Button, Card, Chip, ListRow, Row, Screen, Sheet, Stack, Title } from '@components';
 import { NicknameSheet } from '@features/community/NicknameSheet';
 import { useAuth } from '@shared/auth';
 import { STORYBOOK_ENABLED } from '@shared/storybook';
+import { openWebPage, PRIVACY_URL, TERMS_URL } from '@shared/web';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 
 /**
- * MY-1. 계정(로그인 · 닉네임) · 위젯 설치 다시 보기 · 차단한 사용자 · 개발용 줄 · 계정 삭제(MY-5, 이슈 #65).
- * 약관은 앱 심사 항목이라 마지막에 몰아서 넣는다(보고서 053 8장)
+ * MY-1. 계정(로그인 · 닉네임) · 위젯 설치 다시 보기 · 차단한 사용자 · 이용약관 · 개인정보처리방침(MY-3 · 4) ·
+ * 개발용 줄 · 계정 삭제(MY-5, 이슈 #65)
  */
 export default function MyScreen() {
   const router = useRouter();
@@ -98,6 +99,18 @@ export default function MyScreen() {
               loading={auth.busy}
               onPress={() => void auth.signIn()}
             />
+            {/* 가입은 로그인과 같다 — 그 자리에서 무엇에 동의하는지 보이게(MY-3 · 4) */}
+            <AppText size="caption" color={c.fgFaint}>
+              로그인하면{' '}
+              <AppText size="caption" color={c.fgMuted} weight="semibold" onPress={() => void openWebPage(TERMS_URL)}>
+                이용약관
+              </AppText>
+              과{' '}
+              <AppText size="caption" color={c.fgMuted} weight="semibold" onPress={() => void openWebPage(PRIVACY_URL)}>
+                개인정보처리방침
+              </AppText>
+              에 동의하는 것으로 봅니다. 만 14세 미만은 로그인할 수 없습니다.
+            </AppText>
           </Stack>
         )}
 
@@ -141,6 +154,12 @@ export default function MyScreen() {
         <ListRow label="빌드 진단" onPress={() => router.push('/diag')} />
       </Stack>
 
+      {/* MY-3 · 4 — 공개 페이지(저장소 site/ · GitHub Pages)를 앱 안 브라우저로 연다 */}
+      <Stack gap={sp[3]}>
+        <ListRow icon={FileText} label="이용약관" onPress={() => void openWebPage(TERMS_URL)} />
+        <ListRow icon={Shield} label="개인정보처리방침" onPress={() => void openWebPage(PRIVACY_URL)} />
+      </Stack>
+
       {/* MY-5 계정 삭제 — 맨 아래, 다른 줄과 떨어진 위험색(계획서 001 · 003). 로그인했을 때만 */}
       {!!auth.session && (
         <Stack gap={sp[3]} style={{ marginTop: sp[6] }}>
@@ -164,6 +183,7 @@ export default function MyScreen() {
               <AppText weight="semibold">바로 지워지고 되돌릴 수 없습니다.</AppText>
             </AppText>
             <AppText color={c.fgMuted}>폰에 있는 꿈 기록과 녹음은 그대로 남습니다.</AppText>
+            <Button label="개인정보처리방침에서 자세히" size="sm" variant="ghost" onPress={() => void openWebPage(PRIVACY_URL)} />
             {!!deleteError && (
               <AppText size="caption" color={c.danger}>
                 {deleteError}
