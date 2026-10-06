@@ -1,0 +1,45 @@
+# site/ 를 GitHub Pages 로 올린다 — 이용약관 · 개인정보처리방침(MY-3·4). 앱 심사에 적는 주소가 여기다.
+#
+# docs/ 가 아니라 site/ 인 이유: docs/discussions/ 는 git 에 올리지 않는 작업 문서이고,
+# 스토어가 가리키는 페이지에 섞일 것이 아니다(Nekan 과 같은 구성).
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 두 배포가 겹치지 않게. 이미 쓰고 있는 배포는 끊지 않는다
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 채우지 않은 자리표시가 남은 정책 페이지는 없는 것보다 나쁘다 — 심사하는 사람이 버려진 문서로 읽는다
+      - name: Refuse to publish an unfilled placeholder
+        run: |
+          if grep -rn '{{' site/; then
+            echo "::error::site/ 에 채우지 않은 {{ }} 자리표시가 남아 있습니다."
+            exit 1
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

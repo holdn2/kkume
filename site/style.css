@@ -1,0 +1,45 @@
+/* 꾸메 공개 페이지 — 앱과 같은 무채색. 글꼴은 기기 것을 쓴다(외부 글꼴 요청 없음) */
+:root {
+  --bg: #fafafa;
+  --fg: #1b1b1f;
+  --muted: #55555e;
+  --faint: #85858f;
+  --line: #e2e2e7;
+  --card: #ffffff;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0b0e;
+    --fg: #ececf0;
+    --muted: #b0b0b8;
+    --faint: #80808a;
+    --line: #2a2a30;
+    --card: #141418;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.75 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", sans-serif;
+  word-break: keep-all;
+}
+main { max-width: 760px; margin: 0 auto; padding: 40px 20px 72px; }
+header.top { display: flex; gap: 16px; align-items: baseline; margin-bottom: 28px; }
+header.top a { color: var(--muted); text-decoration: none; font-size: 15px; }
+header.top a:hover { color: var(--fg); }
+h1 { font-size: 28px; line-height: 1.35; margin: 0 0 6px; }
+h2 { font-size: 19px; margin: 36px 0 10px; padding-top: 16px; border-top: 1px solid var(--line); }
+p, li { color: var(--fg); }
+.sub { color: var(--muted); margin: 0 0 20px; }
+.meta { color: var(--faint); font-size: 14px; }
+ul, ol { padding-left: 22px; }
+li { margin: 4px 0; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; margin: 10px 0; }
+th, td { border-bottom: 1px solid var(--line); padding: 9px 6px; text-align: left; vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin: 14px 0; }
+a { color: inherit; }
+footer { margin-top: 48px; color: var(--faint); font-size: 14px; }
