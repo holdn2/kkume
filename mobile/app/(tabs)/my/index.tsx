@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { LayoutGrid, Pencil, UserMinus, UserX } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import { Button, Card, Chip, ListRow, Row, Screen, Sheet, Stack, Title } from '@components';
 import { NicknameSheet } from '@features/community/NicknameSheet';
@@ -22,9 +22,18 @@ export default function MyScreen() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletedNotice, setDeletedNotice] = useState<string | null>(null);
 
+  // 빠르게 두 번 누르면 `auth.busy`가 버튼을 끄기 전에 두 번 들어온다 — 다시 그리기를 기다리지 않는 ref 로 막는다(PR #68 리뷰)
+  const deletingNow = useRef(false);
   const confirmDelete = () => {
+    if (deletingNow.current) return;
+    deletingNow.current = true;
     setDeleteError(null);
-    void auth.deleteAccount().then((r) => {
+    void auth
+      .deleteAccount()
+      .finally(() => {
+        deletingNow.current = false;
+      })
+      .then((r) => {
       if (r.result === 'deleted') {
         setDeleting(false);
         setDeletedNotice('계정을 삭제했습니다. 폰에 있는 기록은 그대로 남아 있습니다.');

@@ -8,7 +8,7 @@
  */
 import { DatabaseSync } from 'node:sqlite';
 
-import { deleteAccount, onceAtATime } from '@shared/auth/deletion';
+import { deleteAccount, onceAtATime, runSteps } from '@shared/auth/deletion';
 import { request, setAccountDeletedHandler } from '@shared/api/client';
 import { createMemoryRepo } from '@shared/db/memory';
 import { createSqliteRepo } from '@shared/db/sqlite';
@@ -155,6 +155,25 @@ function harness(callDelete) {
   check('D11', '동시에 두 요청이 받아도 정리는 한 번만', calls === 1, `${calls}번`);
   globalThis.fetch = realFetch;
   setAccountDeletedHandler(null);
+}
+
+// ---- 정리 단계 하나가 실패해도 나머지와 알림은 돈다(PR #68 리뷰) ----
+{
+  const ran = [];
+  let notified = 0;
+  await runSteps(
+    [
+      async () => ran.push('google'),
+      async () => {
+        ran.push('session');
+        throw new Error('SQLite 실패');
+      },
+      async () => ran.push('position'),
+      async () => ran.push('marks'),
+    ],
+    () => (notified += 1),
+  ).catch(() => {});
+  check('D12', '한 단계가 실패해도 다음 단계를 하고, 화면 · 캐시에 알린다', ran.join() === 'google,session,position,marks' && notified === 1, `${ran.join()} · 알림 ${notified}`);
 }
 
 console.log(`\n${total}개 중 실패 ${failed}개`);

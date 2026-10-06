@@ -49,6 +49,27 @@ export async function deleteAccount(deps: DeletionDeps): Promise<DeletionResult>
 }
 
 /**
+ * 정리 단계를 차례로 돌린다. **한 단계가 실패해도 다음 단계를 하고, 마지막에 반드시 알린다**(PR #68 리뷰).
+ * 세션은 이미 지웠는데 SQLite 같은 뒤 단계가 실패해 알림이 빠지면, 화면은 로그인한 채로 남고
+ * 커뮤니티 캐시에 지운 계정의 것이 남는다. 실패가 있었으면 다 돈 뒤 첫 오류를 던진다
+ */
+export async function runSteps(steps: (() => Promise<unknown>)[], notify: () => void): Promise<void> {
+  let first: unknown = null;
+  try {
+    for (const step of steps) {
+      try {
+        await step();
+      } catch (e) {
+        first ??= e;
+      }
+    }
+  } finally {
+    notify();
+  }
+  if (first) throw first;
+}
+
+/**
  * 돌고 있는 동안 다시 불리면 같은 약속을 돌려준다 — 여러 요청이 한꺼번에 `account_deleted`를 받아도
  * 정리는 한 번만 돈다(동기화 · 피드 · 차단 목록이 동시에 나가는 일이 흔하다)
  */

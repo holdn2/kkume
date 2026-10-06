@@ -5,7 +5,7 @@ import { isApiError, setAccountDeletedHandler } from '@shared/api/client';
 import { getDreamRepo } from '@shared/db';
 import { pauseSync, resetSyncPosition, syncIfSignedIn } from '@shared/sync';
 
-import { deleteAccount as runDeletion, onceAtATime, type DeletionResult } from './deletion';
+import { deleteAccount as runDeletion, onceAtATime, runSteps, type DeletionResult } from './deletion';
 import { signInWithGoogle, signOutFromGoogle } from './google';
 import { clearSession, isExpired, loadSession, saveSession, toSession, type Session } from './session';
 
@@ -24,18 +24,22 @@ export function onAccountGone(fn: () => void): () => void {
   return () => goneListeners.delete(fn);
 }
 
-export const forgetAccount = onceAtATime(async () => {
-  await signOutFromGoogle().catch(() => {});
-  await clearSession();
-  await resetSyncPosition();
-  // 서버의 기록은 지워졌다 — "이미 올렸다"가 남으면 새 계정으로 로그인했을 때 영영 안 올라간다(계약 064 06장)
-  const repo = await getDreamRepo();
-  await repo.clearUploadMarks();
-  goneListeners.forEach((fn) => fn());
-});
+export const forgetAccount = onceAtATime(() =>
+  runSteps(
+    [
+      () => signOutFromGoogle(),
+      () => clearSession(),
+      () => resetSyncPosition(),
+      // 서버의 기록은 지워졌다 — "이미 올렸다"가 남으면 새 계정으로 로그인했을 때 영영 안 올라간다(계약 064 06장)
+      async () => (await getDreamRepo()).clearUploadMarks(),
+    ],
+    // 한 단계가 실패해도 화면 · 캐시에는 알린다 — 세션은 이미 지웠는데 화면만 로그인한 채로 남지 않게(PR #68 리뷰)
+    () => goneListeners.forEach((fn) => fn()),
+  ),
+);
 
 // 모든 요청이 지나는 `request()`가 `account_deleted`를 보면 여기로 온다(계약 064 06장)
-setAccountDeletedHandler(() => void forgetAccount());
+setAccountDeletedHandler(() => void forgetAccount().catch(() => {}));
 
 export { googleBackend, HAS_NATIVE_GOOGLE } from './google';
 export { sessionBackend, type Session } from './session';
@@ -170,7 +174,8 @@ export function useAuth(): AuthState {
           if (!s || isExpired(s)) throw { code: 'unauthorized', message: '', status: 401 };
           await deleteMe(s.accessToken);
         },
-        forget: forgetAccount,
+        // 서버는 이미 지웠다 — 이 기기 정리의 한 단계가 실패해도 결과는 "지웠음"이다(알림은 runSteps 가 보장)
+        forget: () => forgetAccount().catch(() => {}),
       });
     } finally {
       setBusy(false);
