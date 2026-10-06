@@ -21,6 +21,7 @@ import com.kkume.server.community.CommunityViews.Page;
 import com.kkume.server.community.CommunityViews.PostDetail;
 import com.kkume.server.community.CommunityViews.PostSummary;
 import com.kkume.server.community.CommunityViews.Profile;
+import com.kkume.server.user.AccountGuard;
 
 /**
  * 커뮤니티 — 꿈 나눔. 계약은 문서 056(모바일 057에서 수용)이다.
@@ -52,8 +53,12 @@ public class CommunityService {
 
 	private final CommunityStore store;
 
-	public CommunityService(CommunityStore store) {
+	/** 쓰기는 맨 처음 계정을 다시 본다 — 삭제가 끝난 뒤 커밋하면 지운 계정 이름으로 글이 생긴다(문서 066) */
+	private final AccountGuard accounts;
+
+	public CommunityService(CommunityStore store, AccountGuard accounts) {
 		this.store = store;
+		this.accounts = accounts;
 	}
 
 	// ------------------------------------------------------------------ 읽기
@@ -118,6 +123,7 @@ public class CommunityService {
 
 	@Transactional
 	public PostSummary createPost(UUID viewer, NewPost input) {
+		this.accounts.lockActive(viewer);
 		if (input == null) {
 			throw CommunityApiException.badRequest("dream_text_empty", "꿈 내용을 적어 주세요");
 		}
@@ -166,6 +172,7 @@ public class CommunityService {
 	/** 작성자는 가려진 글도 지울 수 있다. 지우면 같은 꿈을 다시 공유할 수 있다 */
 	@Transactional
 	public void deletePost(UUID viewer, String postId) {
+		this.accounts.lockActive(viewer);
 		PostRow post = this.store.lockPost(parse(postId, CommunityApiException::postNotFound))
 			.filter(p -> !p.isDeleted())
 			.orElseThrow(CommunityApiException::postNotFound);
@@ -184,6 +191,7 @@ public class CommunityService {
 	/** 원하는 상태를 받는다. 두 번 보내도 한 번이다. 가려진 글은 작성자여도 받지 않는다 */
 	@Transactional
 	public CommunityViews.LikeState setLiked(UUID viewer, String postId, boolean liked) {
+		this.accounts.lockActive(viewer);
 		PostRow post = interactable(this.store.lockPost(parse(postId, CommunityApiException::postNotFound)).orElse(null));
 		if (liked) {
 			this.store.like(post.id(), viewer, now());
@@ -198,6 +206,7 @@ public class CommunityService {
 
 	@Transactional
 	public Comment addComment(UUID viewer, String postId, String body, String parentId) {
+		this.accounts.lockActive(viewer);
 		String text = body == null ? "" : body.strip();
 		if (text.isEmpty()) {
 			throw CommunityApiException.badRequest("comment_empty", "댓글을 적어 주세요");
@@ -229,6 +238,7 @@ public class CommunityService {
 
 	@Transactional
 	public void deleteComment(UUID viewer, String commentId) {
+		this.accounts.lockActive(viewer);
 		CommentRow comment = this.store.findComment(parse(commentId, CommunityApiException::commentNotFound))
 			.filter(c -> c.deletedAt() == null)
 			.orElseThrow(CommunityApiException::commentNotFound);
@@ -249,6 +259,7 @@ public class CommunityService {
 	 */
 	@Transactional
 	public void report(UUID viewer, String type, String targetId, String reason) {
+		this.accounts.lockActive(viewer);
 		if (reason == null || !REPORT_REASONS.contains(reason)) {
 			throw CommunityApiException.badRequest("invalid_report", "신고 사유가 올바르지 않습니다");
 		}
@@ -293,6 +304,7 @@ public class CommunityService {
 
 	@Transactional
 	public void block(UUID viewer, String userId) {
+		this.accounts.lockActive(viewer);
 		UUID target = parse(userId, CommunityApiException::userNotFound);
 		if (target.equals(viewer)) {
 			throw CommunityApiException.badRequest("self_block", "나를 차단할 수 없습니다");
@@ -304,6 +316,7 @@ public class CommunityService {
 	/** 차단하지 않은 사람을 풀어도 아무 일도 없다 */
 	@Transactional
 	public void unblock(UUID viewer, String userId) {
+		this.accounts.lockActive(viewer);
 		this.store.unblock(viewer, parse(userId, CommunityApiException::userNotFound));
 	}
 

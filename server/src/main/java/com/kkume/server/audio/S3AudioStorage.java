@@ -1,12 +1,19 @@
 package com.kkume.server.audio;
 
+import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
 
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.Delete;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -71,6 +78,28 @@ class S3AudioStorage implements AudioStorage {
 	@Override
 	public void delete(String key) {
 		this.s3.deleteObject(DeleteObjectRequest.builder().bucket(this.properties.bucket()).key(key).build());
+	}
+
+	@Override
+	public void deleteAll(String prefix) {
+		String token = null;
+		do {
+			ListObjectsV2Response page = this.s3.listObjectsV2(ListObjectsV2Request.builder()
+				.bucket(this.properties.bucket()).prefix(prefix).continuationToken(token).build());
+			List<ObjectIdentifier> keys = page.contents().stream()
+				.map(o -> ObjectIdentifier.builder().key(o.key()).build())
+				.toList();
+			if (!keys.isEmpty()) {
+				// 한 번에 1,000개까지 받는다. 목록 한 쪽도 1,000개라 쪽마다 한 번이다
+				DeleteObjectsResponse result = this.s3.deleteObjects(DeleteObjectsRequest.builder()
+					.bucket(this.properties.bucket()).delete(Delete.builder().objects(keys).quiet(true).build()).build());
+				if (!result.errors().isEmpty()) {
+					throw new IllegalStateException("녹음 파일을 지우지 못했습니다: " + result.errors().get(0).code());
+				}
+			}
+			token = Boolean.TRUE.equals(page.isTruncated()) ? page.nextContinuationToken() : null;
+		}
+		while (token != null);
 	}
 
 	@Override

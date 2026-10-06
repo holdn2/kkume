@@ -19,6 +19,7 @@ import com.kkume.server.job.Job;
 import com.kkume.server.job.JobRepository;
 import com.kkume.server.job.JobType;
 import com.kkume.server.job.SttProperties;
+import com.kkume.server.user.AccountGuard;
 
 /**
  * 오디오 업로드와 변환 상태. 계약은 문서 039(모바일 040에서 수용).
@@ -45,8 +46,11 @@ public class AudioService {
 
 	private final SttProperties stt;
 
+	private final AccountGuard accounts;
+
 	public AudioService(DreamRepository dreams, JobRepository jobs, AudioStorage storage, AudioProperties properties,
-			TransactionTemplate transactions, SttProperties stt) {
+			TransactionTemplate transactions, SttProperties stt, AccountGuard accounts) {
+		this.accounts = accounts;
 		this.dreams = dreams;
 		this.jobs = jobs;
 		this.storage = storage;
@@ -59,7 +63,11 @@ public class AudioService {
 	public UploadTicket prepareUpload(UUID userId, String dreamId, String format) {
 		AudioFormat audioFormat = AudioFormat.of(format)
 			.orElseThrow(() -> new AudioApiException(HttpStatus.BAD_REQUEST, "unsupported_format", "받지 않는 녹음 형식입니다"));
-		Dream dream = this.transactions.execute(status -> owned(userId, this.dreams.findById(dreamId).orElse(null)));
+		Dream dream = this.transactions.execute(status -> {
+			// 삭제가 시작된 뒤에는 새 URL 을 내주지 않는다(문서 066)
+			this.accounts.lockActive(userId);
+			return owned(userId, this.dreams.findById(dreamId).orElse(null));
+		});
 		notDeleted(dream);
 		if (dream.getDurationMs() == null) {
 			// audio_path 는 있는데 duration_ms 가 없으면 stop() 전에 죽은 녹음이다. 변환도 실패한다
@@ -102,6 +110,7 @@ public class AudioService {
 		}
 
 		return this.transactions.execute(status -> {
+			this.accounts.lockActive(userId);
 			Dream dream = owned(userId, this.dreams.findForUpdate(dreamId).orElse(null));
 			if (location.equals(dream.getAudioUrl())) {
 				return dream.getSttStatus().code();
@@ -141,6 +150,7 @@ public class AudioService {
 	/** 실패한 변환을 다시 줄 세운다 */
 	public String retry(UUID userId, String dreamId) {
 		return this.transactions.execute(status -> {
+			this.accounts.lockActive(userId);
 			Dream dream = withAudio(owned(userId, this.dreams.findForUpdate(dreamId).orElse(null)));
 			notDeleted(dream);
 			SttStatus stt = dream.getSttStatus();

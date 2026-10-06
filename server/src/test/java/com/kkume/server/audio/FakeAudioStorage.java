@@ -45,6 +45,25 @@ public class FakeAudioStorage implements AudioStorage {
 		this.deleted.add(key);
 	}
 
+	private volatile boolean failDeletes;
+
+	/** 다음 {@link #deleteAll}부터 실패하게 한다. S3 가 안 될 때 계정이 그대로인지 본다 */
+	public void failDeletes(boolean fail) {
+		this.failDeletes = fail;
+	}
+
+	public boolean has(String key) {
+		return this.objects.containsKey(key);
+	}
+
+	@Override
+	public void deleteAll(String prefix) {
+		if (this.failDeletes) {
+			throw new IllegalStateException("가짜 S3 실패");
+		}
+		this.objects.keySet().removeIf(k -> k.startsWith(prefix));
+	}
+
 	@Override
 	public String location(String key) {
 		return "s3://fake-bucket/" + key;

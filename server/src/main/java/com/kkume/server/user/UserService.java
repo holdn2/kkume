@@ -17,7 +17,11 @@ public class UserService {
 
 	private final NicknameGenerator nicknames;
 
-	public UserService(UserRepository users, UserSettingsRepository settings, NicknameGenerator nicknames) {
+	private final AccountGuard accounts;
+
+	public UserService(UserRepository users, UserSettingsRepository settings, NicknameGenerator nicknames,
+			AccountGuard accounts) {
+		this.accounts = accounts;
 		this.users = users;
 		this.settings = settings;
 		this.nicknames = nicknames;
@@ -64,6 +68,12 @@ public class UserService {
 		if (length < 2 || length > 16 || name.codePoints().anyMatch(Character::isISOControl)) {
 			throw new InvalidNicknameException();
 		}
+		// 지운 계정만 이 이름을 쓴다. 띄어 쓴 것도 같은 이름으로 본다(문서 066 02장)
+		if (name.replaceAll("\\s", "").equals(AccountDeletionService.DELETED_NICKNAME.replaceAll("\\s", ""))) {
+			throw new InvalidNicknameException();
+		}
+		// 삭제 뒤에 커밋하면 익명화한 이름을 원래 이름으로 덮는다
+		this.accounts.lockActive(id);
 		User user = get(id);
 		user.rename(name, Instant.now());
 		return user;

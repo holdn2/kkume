@@ -20,6 +20,12 @@ public interface AudioStorage {
 
 	void delete(String key);
 
+	/**
+	 * {@code prefix}로 시작하는 파일을 전부 지운다. 계정 삭제가 쓴다(문서 064 · 066).
+	 * 하나라도 못 지우면 던진다 — 조용히 넘어가면 "지웠다"고 답한 뒤 녹음이 남는다.
+	 */
+	void deleteAll(String prefix);
+
 	/** 기록의 {@code audio_url}에 적는 값. URL 이 아니라 저장 위치 식별자다 */
 	String location(String key);
 
