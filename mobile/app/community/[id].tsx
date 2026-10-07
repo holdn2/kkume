@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { CornerDownRight, Flag, Heart, MoreHorizontal, X } from 'lucide-react-native';
+import { CornerDownRight, Flag, Heart, MoreHorizontal, SendHorizontal, X } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -26,7 +26,7 @@ import {
   type ReportTarget,
 } from '@shared/api/community';
 import { AppText } from '@shared/ui';
-import { c, hit, press, sp } from '@theme/token';
+import { c, hit, press, r, sp } from '@theme/token';
 
 type Reporting = ReportTarget & { author: Author };
 
@@ -232,6 +232,7 @@ export default function PostScreen() {
    * 댓글 입력은 아래에 고정한다(2026-10-08 사용자 요청). 맨 끝에 두면 댓글이 쌓일수록 끝까지 내려가야 달 수 있었다.
    * 키보드가 오르면 함께 오른다(`liftFooter`). 가려진 글은 댓글을 받지 않아 입력 줄도 없다
    */
+  const canSend = !!draft.trim() && !sending;
   const composer = closed ? undefined : (
     <Stack gap={sp[2]}>
       {replyTo && (
@@ -257,7 +258,16 @@ export default function PostScreen() {
             style={s.composerInput}
           />
         </View>
-        <Button label={sending ? '올리는 중' : '달기'} size="sm" disabled={!draft.trim() || sending} onPress={send} />
+        {/* 글자 버튼 대신 전송 아이콘(2026-10-08 사용자 요청). 이름은 버튼이 갖는다 */}
+        <Pressable
+          onPress={send}
+          disabled={!canSend}
+          accessibilityRole="button"
+          accessibilityLabel={sending ? '댓글 올리는 중' : '댓글 달기'}
+          accessibilityState={{ disabled: !canSend }}
+          style={({ pressed }) => [s.send, { backgroundColor: canSend ? c.action : c.raised }, pressed && { opacity: press }]}>
+          <SendHorizontal size={20} strokeWidth={2} color={canSend ? c.actionFg : c.fgDisabled} />
+        </Pressable>
       </Row>
     </Stack>
   );
@@ -514,6 +524,7 @@ const s = StyleSheet.create({
   // 입력칸이 여러 줄로 늘어나도 버튼은 아래 줄에 붙어 있다
   composer: { alignItems: 'flex-end' },
   composerInput: { maxHeight: sp[10] * 3 },
+  send: { width: hit.base, height: hit.base, borderRadius: r.chip, alignItems: 'center', justifyContent: 'center' },
   comment: { flexDirection: 'row', gap: sp[2] },
   reply: { paddingLeft: sp[4] },
   replyMark: { marginTop: 2 },

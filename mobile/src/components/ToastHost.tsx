@@ -19,6 +19,8 @@ type State = { message: string; tone: Tone; visible: boolean };
  * 부르는 쪽은 `showToast` 한 줄이다. 뜨는 자리는 루트 레이아웃과 `Sheet` 안 두 곳 —
  * 시트는 따로 뜬 창(Modal)이라 루트에 그린 것이 그 아래로 깔린다.
  *
+ * 위로 밀면 바로 치워진다. 그래서 떠 있는 동안은 그 자리의 터치를 받는다 — 헤더 버튼과 겹치면 밀어 치우고 누른다.
+ *
  * 새벽 화면(`/record`)에서는 부르지 않는다(`Toast`와 같은 이유, 절대 규칙 7).
  */
 const SHOW_MS: Record<Tone, number> = { neutral: 2500, danger: 4000 };
@@ -41,6 +43,13 @@ export function showToast(message: string, tone: Tone = 'danger') {
   AccessibilityInfo.announceForAccessibility(message);
 }
 
+/** 위로 밀어 치웠을 때 — 남은 시간을 기다리지 않는다 */
+export function hideToast() {
+  if (timer) clearTimeout(timer);
+  timer = undefined;
+  if (state.visible) set({ ...state, visible: false });
+}
+
 const subscribe = (l: () => void) => {
   listeners.add(l);
   return () => {
@@ -52,5 +61,14 @@ const read = () => state;
 export function ToastHost() {
   const { message, tone, visible } = useSyncExternalStore(subscribe, read);
   const insets = useSafeAreaInsets();
-  return <Toast visible={visible} message={message} tone={tone} edge="top" offset={Math.max(insets.top, sp[6]) + sp[2]} />;
+  return (
+    <Toast
+      visible={visible}
+      message={message}
+      tone={tone}
+      edge="top"
+      offset={Math.max(insets.top, sp[6]) + sp[2]}
+      onDismiss={hideToast}
+    />
+  );
 }

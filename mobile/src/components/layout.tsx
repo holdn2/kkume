@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, type ViewProps } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Dimensions, Keyboard, Platform, ScrollView, StyleSheet, View, type ViewProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@shared/ui';
@@ -9,7 +9,30 @@ import { c, sp } from '@theme/token';
  * 스크롤 끝에 남기는 여백(2026-10-08 사용자 요청 — "아래쪽 요소가 약간 가려지거나 하단 고정 요소와의 여백이 너무 없어서 답답하다").
  * 마지막 줄이 탭바 · 고정된 줄 · 떠 있는 버튼에 바짝 붙지 않게 한다. 목록 화면(`FlatList`)도 이 값을 쓴다
  */
-export const SCROLL_TAIL = sp[10];
+export const SCROLL_TAIL = sp[8];
+
+/**
+ * 키보드가 화면 아래에서 차지한 높이(iOS). `liftFooter`가 footer 를 그만큼 올린다.
+ *
+ * **`KeyboardAvoidingView`를 쓰지 않는다**(2026-10-08 기기 확인). 그것은 바뀐 여백을 레이아웃 애니메이션으로 옮기는데,
+ * 입력칸은 바로 올라가고 그 위 구분선과 버튼은 늦게 따라와 고정 줄이 찢어져 보였다. 여기서는 키보드가 움직이기
+ * 시작할 때 값을 한 번에 바꿔 줄 전체가 함께 오른다. Android 는 창 자체가 줄어 따로 할 것이 없다
+ */
+function useKeyboardHeight(enabled: boolean) {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    if (!enabled || Platform.OS !== 'ios') return;
+    const change = Keyboard.addListener('keyboardWillChangeFrame', (e) =>
+      setHeight(Math.max(0, Dimensions.get('window').height - e.endCoordinates.screenY)),
+    );
+    const hide = Keyboard.addListener('keyboardWillHide', () => setHeight(0));
+    return () => {
+      change.remove();
+      hide.remove();
+    };
+  }, [enabled]);
+  return enabled ? height : 0;
+}
 
 /**
  * 화면 루트. StyleSheet의 유일한 약점이 화면마다 create 블록이 반복되는 것인데
@@ -52,6 +75,8 @@ export function Screen({
   // 눌리기는 하는데 손가락이 제스처로 먹혀서 "가끔 안 눌리는 버튼"이 된다.
   // inset이 0인 기기(홈 버튼)에서도 바닥에 딱 붙지 않게 최소값을 깐다.
   const bottom = Math.max(insets.bottom, sp[4]);
+  // 키보드가 떠 있으면 그 높이가 곧 아래 여백이다 — 키보드 높이에 홈 인디케이터 자리가 이미 들어 있다
+  const keyboard = useKeyboardHeight(!!liftFooter);
 
   const inner = (
     <View style={[{ flex: 1, paddingHorizontal: sp[5], gap: sp[4] }, scroll && { paddingBottom: SCROLL_TAIL }, style]} {...rest}>
@@ -101,7 +126,7 @@ export function Screen({
   // 확인이 왔다(2026-10-05) — 모든 터치를 먼저 받는 층이 스크롤과 다툰다. 스크롤 영역은 아래 ScrollView 의
   // `keyboardShouldPersistTaps="handled"`가 이미 빈 곳 탭에 키보드를 내리므로, 스크롤 바깥인 헤더 줄에만 단다
   return (
-    <View style={{ flex: 1, paddingTop: top, paddingBottom: bottom, backgroundColor: night ? c.night : c.bg }}>
+    <View style={{ flex: 1, paddingTop: top, paddingBottom: Math.max(bottom, keyboard), backgroundColor: night ? c.night : c.bg }}>
       {!!header && (
         // onTouchEnd 는 안쪽 버튼(뒤로 · ⋯)이 받은 탭에도 온다 — 응답자가 되지 않아 버튼을 막지 않는다.
         // 응답자로 받으면 버튼 탭에는 안 와서, 댓글을 치다 ⋯ 를 누르면 키보드가 남은 채 메뉴가 떴다(PR #64 리뷰)
@@ -109,14 +134,7 @@ export function Screen({
           {header}
         </View>
       )}
-      {liftFooter ? (
-        // 키보드만큼 아래를 비워 스크롤과 footer 를 함께 올린다 — 시트와 같은 방식(Android 는 창이 줄어든다)
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          {main}
-        </KeyboardAvoidingView>
-      ) : (
-        main
-      )}
+      {main}
     </View>
   );
 }
