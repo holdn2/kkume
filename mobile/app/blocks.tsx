@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
 
-import { Avatar, Button, Card, Header, Row, Screen } from '@components';
+import { Avatar, Button, Card, Header, Row, Screen, SCROLL_TAIL, showToast } from '@components';
 import { setBlocked, useBlocked, useInvalidateCommunity, useMe, useRefetchOnFocus } from '@features/community';
 import type { Author } from '@shared/api/community';
 import { AppText } from '@shared/ui';
@@ -30,7 +30,11 @@ export default function BlocksScreen() {
     setError(null);
     setBlocked(user, false)
       .then(() => invalidate())
-      .catch((e) => setError(e?.message ?? '차단을 풀지 못했습니다'))
+      .catch((e) => {
+        const m = e?.message ?? '차단을 풀지 못했습니다';
+        setError(m);
+        showToast(m);
+      })
       .finally(() => setBusy(null));
   };
 
@@ -72,7 +76,7 @@ export default function BlocksScreen() {
             </Row>
           )}
           ItemSeparatorComponent={() => <View style={{ height: sp[2] }} />}
-          contentContainerStyle={{ paddingBottom: sp[8] }}
+          contentContainerStyle={{ paddingBottom: SCROLL_TAIL }}
           ListEmptyComponent={
             me === undefined || blocked.loading ? (
               <ActivityIndicator color={c.fgMuted} style={{ padding: sp[6] }} />

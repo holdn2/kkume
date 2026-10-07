@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
+import { ToastHost } from '@components';
 import { queryClient } from '@features/community';
 import { ensureWidgetSnapshot } from '@features/widget';
 import { c } from '@theme/token';
@@ -61,6 +62,8 @@ export default function RootLayout() {
           }}
         />
       </Stack>
+      {/* 오류 · 이용 제한 알림. 어느 화면에서 불러도 여기 한 곳에 뜬다(2026-10-08) */}
+      <ToastHost />
     </QueryClientProvider>
   );
 }

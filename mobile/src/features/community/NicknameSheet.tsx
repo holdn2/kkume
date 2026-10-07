@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { Button, Input, Sheet, Stack } from '@components';
+import { Button, Input, Sheet, showToast, Stack } from '@components';
 import { NICKNAME_MAX, NICKNAME_MIN, type Author } from '@shared/api/community';
 import { loadSession, saveSession } from '@shared/auth/session';
 import { sp } from '@theme/token';
@@ -56,7 +56,12 @@ export function NicknameSheet({ visible, onClose, current, onSaved }: Props) {
         onSaved?.(me);
         onClose();
       })
-      .catch((e) => setError(e?.message ?? '바꾸지 못했습니다'))
+      .catch((e) => {
+        // 이용 제한도 여기로 온다 — 칸 아래 글씨만으로는 놓치기 쉬워 토스트로도(2026-10-08)
+        const m = e?.message ?? '바꾸지 못했습니다';
+        setError(m);
+        showToast(m);
+      })
       .finally(() => setSaving(false));
   };
 

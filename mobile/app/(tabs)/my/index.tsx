@@ -1,8 +1,8 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { FileText, LayoutGrid, Pencil, Shield, UserMinus, UserX } from 'lucide-react-native';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { Button, Card, Chip, ListRow, Row, Screen, Sheet, Stack, Title } from '@components';
+import { Button, Card, Chip, ListRow, Row, Screen, Sheet, showToast, Stack, Title } from '@components';
 import { NicknameSheet } from '@features/community/NicknameSheet';
 import { ConsentSheet } from '@features/consent/ConsentSheet';
 import { CONSENT_VERSION, consentAction, needsConsent, recordConsent } from '@features/consent/logic';
@@ -22,6 +22,10 @@ export default function MyScreen() {
   const auth = useAuth();
   const [renaming, setRenaming] = useState(false);
   const { refresh } = auth;
+  // 로그인 · 로그아웃이 실패한 이유는 계정 카드 안에 적고, 토스트로도 띄운다(2026-10-08 사용자 요청)
+  useEffect(() => {
+    if (auth.error) showToast(auth.error);
+  }, [auth.error]);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletedNotice, setDeletedNotice] = useState<string | null>(null);
@@ -44,6 +48,7 @@ export default function MyScreen() {
       } else {
         // 다시 로그인 · 실패 — 세션은 그대로라 시트를 열어 둔 채 이유만 보인다
         setDeleteError(r.message);
+        showToast(r.message);
       }
     });
   };
@@ -116,7 +121,10 @@ export default function MyScreen() {
         const ok = await auth.signIn(CONSENT_VERSION);
         if (!ok) await setConsentRecord('').catch(() => {});
       })
-      .catch((e) => setConsentError(`동의를 저장하지 못했습니다. 다시 눌러 주세요.\n${String(e)}`));
+      .catch((e) => {
+        setConsentError(`동의를 저장하지 못했습니다. 다시 눌러 주세요.\n${String(e)}`);
+        showToast('동의를 저장하지 못했습니다. 다시 눌러 주세요.');
+      });
   };
   const declineConsent = () => {
     const was = consent;

@@ -17,6 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@shared/ui';
 import { c, dur, r, sp } from '@theme/token';
 
+import { ToastHost } from './ToastHost';
+
 /**
  * 첫 프레임과 닫힌 뒤에 화면 밖에 있도록 — 시트가 화면 높이까지 커질 수 있어(최대 높이, 2026-09-30)
  * 고정값(700)이면 긴 시트의 윗부분이 닫힌 뒤에도 남았다가 툭 사라졌다
@@ -86,6 +88,8 @@ export function Sheet({ visible, onClose, title, description, children, onEndRea
           {children}
         </SheetBody>
       )}
+      {/* 시트는 따로 뜬 창이라 루트의 알림이 그 아래에 깔린다 — 시트 안에서 난 오류는 여기서 보인다 */}
+      {showing && <ToastHost />}
     </Modal>
   );
 }

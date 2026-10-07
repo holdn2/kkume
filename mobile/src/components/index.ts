@@ -22,4 +22,5 @@ export { Sheet } from './Sheet';
 export { Skeleton } from './Skeleton';
 export { Switch } from './Switch';
 export { Toast } from './Toast';
-export { Row, Screen, Spacer, Stack, Title } from './layout';
+export { showToast, ToastHost } from './ToastHost';
+export { Row, Screen, SCROLL_TAIL, Spacer, Stack, Title } from './layout';
