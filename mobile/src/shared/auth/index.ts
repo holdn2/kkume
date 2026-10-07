@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { deleteMe, loginWithGoogle } from '@shared/api/auth';
 import { isApiError, setAccountDeletedHandler } from '@shared/api/client';
-import { getDreamRepo } from '@shared/db';
+import { getDreamRepo, SETTINGS } from '@shared/db';
 import { pauseSync, resetSyncPosition, syncIfSignedIn } from '@shared/sync';
 
 import { deleteAccount as runDeletion, onceAtATime, runSteps, type DeletionResult } from './deletion';
@@ -32,6 +32,8 @@ export const forgetAccount = onceAtATime(() =>
       () => resetSyncPosition(),
       // 서버의 기록은 지워졌다 — "이미 올렸다"가 남으면 새 계정으로 로그인했을 때 영영 안 올라간다(계약 064 06장)
       async () => (await getDreamRepo()).clearUploadMarks(),
+      // 동의는 계정의 것이다 — 다음에 로그인하는 계정이 다시 동의한다(이슈 #71)
+      async () => (await getDreamRepo()).setSetting(SETTINGS.consent, ''),
     ],
     // 한 단계가 실패해도 화면 · 캐시에는 알린다 — 세션은 이미 지웠는데 화면만 로그인한 채로 남지 않게(PR #68 리뷰)
     () => goneListeners.forEach((fn) => fn()),
@@ -50,7 +52,8 @@ export type AuthState = {
   loading: boolean;
   busy: boolean;
   error: string | null;
-  signIn: () => Promise<void>;
+  /** 로그인됐으면 true. 취소 · 실패면 false(이유는 `error`) */
+  signIn: () => Promise<boolean>;
   signOut: () => Promise<void>;
   /** 계정 삭제(MY-5, 이슈 #65). 성공하면 이 훅의 세션도 비워진다 */
   deleteAccount: () => Promise<DeletionResult>;
@@ -102,7 +105,7 @@ export function useAuth(): AuthState {
       if (!g.ok) {
         // 취소는 실패가 아니다. 사용자가 스스로 닫은 것에 오류 문구를 띄우면
         // 자기가 뭘 잘못한 줄 알고 다시 시도하지 않는다
-        if (g.reason === 'cancelled') return;
+        if (g.reason === 'cancelled') return false;
         // **`detail`을 버리지 않는다.** 2026-09-12에 계정 선택까지 되고 그 뒤에 실패했는데,
         // 화면에 "구글 로그인에 실패했습니다"만 떠서 **원인을 좁힐 근거가 하나도 없었다.**
         // 구글 쪽 오류는 코드가 제각각이라 미리 문구를 매핑해 둘 수 없다 —
@@ -113,7 +116,7 @@ export function useAuth(): AuthState {
             ? '이 빌드에는 구글 로그인이 들어 있지 않습니다'
             : '구글 로그인에 실패했습니다';
         setError(g.detail ? `${base}\n${g.detail}` : base);
-        return;
+        return false;
       }
       // **실패하면 토큰의 `aud`를 함께 보여준다.** 서버는 이 값이 허용 목록에
       // 없으면 401을 주는데 이유를 알려주지 않는다(일부러 그렇게 만들었다).
@@ -129,10 +132,12 @@ export function useAuth(): AuthState {
       // 로컬 `user_id`를 따로 잇지 않아도 이 사용자 것이 된다.
       // 기다리지 않는다 — 로그인 완료가 동기화에 묶이면 느린 망에서 버튼이 안 풀린다
       void syncIfSignedIn({ force: true });
+      return true;
     } catch (e) {
       // 서버가 주는 문구는 이미 존댓말이라 그대로 보여준다
       const base = isApiError(e) ? e.message : '로그인에 실패했습니다';
       setError(aud ? `${base}\n토큰 대상: ${aud}` : base);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -141,12 +146,17 @@ export function useAuth(): AuthState {
   const signOut = useCallback(async () => {
     setBusy(true);
     try {
-      await signOutFromGoogle();
+      // 구글 쪽 로그아웃이 실패해도 우리 세션은 지운다 — 다음 로그인 때 계정 선택이 한 번 덜 뜰 뿐이다
+      await signOutFromGoogle().catch(() => {});
       await clearSession();
       // 받기 위치를 지운다. 다음에 다른 계정이 로그인하면 그 계정 기록을 처음부터 받아야 한다
       await resetSyncPosition();
-      setSession(null);
+      // 동의는 계정의 것이다 — 다음에 로그인하는 계정이 다시 동의한다(이슈 #71).
+      // 이것이 실패해도 로그아웃은 끝까지 간다(PR #73 리뷰)
+      await (await getDreamRepo()).setSetting(SETTINGS.consent, '').catch(() => {});
     } finally {
+      // 토큰은 이미 지웠다 — 앞 단계가 던져도 화면은 로그인 전으로(PR #73 리뷰)
+      setSession(null);
       setBusy(false);
     }
   }, []);

@@ -246,6 +246,12 @@ export const SETTINGS = {
    * 거절한 사람에게 매번 띄우면 그것도 결정이 된다(문서 052 03장)
    */
   dictationAsked: 'dictation_asked',
+  /**
+   * 가입 동의(이슈 #71). `{ version, at }` JSON — 어느 버전 문서에 언제 동의했는가.
+   * 버전이 바뀌면 다시 묻는다(`@features/consent`). **로그아웃 · 계정 삭제 때 지운다** — 동의는 계정의 것이라,
+   * 같은 폰에서 다른 계정(또는 지운 뒤 새 계정)으로 로그인하면 그 계정이 다시 동의해야 한다
+   */
+  consent: 'consent',
 } as const;
 
 /**
