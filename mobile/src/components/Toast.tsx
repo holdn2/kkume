@@ -13,6 +13,12 @@ type Props = {
   /** 되돌리기 같은 한 가지 행동만 붙인다. 두 개를 붙이면 그건 시트여야 한다 */
   actionLabel?: string;
   onAction?: () => void;
+  /**
+   * 어느 끝에 붙는가와 그 끝에서 얼마나 떨어지는가. 기본은 아래 `sp[6]`.
+   * 앱 전체 알림(`ToastHost`)은 위에 붙인다 — 아래는 탭바 · 고정 버튼 · 키보드에 가린다
+   */
+  edge?: 'top' | 'bottom';
+  offset?: number;
 };
 
 const FG: Record<Tone, string> = { neutral: c.fg, running: c.running, danger: c.danger };
@@ -25,7 +31,7 @@ const FG: Record<Tone, string> = { neutral: c.fg, running: c.running, danger: c.
  * 새벽 화면에는 띄우지 않는다. 토스트는 읽어야 하는 것이고,
  * 읽어야 하는 것은 결정을 만든다(절대 규칙 7).
  */
-export function Toast({ visible, message, tone = 'neutral', actionLabel, onAction }: Props) {
+export function Toast({ visible, message, tone = 'neutral', actionLabel, onAction, edge = 'bottom', offset = sp[6] }: Props) {
   const [a] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -38,10 +44,16 @@ export function Toast({ visible, message, tone = 'neutral', actionLabel, onActio
 
   return (
     <Animated.View
-      pointerEvents={visible ? 'auto' : 'none'}
+      // 누를 것이 없으면 터치를 받지 않는다 — 위에 뜨면 헤더(뒤로 · ⋯)를 덮는다
+      pointerEvents={visible && !!actionLabel ? 'auto' : 'none'}
       style={[
         s.wrap,
-        { opacity: a, transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }] },
+        { [edge]: offset },
+        {
+          opacity: a,
+          // 붙은 끝 쪽에서 미끄러져 들어온다
+          transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [edge === 'top' ? -16 : 16, 0] }) }],
+        },
       ]}>
       <View style={s.body}>
         <AppText size="label" color={FG[tone]} style={{ flex: 1 }}>
@@ -60,7 +72,7 @@ export function Toast({ visible, message, tone = 'neutral', actionLabel, onActio
 }
 
 const s = StyleSheet.create({
-  wrap: { position: 'absolute', left: sp[5], right: sp[5], bottom: sp[6] },
+  wrap: { position: 'absolute', left: sp[5], right: sp[5] },
   body: {
     backgroundColor: c.raised,
     borderRadius: r.control,

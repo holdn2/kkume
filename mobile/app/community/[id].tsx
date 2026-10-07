@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, Card, Header, Input, Radio, Row, Screen, Sheet, Stack, Switch } from '@components';
+import { Button, Card, Header, Input, Radio, Row, Screen, Sheet, showToast, Stack, Switch } from '@components';
 import {
   ago,
   communityKeys,
@@ -71,6 +71,15 @@ export default function PostScreen() {
   const error = query.error ? ((query.error as { message?: string }).message ?? String(query.error)) : null;
   useRefetchOnFocus(query.refetch, query.isStale);
   const [notice, setNotice] = useState<string | null>(null);
+  /**
+   * 안내는 반응 줄 아래 카드에 적고, **같은 말을 위쪽 토스트로도 띄운다**(2026-10-08 사용자 요청). 댓글을 읽느라
+   * 내려가 있으면 카드가 화면 밖이라 공감 · 댓글이 왜 안 됐는지(이용 제한 등) 보이지 않았다
+   */
+  const tell = (message: string, tone: 'neutral' | 'danger' = 'neutral') => {
+    setNotice(message);
+    showToast(message, tone);
+  };
+  const fail = (fallback: string) => (e: { message?: string } | undefined) => tell(e?.message ?? fallback, 'danger');
   /** 공감 요청이 나가 있는 동안은 다시 받지 않는다 — 빠르게 두 번 누르면 응답 순서에 따라 결과가 틀린다 */
   const [liking, setLiking] = useState(false);
 
@@ -86,7 +95,7 @@ export default function PostScreen() {
   /** 쓰기는 로그인해야 한다. 안 했으면 이유를 말하고 멈춘다 */
   const needMe = (): Author | null => {
     if (me) return me;
-    setNotice('로그인하면 반응하고 댓글을 달 수 있습니다. 로그인은 마이 탭에서 합니다.');
+    tell('로그인하면 반응하고 댓글을 달 수 있습니다. 로그인은 마이 탭에서 합니다.');
     return null;
   };
 
@@ -108,7 +117,7 @@ export default function PostScreen() {
       .catch((e) => {
         patchPostEverywhere(qc, post.id, flip(!next));
         void invalidate();
-        setNotice(e?.message ?? '반영하지 못했습니다');
+        fail('반영하지 못했습니다')(e);
       })
       .finally(() => setLiking(false));
   };
@@ -124,7 +133,7 @@ export default function PostScreen() {
         setReplyTo(null);
         void invalidate();
       })
-      .catch((e) => setNotice(e?.message ?? '댓글을 달지 못했습니다'))
+      .catch(fail('댓글을 달지 못했습니다'))
       .finally(() => setSending(false));
   };
 
@@ -132,7 +141,7 @@ export default function PostScreen() {
     getCommunityApi()
       .deleteComment(cm.id)
       .then(() => invalidate())
-      .catch((e) => setNotice(e?.message ?? '지우지 못했습니다'));
+      .catch(fail('지우지 못했습니다'));
   };
 
   const removePost = () => {
@@ -144,7 +153,7 @@ export default function PostScreen() {
         void invalidate();
         goBack();
       })
-      .catch((e) => setNotice(e?.message ?? '지우지 못했습니다'));
+      .catch(fail('지우지 못했습니다'));
   };
 
   const block = (user: Author) => {
@@ -155,17 +164,17 @@ export default function PostScreen() {
         // 글쓴이를 차단했으면 피드로 돌아간다 — 피드에서는 서버가 그 사람 글을 뺀다
         if (post && user.id === post.author.id) router.back();
         else {
-          setNotice(`${user.nickname}님을 차단했습니다. 그 사람의 글과 댓글이 보이지 않습니다.`);
+          tell(`${user.nickname}님을 차단했습니다. 그 사람의 글과 댓글이 보이지 않습니다.`);
         }
       })
-      .catch((e) => setNotice(e?.message ?? '차단하지 못했습니다'));
+      .catch(fail('차단하지 못했습니다'));
   };
 
   const unblockAuthor = () => {
     if (!post) return;
     setBlocked(post.author, false)
       .then(() => invalidate())
-      .catch((e) => setNotice(e?.message ?? '차단을 풀지 못했습니다'));
+      .catch(fail('차단을 풀지 못했습니다'));
   };
 
   const openReport = (target: Reporting) => {
@@ -190,10 +199,10 @@ export default function PostScreen() {
             return;
           }
         }
-        setNotice('신고했습니다. 여러 사람이 신고하면 자동으로 가려집니다.');
+        tell('신고했습니다. 여러 사람이 신고하면 자동으로 가려집니다.');
         void invalidate();
       })
-      .catch((e) => setNotice(e?.message ?? '신고하지 못했습니다'));
+      .catch(fail('신고하지 못했습니다'));
   };
 
   if (post === undefined) {
@@ -219,9 +228,45 @@ export default function PostScreen() {
   const closed = post.hidden;
   const thread = visibleThread(post.comments);
 
+  /**
+   * 댓글 입력은 아래에 고정한다(2026-10-08 사용자 요청). 맨 끝에 두면 댓글이 쌓일수록 끝까지 내려가야 달 수 있었다.
+   * 키보드가 오르면 함께 오른다(`liftFooter`). 가려진 글은 댓글을 받지 않아 입력 줄도 없다
+   */
+  const composer = closed ? undefined : (
+    <Stack gap={sp[2]}>
+      {replyTo && (
+        <Row gap={sp[2]}>
+          <AppText size="caption" color={c.fgMuted} style={{ flex: 1 }}>
+            {replyTo.author.nickname}님에게 답글
+          </AppText>
+          <Pressable onPress={() => setReplyTo(null)} hitSlop={12} accessibilityRole="button" accessibilityLabel="답글 취소">
+            <X size={16} strokeWidth={1.75} color={c.fgFaint} />
+          </Pressable>
+        </Row>
+      )}
+      <Row gap={sp[2]} style={s.composer}>
+        <View style={{ flex: 1 }}>
+          <Input
+            placeholder={replyTo ? '답글을 적어 주세요' : '해몽이나 비슷한 경험을 나눠 주세요'}
+            value={draft}
+            onChangeText={setDraft}
+            maxLength={MAX_COMMENT}
+            multiline
+            rows={1}
+            // 긴 댓글이어도 고정 줄이 화면을 덮지 않게 몇 줄까지만 늘고 그 안에서 스크롤된다
+            style={s.composerInput}
+          />
+        </View>
+        <Button label={sending ? '올리는 중' : '달기'} size="sm" disabled={!draft.trim() || sending} onPress={send} />
+      </Row>
+    </Stack>
+  );
+
   return (
     <Screen
       scroll
+      footer={composer}
+      liftFooter
       // 위에 고정 — 긴 글과 댓글을 내려 읽다가도 뒤로 · ⋯(지우기 · 차단)에 바로 닿는다(2026-10-03)
       header={
         <Header
@@ -346,29 +391,6 @@ export default function PostScreen() {
           ))}
         </Stack>
 
-        {!closed && (
-        <Stack gap={sp[2]}>
-          {replyTo && (
-            <Row gap={sp[2]}>
-              <AppText size="caption" color={c.fgMuted} style={{ flex: 1 }}>
-                {replyTo.author.nickname}님에게 답글
-              </AppText>
-              <Pressable onPress={() => setReplyTo(null)} hitSlop={12} accessibilityRole="button" accessibilityLabel="답글 취소">
-                <X size={16} strokeWidth={1.75} color={c.fgFaint} />
-              </Pressable>
-            </Row>
-          )}
-          <Input
-            placeholder={replyTo ? '답글을 적어 주세요' : '해몽이나 비슷한 경험을 나눠 주세요'}
-            value={draft}
-            onChangeText={setDraft}
-            maxLength={MAX_COMMENT}
-            multiline
-            rows={1}
-          />
-          <Button label={sending ? '올리는 중' : '댓글 달기'} size="sm" disabled={!draft.trim() || sending} onPress={send} />
-        </Stack>
-        )}
       </Stack>
 
       <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)}>
@@ -489,6 +511,9 @@ function TextAction({ label, onPress }: { label: string; onPress: () => void }) 
 
 const s = StyleSheet.create({
   action: { flexDirection: 'row', alignItems: 'center', gap: sp[1], minHeight: hit.min },
+  // 입력칸이 여러 줄로 늘어나도 버튼은 아래 줄에 붙어 있다
+  composer: { alignItems: 'flex-end' },
+  composerInput: { maxHeight: sp[10] * 3 },
   comment: { flexDirection: 'row', gap: sp[2] },
   reply: { paddingLeft: sp[4] },
   replyMark: { marginTop: 2 },

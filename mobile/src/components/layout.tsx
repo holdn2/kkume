@@ -1,9 +1,15 @@
 import type { ReactNode } from 'react';
-import { Keyboard, ScrollView, StyleSheet, View, type ViewProps } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, type ViewProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
+
+/**
+ * 스크롤 끝에 남기는 여백(2026-10-08 사용자 요청 — "아래쪽 요소가 약간 가려지거나 하단 고정 요소와의 여백이 너무 없어서 답답하다").
+ * 마지막 줄이 탭바 · 고정된 줄 · 떠 있는 버튼에 바짝 붙지 않게 한다. 목록 화면(`FlatList`)도 이 값을 쓴다
+ */
+export const SCROLL_TAIL = sp[10];
 
 /**
  * 화면 루트. StyleSheet의 유일한 약점이 화면마다 create 블록이 반복되는 것인데
@@ -17,6 +23,7 @@ export function Screen({
   scroll,
   header,
   footer,
+  liftFooter,
   style,
   children,
   ...rest
@@ -27,6 +34,11 @@ export function Screen({
   header?: ReactNode;
   /** 스크롤 바깥 맨 아래에 붙는 줄 — 화면의 주된 버튼(꿈 공유의 「공유하기」). 내용이 길어도 아래에 남는다 */
   footer?: ReactNode;
+  /**
+   * 키보드가 오르면 `footer`가 그 위로 따라 오른다 — 입력칸이 `footer`에 있는 화면(글 상세의 댓글).
+   * 끄면 `footer`는 키보드 뒤에 남고, 스크롤 안의 입력칸만 보이는 곳까지 올라간다(꿈 공유처럼 입력이 위에 있는 화면)
+   */
+  liftFooter?: boolean;
 }) {
   const insets = useSafeAreaInsets();
 
@@ -42,9 +54,46 @@ export function Screen({
   const bottom = Math.max(insets.bottom, sp[4]);
 
   const inner = (
-    <View style={[{ flex: 1, paddingHorizontal: sp[5], gap: sp[4] }, style]} {...rest}>
+    <View style={[{ flex: 1, paddingHorizontal: sp[5], gap: sp[4] }, scroll && { paddingBottom: SCROLL_TAIL }, style]} {...rest}>
       {children}
     </View>
+  );
+
+  // 키보드는 여기서 한 번에 받는다(2026-09-30). 화면마다 KeyboardAvoidingView 를 ScrollView **안에** 두던 것은
+  // 키보드 높이만큼 끝에 여백을 붙일 뿐 입력칸을 끌어올리지 못했다. iOS ScrollView 의
+  // `automaticallyAdjustKeyboardInsets`는 키보드만큼 안쪽 여백을 주고 **포커스된 입력칸을 보이는 곳까지 올린다**
+  // (RN 0.86 `RCTScrollViewComponentView` `_keyboardWillChangeFrame`). `handled`는 키보드가 떠 있을 때
+  // 버튼을 한 번에 누르게 한다 — 없으면 첫 탭은 키보드만 내린다.
+  // `liftFooter`면 바깥이 키보드만큼 줄어든다 — 안쪽까지 여백을 더하면 두 번 비우므로 끈다
+  const main = (
+    <>
+      {scroll ? (
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          automaticallyAdjustKeyboardInsets={!liftFooter}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive">
+          {inner}
+        </ScrollView>
+      ) : (
+        inner
+      )}
+      {/* 위쪽에 머리카락 굵기의 선 하나 — 스크롤되는 내용과 고정된 줄을 가른다(2026-10-05 사용자 요청).
+          화면 끝에서 끝까지, 색은 경계용 line. 그림자는 무채색 화면에서 번져 보여 쓰지 않는다.
+          아래로도 한 칸 띄운다 — 버튼이 화면 끝(홈 인디케이터)에 바짝 붙어 답답했다(2026-10-08) */}
+      {!!footer && (
+        <View
+          style={{
+            paddingHorizontal: sp[5],
+            paddingTop: sp[3],
+            paddingBottom: sp[2],
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: c.line,
+          }}>
+          {footer}
+        </View>
+      )}
+    </>
   );
 
   // 빈 곳을 누르면 키보드를 내린다(2026-10-03 사용자 요청).
@@ -60,34 +109,13 @@ export function Screen({
           {header}
         </View>
       )}
-      {/* 키보드는 여기서 한 번에 받는다(2026-09-30). 화면마다 KeyboardAvoidingView 를 ScrollView **안에** 두던 것은
-          키보드 높이만큼 끝에 여백을 붙일 뿐 입력칸을 끌어올리지 못했다. iOS ScrollView 의
-          `automaticallyAdjustKeyboardInsets`는 키보드만큼 안쪽 여백을 주고 **포커스된 입력칸을 보이는 곳까지 올린다**
-          (RN 0.86 `RCTScrollViewComponentView` `_keyboardWillChangeFrame`). `handled`는 키보드가 떠 있을 때
-          버튼을 한 번에 누르게 한다 — 없으면 첫 탭은 키보드만 내린다 */}
-      {scroll ? (
-        <ScrollView
-          contentContainerStyle={{ flexGrow: 1 }}
-          automaticallyAdjustKeyboardInsets
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive">
-          {inner}
-        </ScrollView>
+      {liftFooter ? (
+        // 키보드만큼 아래를 비워 스크롤과 footer 를 함께 올린다 — 시트와 같은 방식(Android 는 창이 줄어든다)
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          {main}
+        </KeyboardAvoidingView>
       ) : (
-        inner
-      )}
-      {/* 위쪽에 머리카락 굵기의 선 하나 — 스크롤되는 내용과 고정된 줄을 가른다(2026-10-05 사용자 요청).
-          화면 끝에서 끝까지, 색은 경계용 line. 그림자는 무채색 화면에서 번져 보여 쓰지 않는다 */}
-      {!!footer && (
-        <View
-          style={{
-            paddingHorizontal: sp[5],
-            paddingTop: sp[3],
-            borderTopWidth: StyleSheet.hairlineWidth,
-            borderTopColor: c.line,
-          }}>
-          {footer}
-        </View>
+        main
       )}
     </View>
   );

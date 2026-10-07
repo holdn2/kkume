@@ -3,7 +3,7 @@ import { Trash2 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 
-import { Badge, Button, Header, Input, Row, Screen, Sheet, Stack } from '@components';
+import { Badge, Button, Header, Input, Row, Screen, Sheet, showToast, Stack } from '@components';
 import { useMe, usePostForDream, useRefetchOnFocus } from '@features/community';
 import { PlayerBar } from '@features/log/PlayerBar';
 import { MAX_TEXT_LENGTH, MAX_TITLE_LENGTH } from '@shared/api/sync';
@@ -33,6 +33,11 @@ export default function DreamDetail() {
   const [text, setText] = useState('');
   const [saved, setSaved] = useState<{ title: string; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** 저장 · 지우기가 실패한 이유는 아래 안내 줄에 적고 토스트로도 띄운다 — 긴 본문을 고치던 중이면 안내 줄이 화면 밖이다(2026-10-08) */
+  const fail = (e: unknown) => {
+    setError(String(e));
+    showToast(String(e));
+  };
   const [askDelete, setAskDelete] = useState(false);
   /**
    * 이 꿈을 나눈 글. 있으면 버튼이 「공유한 글 보기」가 된다 — 같은 꿈은 한 번만 나눈다(문서 055).
@@ -90,7 +95,7 @@ export default function DreamDetail() {
     const t = setTimeout(() => {
       save({ title: title.trim() || null, text })
         .then(() => setSaved({ title, text }))
-        .catch((e) => setError(String(e)));
+        .catch(fail);
     }, IDLE_SAVE_MS);
     return () => clearTimeout(t);
   }, [title, text, saved, save]);
@@ -120,7 +125,7 @@ export default function DreamDetail() {
         setSaved({ title, text });
         setDream(d);
       })
-      .catch((e) => setError(String(e)));
+      .catch(fail);
   };
 
   const remove = () => {
@@ -132,7 +137,7 @@ export default function DreamDetail() {
         await repo.softDelete(id);
         router.replace('/log');
       } catch (e) {
-        setError(String(e));
+        fail(e);
       }
     })();
   };
@@ -142,7 +147,7 @@ export default function DreamDetail() {
   const goBack = () => {
     flush()
       .then(() => (router.canGoBack() ? router.back() : router.replace('/log')))
-      .catch((e) => setError(String(e)));
+      .catch(fail);
   };
 
   if (dream === null) {

@@ -3,7 +3,7 @@ import { Mic } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
-import { Card, Input, Screen, Title } from '@components';
+import { Card, Input, Screen, SCROLL_TAIL, Title } from '@components';
 import { DictationPrompt } from '@features/log/DictationPrompt';
 import { DreamCard } from '@features/log/DreamCard';
 import { useDreamPages } from '@features/log/useDreamPages';
@@ -106,7 +106,7 @@ export default function LogScreen() {
         )}
         // 행 사이 간격이 곧 경계다. 구분선을 긋지 않는 것은 ListRow와 같은 이유다
         ItemSeparatorComponent={() => <View style={{ height: sp[3] }} />}
-        contentContainerStyle={{ paddingBottom: sp[6] }}
+        contentContainerStyle={{ paddingBottom: SCROLL_TAIL }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"

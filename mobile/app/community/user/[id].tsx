@@ -3,7 +3,7 @@ import { Pencil } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, View } from 'react-native';
 
-import { Avatar, Button, Card, Chip, Header, Row, Screen, Stack } from '@components';
+import { Avatar, Button, Card, Chip, Header, Row, Screen, SCROLL_TAIL, Stack } from '@components';
 import {
   setBlocked,
   useBlocked,
@@ -110,7 +110,7 @@ export default function ProfileScreen() {
         ListHeaderComponentStyle={{ marginBottom: sp[4] }}
         renderItem={({ item }) => <PostCard post={item} onPress={() => router.push(`/community/${item.id}`)} />}
         ItemSeparatorComponent={() => <View style={{ height: sp[3] }} />}
-        contentContainerStyle={{ paddingBottom: sp[8] }}
+        contentContainerStyle={{ paddingBottom: SCROLL_TAIL }}
         showsVerticalScrollIndicator={false}
         onEndReached={posts.more}
         onEndReachedThreshold={0.4}

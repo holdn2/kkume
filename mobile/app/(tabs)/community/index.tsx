@@ -3,7 +3,7 @@ import { ChevronDown, Plus } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
-import { Button, Card, Radio, Row, Screen, Segmented, Sheet, Stack, Title } from '@components';
+import { Button, Card, Radio, Row, Screen, SCROLL_TAIL, Segmented, Sheet, Stack, Title } from '@components';
 import { useFeed, useMe, usePullRefresh, useRefetchOnFocus, useUserPosts } from '@features/community';
 import { PostCard } from '@features/community/PostCard';
 import type { FeedSort } from '@shared/api/community';
@@ -109,8 +109,8 @@ export default function CommunityScreen() {
         keyExtractor={(p) => p.id}
         renderItem={({ item }) => <PostCard post={item} onPress={() => router.push(`/community/${item.id}`)} />}
         ItemSeparatorComponent={() => <View style={{ height: sp[3] }} />}
-        // 떠 있는 공유 버튼에 마지막 글이 가리지 않게 아래를 비운다
-        contentContainerStyle={{ paddingBottom: hit.base + sp[10] }}
+        // 떠 있는 공유 버튼에 마지막 글이 가리지 않게 아래를 비운다 — 버튼 높이 · 버튼 아래 띄움 · 여유
+        contentContainerStyle={{ paddingBottom: hit.base + sp[5] + SCROLL_TAIL }}
         showsVerticalScrollIndicator={false}
         onEndReached={list.more}
         onEndReachedThreshold={0.4}

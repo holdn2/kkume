@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator } from 'react-native';
 
-import { Button, Card, Header, Input, Radio, Row, Screen, Sheet, Stack, Switch } from '@components';
+import { Button, Card, Header, Input, Radio, Row, Screen, Sheet, showToast, Stack, Switch } from '@components';
 import { getCommunityApi, shareDream, useInvalidateCommunity, useMe } from '@features/community';
 import { useDreamPages } from '@features/log/useDreamPages';
 import { isApiError } from '@shared/api/client';
@@ -109,7 +109,10 @@ export default function NewPostScreen() {
           setSharedPostId(postId);
           return;
         }
-        setError(e?.message ?? '올리지 못했습니다');
+        // 안내 글씨는 화면 아래쪽(고정 버튼 위)이라 긴 꿈을 고치던 중이면 안 보인다 — 토스트로도(2026-10-08)
+        const m = e?.message ?? '올리지 못했습니다';
+        setError(m);
+        showToast(m);
       })
       .finally(() => setPosting(false));
   };
