@@ -4,7 +4,10 @@ import { useCallback, useRef, useState } from 'react';
 
 import { Button, Card, Chip, ListRow, Row, Screen, Sheet, Stack, Title } from '@components';
 import { NicknameSheet } from '@features/community/NicknameSheet';
+import { ConsentSheet } from '@features/consent/ConsentSheet';
+import { needsConsent, recordConsent } from '@features/consent/logic';
 import { useAuth } from '@shared/auth';
+import { getDreamRepo, SETTINGS } from '@shared/db';
 import { STORYBOOK_ENABLED } from '@shared/storybook';
 import { openWebPage, PRIVACY_URL, TERMS_URL } from '@shared/web';
 import { AppText } from '@shared/ui';
@@ -52,6 +55,41 @@ export default function MyScreen() {
     }, [refresh]),
   );
 
+  /**
+   * 가입 동의(이슈 #71). 로그인하기 전에 받고, **이미 로그인한 사람도 이번 버전에 동의하지 않았으면** 마이 탭을 열 때
+   * 한 번 받는다 — 동의 시트가 생기기 전에 가입한 사람, 문서가 바뀐 경우. 동의하지 않으면 로그아웃한다
+   * (서버 기록 · 꿈 나눔은 동의한 계정만). 폰의 기록은 그대로다
+   */
+  const [consent, setConsent] = useState<null | 'signIn' | 'existing'>(null);
+  const readConsent = useCallback(
+    () => getDreamRepo().then((repo) => repo.getSetting(SETTINGS.consent)).then(needsConsent),
+    [],
+  );
+  const signedIn = !!auth.session;
+  useFocusEffect(
+    useCallback(() => {
+      if (!signedIn) return;
+      void readConsent().then((need) => need && setConsent('existing'));
+    }, [signedIn, readConsent]),
+  );
+  const startSignIn = () => {
+    void readConsent().then((need) => (need ? setConsent('signIn') : void auth.signIn()));
+  };
+  const agree = () => {
+    const after = consent;
+    void getDreamRepo()
+      .then((repo) => repo.setSetting(SETTINGS.consent, recordConsent()))
+      .then(() => {
+        setConsent(null);
+        if (after === 'signIn') void auth.signIn();
+      });
+  };
+  const declineConsent = () => {
+    const was = consent;
+    setConsent(null);
+    if (was === 'existing') void auth.signOut();
+  };
+
   return (
     // 탭 제목도 위에 고정한다 — 다른 탭(꿈 로그 · 꿈 나눔)은 목록만 스크롤돼 이미 그렇다(2026-10-03)
     <Screen scroll header={<Title>마이</Title>}>
@@ -97,19 +135,18 @@ export default function MyScreen() {
             <Button
               label="구글로 계속하기"
               loading={auth.busy}
-              onPress={() => void auth.signIn()}
+              onPress={startSignIn}
             />
-            {/* 가입은 로그인과 같다 — 그 자리에서 무엇에 동의하는지 보이게(MY-3 · 4) */}
+            {/* 동의는 누르면 뜨는 시트에서 받는다(이슈 #71). 여기서는 무엇이 있는지만 */}
             <AppText size="caption" color={c.fgFaint}>
-              로그인하면{' '}
+              만 14세 이상만 로그인할 수 있습니다.{' '}
               <AppText size="caption" color={c.fgMuted} weight="semibold" onPress={() => void openWebPage(TERMS_URL)}>
                 이용약관
               </AppText>
-              과{' '}
+              {' · '}
               <AppText size="caption" color={c.fgMuted} weight="semibold" onPress={() => void openWebPage(PRIVACY_URL)}>
                 개인정보처리방침
               </AppText>
-              에 동의하는 것으로 봅니다. 만 14세 미만은 로그인할 수 없습니다.
             </AppText>
           </Stack>
         )}
@@ -196,6 +233,16 @@ export default function MyScreen() {
           </Stack>
         </Stack>
       </Sheet>
+
+      <ConsentSheet
+        visible={consent !== null}
+        onAgree={agree}
+        // 이미 로그인한 사람은 바깥을 눌러도 닫히지 않는다 — 고르게 한다(실수로 로그아웃되지 않게)
+        onClose={consent === 'existing' ? () => {} : declineConsent}
+        onDismiss={declineConsent}
+        dismissLabel={consent === 'existing' ? '동의하지 않고 로그아웃' : '그만두기'}
+        busy={auth.busy}
+      />
 
       {/* 시트가 세션을 저장한 뒤 이 탭이 들고 있는 세션도 다시 읽는다 */}
       <NicknameSheet

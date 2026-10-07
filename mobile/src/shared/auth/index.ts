@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { deleteMe, loginWithGoogle } from '@shared/api/auth';
 import { isApiError, setAccountDeletedHandler } from '@shared/api/client';
-import { getDreamRepo } from '@shared/db';
+import { getDreamRepo, SETTINGS } from '@shared/db';
 import { pauseSync, resetSyncPosition, syncIfSignedIn } from '@shared/sync';
 
 import { deleteAccount as runDeletion, onceAtATime, runSteps, type DeletionResult } from './deletion';
@@ -32,6 +32,8 @@ export const forgetAccount = onceAtATime(() =>
       () => resetSyncPosition(),
       // 서버의 기록은 지워졌다 — "이미 올렸다"가 남으면 새 계정으로 로그인했을 때 영영 안 올라간다(계약 064 06장)
       async () => (await getDreamRepo()).clearUploadMarks(),
+      // 동의는 계정의 것이다 — 다음에 로그인하는 계정이 다시 동의한다(이슈 #71)
+      async () => (await getDreamRepo()).setSetting(SETTINGS.consent, ''),
     ],
     // 한 단계가 실패해도 화면 · 캐시에는 알린다 — 세션은 이미 지웠는데 화면만 로그인한 채로 남지 않게(PR #68 리뷰)
     () => goneListeners.forEach((fn) => fn()),
@@ -145,6 +147,8 @@ export function useAuth(): AuthState {
       await clearSession();
       // 받기 위치를 지운다. 다음에 다른 계정이 로그인하면 그 계정 기록을 처음부터 받아야 한다
       await resetSyncPosition();
+      // 동의는 계정의 것이다 — 다음에 로그인하는 계정이 다시 동의한다(이슈 #71)
+      await (await getDreamRepo()).setSetting(SETTINGS.consent, '');
       setSession(null);
     } finally {
       setBusy(false);
