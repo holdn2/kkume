@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { deleteMe, loginWithGoogle } from '@shared/api/auth';
+import { deleteMe, fetchMe, loginWithGoogle, putConsent } from '@shared/api/auth';
 import { isApiError, setAccountDeletedHandler } from '@shared/api/client';
 import { getDreamRepo, SETTINGS } from '@shared/db';
 import { pauseSync, resetSyncPosition, syncIfSignedIn } from '@shared/sync';
@@ -52,13 +52,23 @@ export type AuthState = {
   loading: boolean;
   busy: boolean;
   error: string | null;
-  /** 로그인됐으면 true. 취소 · 실패면 false(이유는 `error`) */
-  signIn: () => Promise<boolean>;
+  /**
+   * 로그인됐으면 true. 취소 · 실패면 false(이유는 `error`).
+   * `consentVersion` — 방금 받은 동의. 로그인 요청에 실어 서버가 계정과 함께 기록한다(계약 072)
+   */
+  signIn: (consentVersion?: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   /** 계정 삭제(MY-5, 이슈 #65). 성공하면 이 훅의 세션도 비워진다 */
   deleteAccount: () => Promise<DeletionResult>;
   /** 저장된 세션을 다시 읽는다 */
   refresh: () => Promise<void>;
+  /**
+   * 서버가 아는 이 계정의 동의 버전. 없으면 null, 알 수 없으면(오프라인 · 옛 서버 · 로그인 안 함) undefined.
+   * 들고 있는 값이 `current`면 서버에 묻지 않는다
+   */
+  serverConsent: (current: string) => Promise<string | null | undefined>;
+  /** 이미 로그인한 사람의 동의를 서버에 남긴다(`PUT /api/me/consent`). 실패하면 던진다 */
+  sendConsent: (version: string) => Promise<void>;
 };
 
 /**
@@ -95,7 +105,7 @@ export function useAuth(): AuthState {
     };
   }, []);
 
-  const signIn = useCallback(async () => {
+  const signIn = useCallback(async (consentVersion?: string) => {
     setBusy(true);
     setError(null);
     // try 바깥에 둔다. catch에서 함께 보여줘야 하는데 안에 두면 안 보인다
@@ -124,7 +134,7 @@ export function useAuth(): AuthState {
       // 임시가 아니라 남겨 둔다 — 클라이언트 ID는 앱에 어차피 박혀 있어 비밀이 아니고,
       // 이 한 줄이 없으면 다음에 같은 자리에서 또 막힌다
       aud = audienceOf(g.idToken);
-      const res = await loginWithGoogle(g.idToken);
+      const res = await loginWithGoogle(g.idToken, consentVersion);
       const s = toSession(res);
       await saveSession(s);
       setSession(s);
@@ -146,14 +156,16 @@ export function useAuth(): AuthState {
   const signOut = useCallback(async () => {
     setBusy(true);
     try {
+      // 동의를 **맨 먼저** 지운다 — 동의는 계정의 것이라, 뒤 단계가 던져서 건너뛰면 다음에 로그인하는 사람이
+      // 앞 계정의 동의를 물려받는다(이슈 #71, PR #77 리뷰). 이것이 실패해도 로그아웃은 끝까지 간다(PR #73 리뷰)
+      await getDreamRepo()
+        .then((repo) => repo.setSetting(SETTINGS.consent, ''))
+        .catch(() => {});
       // 구글 쪽 로그아웃이 실패해도 우리 세션은 지운다 — 다음 로그인 때 계정 선택이 한 번 덜 뜰 뿐이다
       await signOutFromGoogle().catch(() => {});
       await clearSession();
       // 받기 위치를 지운다. 다음에 다른 계정이 로그인하면 그 계정 기록을 처음부터 받아야 한다
       await resetSyncPosition();
-      // 동의는 계정의 것이다 — 다음에 로그인하는 계정이 다시 동의한다(이슈 #71).
-      // 이것이 실패해도 로그아웃은 끝까지 간다(PR #73 리뷰)
-      await (await getDreamRepo()).setSetting(SETTINGS.consent, '').catch(() => {});
     } finally {
       // 토큰은 이미 지웠다 — 앞 단계가 던져도 화면은 로그인 전으로(PR #73 리뷰)
       setSession(null);
@@ -168,6 +180,31 @@ export function useAuth(): AuthState {
   const refresh = useCallback(async () => {
     const s = await loadSession();
     setSession(s && !isExpired(s) ? s : null);
+  }, []);
+
+  const serverConsent = useCallback(async (current: string) => {
+    const s = await loadSession();
+    if (!s || isExpired(s)) return undefined;
+    const cached = s.user.consentVersion;
+    // 들고 있는 값이 이미 지금 버전이면 묻지 않는다. 아니면 서버에 다시 묻는다 — 다른 기기에서 동의했을 수 있다
+    if (cached === current) return cached;
+    try {
+      const me = await fetchMe(s.accessToken);
+      // 옛 서버는 이 필드를 주지 않는다 — 그때는 모른다
+      if (me.consentVersion === undefined) return cached;
+      await patchSessionUser(s.accessToken, { consentVersion: me.consentVersion });
+      return me.consentVersion;
+    } catch {
+      return cached;
+    }
+  }, []);
+
+  const sendConsent = useCallback(async (version: string) => {
+    const s = await loadSession();
+    if (!s || isExpired(s)) throw { code: 'unauthorized', message: '', status: 401 };
+    await putConsent(s.accessToken, version);
+    // 서버는 옛 버전으로 내리지 않는다 — 들고 있는 값도 같은 규칙으로
+    await patchSessionUser(s.accessToken, { consentVersion: latestOf(s.user.consentVersion, version) });
   }, []);
 
   // 계정이 없어지면(여기서 지웠든, 다른 기기에서 지운 것을 요청이 알아챘든) 로그인 전으로
@@ -192,7 +229,22 @@ export function useAuth(): AuthState {
     }
   }, []);
 
-  return { session, loading, busy, error, signIn, signOut, deleteAccount, refresh };
+  return { session, loading, busy, error, signIn, signOut, deleteAccount, refresh, serverConsent, sendConsent };
+}
+
+/**
+ * 저장된 세션의 사용자 정보를 고친다 — **그 사이 세션이 바뀌지 않았을 때만.** 서버를 기다리는 동안 로그아웃했으면
+ * 지운 세션을 되살리지 않고, 다른 계정으로 로그인했으면 그 세션을 덮지 않는다(PR #77 리뷰)
+ */
+async function patchSessionUser(token: string, patch: Partial<Session['user']>): Promise<void> {
+  const now = await loadSession();
+  if (!now || now.accessToken !== token) return;
+  await saveSession({ ...now, user: { ...now.user, ...patch } });
+}
+
+/** 둘 중 새 버전. 형식이 YYYY-MM-DD 라 글자 비교가 곧 날짜 비교다 */
+function latestOf(a: string | null | undefined, b: string): string {
+  return a && a > b ? a : b;
 }
 
 /**

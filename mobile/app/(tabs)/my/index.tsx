@@ -5,7 +5,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Button, Card, Chip, ListRow, Row, Screen, Sheet, Stack, Title } from '@components';
 import { NicknameSheet } from '@features/community/NicknameSheet';
 import { ConsentSheet } from '@features/consent/ConsentSheet';
-import { needsConsent, recordConsent } from '@features/consent/logic';
+import { CONSENT_VERSION, consentAction, needsConsent, recordConsent } from '@features/consent/logic';
 import { useAuth } from '@shared/auth';
 import { getDreamRepo, SETTINGS } from '@shared/db';
 import { STORYBOOK_ENABLED } from '@shared/storybook';
@@ -58,37 +58,62 @@ export default function MyScreen() {
   /**
    * 가입 동의(이슈 #71). 로그인하기 전에 받고, **이미 로그인한 사람도 이번 버전에 동의하지 않았으면** 마이 탭을 열 때
    * 한 번 받는다 — 동의 시트가 생기기 전에 가입한 사람, 문서가 바뀐 경우. 동의하지 않으면 로그아웃한다
-   * (서버 기록 · 꿈 나눔은 동의한 계정만). 폰의 기록은 그대로다
+   * (서버 기록 · 꿈 나눔은 동의한 계정만). 폰의 기록은 그대로다.
+   *
+   * **로그인한 뒤에는 서버 값을 믿는다**(계약 072) — 다른 기기에서 동의했으면 묻지 않는다. 판단은 `consentAction`.
+   * 로그인 전 시트는 서버 값으로 건너뛸 수 없다 — 어느 계정인지 모르고, 동의보다 계정이 먼저 생기면 안 된다(문서 071)
    */
   const [consent, setConsent] = useState<null | 'signIn' | 'existing'>(null);
-  const readConsent = useCallback(
-    () => getDreamRepo().then((repo) => repo.getSetting(SETTINGS.consent)).then(needsConsent),
-    [],
-  );
+  const readLocalConsent = useCallback(() => getDreamRepo().then((repo) => repo.getSetting(SETTINGS.consent)), []);
+  const setConsentRecord = (value: string) => getDreamRepo().then((repo) => repo.setSetting(SETTINGS.consent, value));
   const signedIn = !!auth.session;
+  const { serverConsent, sendConsent } = auth;
   useFocusEffect(
     useCallback(() => {
       if (!signedIn) return;
-      void readConsent().then((need) => need && setConsent('existing'));
-    }, [signedIn, readConsent]),
+      // 서버를 기다리는 사이 로그아웃하면(또는 탭을 떠나면) 이 확인은 버린다 — 지운 계정의 시트를 띄우거나,
+      // 거기서 받은 동의가 다음 계정으로 넘어가지 않게(PR #77 리뷰)
+      let alive = true;
+      void (async () => {
+        const local = await readLocalConsent();
+        const server = await serverConsent(CONSENT_VERSION);
+        if (!alive) return;
+        const action = consentAction(local, server);
+        if (action === 'ask') setConsent('existing');
+        // 서버가 이미 안다 — 폰 기록도 맞춰 둔다(오프라인으로 열었을 때 다시 묻지 않게)
+        else if (action === 'skip' && server === CONSENT_VERSION && needsConsent(local)) {
+          await getDreamRepo().then((repo) => repo.setSetting(SETTINGS.consent, recordConsent()));
+        }
+        // 이 폰에서 동의했는데 서버에 없다 — 조용히 올린다. 실패하면 다음에 마이 탭을 열 때 다시
+        else if (action === 'upload') await sendConsent(CONSENT_VERSION).catch(() => {});
+      })().catch(() => {});
+      return () => {
+        alive = false;
+      };
+    }, [signedIn, readLocalConsent, serverConsent, sendConsent]),
   );
-  const startSignIn = () => {
-    void readConsent().then((need) => (need ? setConsent('signIn') : void auth.signIn()));
-  };
+  // **로그인할 때는 언제나 묻는다.** 로그아웃한 채 폰에 남은 동의는 누구의 것인지 알 수 없다 — 그대로 실어 보내면
+  // 동의하지 않은 다음 계정에 서버가 동의를 기록한다(PR #77 리뷰). 시트는 열 때마다 체크가 비어 있다
+  const startSignIn = () => setConsent('signIn');
   const [consentError, setConsentError] = useState<string | null>(null);
-  const setConsentRecord = (value: string) => getDreamRepo().then((repo) => repo.setSetting(SETTINGS.consent, value));
   const agree = () => {
     const after = consent;
     setConsentError(null);
-    // 로그인보다 먼저 저장한다 — 로그인이 되는 순간 위의 포커스 확인이 다시 물으면 안 되므로.
+    // 폰에 먼저 저장한다 — 로그인이 되는 순간 위의 포커스 확인이 다시 물으면 안 되므로.
     // 저장이 실패하면 시트를 열어 둔 채 이유를 보인다(PR #73 리뷰)
     void setConsentRecord(recordConsent())
       .then(async () => {
         setConsent(null);
+        if (after === 'existing') {
+          // 서버에 남긴다. 실패해도(오프라인) 시트를 다시 띄우지 않는다 — 폰에 동의가 있으니 다음 포커스가 조용히 다시 올린다
+          await sendConsent(CONSENT_VERSION).catch(() => {});
+          return;
+        }
         if (after !== 'signIn') return;
+        // 동의를 로그인 요청에 싣는다 — 서버가 계정을 만드는 것과 같은 트랜잭션에 기록한다(계약 072).
         // **로그인이 취소 · 실패하면 동의를 지운다**(PR #73 리뷰) — 남겨 두면 다음에 이 폰으로 다른 사람이 로그인할 때
         // 묻지 않고 지나간다. 동의는 계정의 것이다
-        const ok = await auth.signIn();
+        const ok = await auth.signIn(CONSENT_VERSION);
         if (!ok) await setConsentRecord('').catch(() => {});
       })
       .catch((e) => setConsentError(`동의를 저장하지 못했습니다. 다시 눌러 주세요.\n${String(e)}`));

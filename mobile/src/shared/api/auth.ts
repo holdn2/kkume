@@ -8,7 +8,8 @@ export type LoginResponse = {
   accessToken: string;
   /** 초 단위. 서버의 `AppTokenService.ttl`에서 온다 */
   expiresIn: number;
-  user: { id: string; nickname: string };
+  /** `consentVersion` — 동의한 가장 새 버전, 없으면 null. 옛 서버는 아예 주지 않는다(계약 070 · 072) */
+  user: { id: string; nickname: string; consentVersion?: string | null };
 };
 
 /**
@@ -22,17 +23,24 @@ export type LoginResponse = {
  * "서명이 틀렸다"와 "대상이 틀렸다"를 구분해 주면 토큰을 맞춰 보는 쪽에 힌트가 된다.
  * 그래서 로그인이 안 될 때는 앱 로그가 아니라 **서버 로그**를 봐야 한다.
  */
-export function loginWithGoogle(idToken: string) {
+export function loginWithGoogle(idToken: string, consentVersion?: string) {
   return request<LoginResponse>('/api/auth/google', {
     method: 'POST',
-    body: { idToken },
+    // 동의 버전을 실으면 서버가 계정을 만드는 것과 같은 트랜잭션에 기록한다 — 계정은 있는데 동의 기록이 없는 틈이 없다(계약 072).
+    // 형식이 틀리면 구글 토큰을 보기 전에 400 invalid_consent_version 이라 계정이 안 생긴다
+    body: consentVersion ? { idToken, consentVersion } : { idToken },
   });
 }
 
-export type Me = { id: string; nickname: string };
+export type Me = { id: string; nickname: string; consentVersion?: string | null };
 
 export function fetchMe(token: string) {
   return request<Me>('/api/me', { token });
+}
+
+/** 이미 로그인한 사람의 동의 기록(계약 070 · 072). 같은 버전은 처음 시각을 덮지 않고, 옛 버전은 내리지 않는다 — 204 */
+export function putConsent(token: string, version: string) {
+  return request<void>('/api/me/consent', { method: 'PUT', token, body: { version } });
 }
 
 /**
