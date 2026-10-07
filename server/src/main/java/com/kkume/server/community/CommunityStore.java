@@ -252,8 +252,9 @@ class CommunityStore {
 
 	// ------------------------------------------------------------------ 신고
 
-	void report(String targetType, UUID targetId, UUID reporterId, String reason, Instant now) {
-		this.jdbc.update("""
+	/** 새로 들어간 신고면 1, 같은 사람이 같은 대상을 다시 신고했으면 0 */
+	int report(String targetType, UUID targetId, UUID reporterId, String reason, Instant now) {
+		return this.jdbc.update("""
 				insert into reports (id, target_type, target_id, reporter_id, reason, created_at)
 				values (:id, :type, :target, :reporter, :reason, :now)
 				on conflict (target_type, target_id, reporter_id) do nothing

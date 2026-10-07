@@ -33,6 +33,8 @@ dependencies {
 	// 자격증명은 EC2 인스턴스 프로파일에서 온다 — 서버에 액세스 키를 두지 않는다.
 	implementation platform('software.amazon.awssdk:bom:2.54.20')
 	implementation 'software.amazon.awssdk:s3'
+	// 신고 알림 메일(문서 070 · 072). SES 대신 SNS 메일 구독 — 받는 사람 한 명이고 주소 인증이 필요 없다
+	implementation 'software.amazon.awssdk:sns'
 
 	// bootRun 이 compose.yaml 의 PostgreSQL 을 자동으로 띄우고 접속 정보를 넣어준다.
 	// developmentOnly 라 배포 이미지에는 들어가지 않는다.

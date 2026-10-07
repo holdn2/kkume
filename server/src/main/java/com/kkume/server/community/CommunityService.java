@@ -21,6 +21,8 @@ import com.kkume.server.community.CommunityViews.Page;
 import com.kkume.server.community.CommunityViews.PostDetail;
 import com.kkume.server.community.CommunityViews.PostSummary;
 import com.kkume.server.community.CommunityViews.Profile;
+import com.kkume.server.moderation.ReportAlerts;
+import com.kkume.server.moderation.ReportEvent;
 import com.kkume.server.user.AccountGuard;
 
 /**
@@ -47,7 +49,7 @@ public class CommunityService {
 	static final int MAX_COMMENT = 500;
 
 	/** 서로 다른 신고자가 이만큼 모이면 가린다(계획서 001 커뮤니티 최소 운영 장치) */
-	static final int HIDE_AT_REPORTERS = 3;
+	static final int HIDE_AT_REPORTERS = CommunityLimits.HIDE_AT_REPORTERS;
 
 	private static final Set<String> REPORT_REASONS = Set.of("sexual", "violence", "spam", "other");
 
@@ -56,9 +58,12 @@ public class CommunityService {
 	/** 쓰기는 맨 처음 계정을 다시 본다 — 삭제가 끝난 뒤 커밋하면 지운 계정 이름으로 글이 생긴다(문서 066) */
 	private final AccountGuard accounts;
 
-	public CommunityService(CommunityStore store, AccountGuard accounts) {
+	private final ReportAlerts alerts;
+
+	public CommunityService(CommunityStore store, AccountGuard accounts, ReportAlerts alerts) {
 		this.store = store;
 		this.accounts = accounts;
+		this.alerts = alerts;
 	}
 
 	// ------------------------------------------------------------------ 읽기
@@ -123,7 +128,8 @@ public class CommunityService {
 
 	@Transactional
 	public PostSummary createPost(UUID viewer, NewPost input) {
-		this.accounts.lockActive(viewer);
+		// 남에게 보이는 것을 만든다 — 정지된 계정은 막는다(문서 072)
+		this.accounts.lockWritable(viewer);
 		if (input == null) {
 			throw CommunityApiException.badRequest("dream_text_empty", "꿈 내용을 적어 주세요");
 		}
@@ -191,7 +197,8 @@ public class CommunityService {
 	/** 원하는 상태를 받는다. 두 번 보내도 한 번이다. 가려진 글은 작성자여도 받지 않는다 */
 	@Transactional
 	public CommunityViews.LikeState setLiked(UUID viewer, String postId, boolean liked) {
-		this.accounts.lockActive(viewer);
+		// 남에게 보이는 것을 만든다 — 정지된 계정은 막는다(문서 072)
+		this.accounts.lockWritable(viewer);
 		PostRow post = interactable(this.store.lockPost(parse(postId, CommunityApiException::postNotFound)).orElse(null));
 		if (liked) {
 			this.store.like(post.id(), viewer, now());
@@ -206,7 +213,8 @@ public class CommunityService {
 
 	@Transactional
 	public Comment addComment(UUID viewer, String postId, String body, String parentId) {
-		this.accounts.lockActive(viewer);
+		// 남에게 보이는 것을 만든다 — 정지된 계정은 막는다(문서 072)
+		this.accounts.lockWritable(viewer);
 		String text = body == null ? "" : body.strip();
 		if (text.isEmpty()) {
 			throw CommunityApiException.badRequest("comment_empty", "댓글을 적어 주세요");
@@ -271,10 +279,13 @@ public class CommunityService {
 			if (post.authorId().equals(viewer)) {
 				throw CommunityApiException.badRequest("self_report", "내 글은 신고할 수 없습니다");
 			}
-			this.store.report("post", post.id(), viewer, reason, now);
-			if (this.store.countReporters("post", post.id()) >= HIDE_AT_REPORTERS) {
+			boolean fresh = this.store.report("post", post.id(), viewer, reason, now) > 0;
+			int reporters = this.store.countReporters("post", post.id());
+			boolean hidden = reporters >= HIDE_AT_REPORTERS && !post.isHidden();
+			if (hidden) {
 				this.store.hidePost(post.id(), now);
 			}
+			alert(fresh, "post", post.id(), reason, reporters, hidden, now);
 			return;
 		}
 		if ("comment".equals(type)) {
@@ -285,14 +296,27 @@ public class CommunityService {
 				throw CommunityApiException.badRequest("self_report", "내 댓글은 신고할 수 없습니다");
 			}
 			this.store.lockPost(comment.postId());
-			this.store.report("comment", comment.id(), viewer, reason, now);
-			if (this.store.countReporters("comment", comment.id()) >= HIDE_AT_REPORTERS) {
+			boolean fresh = this.store.report("comment", comment.id(), viewer, reason, now) > 0;
+			int reporters = this.store.countReporters("comment", comment.id());
+			boolean hidden = reporters >= HIDE_AT_REPORTERS && comment.hiddenAt() == null;
+			if (hidden) {
 				this.store.hideComment(comment.id(), now);
 				this.store.recountComments(comment.postId());
 			}
+			alert(fresh, "comment", comment.id(), reason, reporters, hidden, now);
 			return;
 		}
 		throw CommunityApiException.badRequest("invalid_report", "신고 대상은 post · comment 중 하나입니다");
+	}
+
+	/**
+	 * 운영자에게 알린다 — 커밋된 뒤에, 요청과 따로(문서 070 03장). 같은 사람이 같은 대상을 다시 신고한 것은
+	 * 한 번으로 세므로 알리지 않는다. 메일에는 이용자가 쓴 글자를 넣지 않는다.
+	 */
+	private void alert(boolean fresh, String type, UUID id, String reason, int reporters, boolean hidden, Instant now) {
+		if (fresh) {
+			this.alerts.afterCommit(new ReportEvent(type, id, reason, reporters, hidden, now));
+		}
 	}
 
 	// ------------------------------------------------------------------ 차단

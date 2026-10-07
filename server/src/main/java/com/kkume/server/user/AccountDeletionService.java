@@ -125,7 +125,8 @@ public class AccountDeletionService {
 
 		// 구글 계정과의 연결을 끊는다. 그대로 두면 같은 구글 계정으로 로그인할 때 지운 계정이 되살아난다
 		this.jdbc.update("""
-				update users set provider_id = :anon, nickname = :nickname, deleted_at = :now, updated_at = :now
+				update users set provider_id = :anon, nickname = :nickname, deleted_at = :now, updated_at = :now,
+				  consent_version = null, consented_at = null, suspended_at = null
 				where id = :user
 				""", p.addValue("anon", "deleted:" + UUID.randomUUID()).addValue("nickname", DELETED_NICKNAME));
 	}

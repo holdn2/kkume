@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -34,15 +35,28 @@ public class MeController {
 	@GetMapping("/api/me")
 	public MeResponse me(@AuthenticationPrincipal Jwt jwt) {
 		User user = this.users.get(UUID.fromString(jwt.getSubject()));
-		return new MeResponse(user.getId().toString(), user.getNickname(),
-				user.getProvider().code(), user.getCreatedAt());
+		return view(user);
+	}
+
+	/** 이미 로그인한 사람이 다시 동의했다(문서 070 · 072). 같은 버전을 다시 보내도 같은 결과다 */
+	@PutMapping("/api/me/consent")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void consent(@AuthenticationPrincipal Jwt jwt, @RequestBody(required = false) ConsentRequest request) {
+		this.users.recordConsent(UUID.fromString(jwt.getSubject()), request == null ? null : request.version());
+	}
+
+	private static MeResponse view(User user) {
+		return new MeResponse(user.getId().toString(), user.getNickname(), user.getProvider().code(),
+				user.getCreatedAt(), user.getConsentVersion());
+	}
+
+	public record ConsentRequest(String version) {
 	}
 
 	@PatchMapping("/api/me")
 	public MeResponse rename(@AuthenticationPrincipal Jwt jwt, @RequestBody(required = false) RenameRequest request) {
 		User user = this.users.rename(UUID.fromString(jwt.getSubject()), request == null ? null : request.nickname());
-		return new MeResponse(user.getId().toString(), user.getNickname(),
-				user.getProvider().code(), user.getCreatedAt());
+		return view(user);
 	}
 
 	/**
@@ -69,6 +83,6 @@ public class MeController {
 	public record RenameRequest(String nickname) {
 	}
 
-	public record MeResponse(String id, String nickname, String provider, Instant createdAt) {
+	public record MeResponse(String id, String nickname, String provider, Instant createdAt, String consentVersion) {
 	}
 }

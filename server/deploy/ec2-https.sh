@@ -31,10 +31,13 @@ sudo docker rm -f "${NAME}" 2>/dev/null || true
 #
 # t3.micro 는 1GiB 에 앱이 768m 을 쓴다. Caddy 에도 상한을 준다. Go 런타임은 cgroup 상한을
 # 모르므로 GOMEMLIMIT 로 알려 준다 — 앱 쪽의 MaxRAMPercentage 와 같은 이유다.
+#
+# 기록 상한은 앱과 같다(10MB × 3). Caddy 는 배포 때 다시 띄우지 않아 상한이 없으면 계속 쌓인다.
 sudo docker run -d \
   --name "${NAME}" \
   --restart unless-stopped \
   --memory 128m \
+  --log-opt max-size=10m --log-opt max-file=3 \
   --network host \
   -e GOMEMLIMIT=100MiB \
   -e KKUME_HTTPS_HOST="${HTTPS_HOST}" \
