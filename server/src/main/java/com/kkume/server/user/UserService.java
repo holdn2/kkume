@@ -36,21 +36,27 @@ public class UserService {
 	 * <p>설정 행도 여기서 함께 만든다. 나중에 설정을 읽는 쪽마다 "없으면 만들기"를
 	 * 넣게 되면 그 중 하나를 빠뜨린다.
 	 */
-	@Transactional
-	public User findOrCreate(SocialIdentity identity) {
-		return findOrCreate(identity, null);
-	}
-
 	/**
 	 * 찾거나 만들고, 동의 버전이 있으면 <b>같은 트랜잭션에서</b> 기록한다(문서 071 · 072).
 	 * 로그인 직후 따로 기록하면 그 요청이 실패했을 때 "계정은 있는데 동의 기록이 없는" 틈이 생긴다.
 	 *
-	 * @param consentVersion {@link #requireConsentVersion}을 지난 값이거나 {@code null}(옛 앱)
+	 * <p>계정이 없는데 동의도 없으면 만들지 않는다(문서 074) — 동의 전에 계정이 생기지 않게.
+	 * 이미 있는 계정은 동의가 없거나 옛 버전이어도 로그인시킨다. 그쪽은 앱이 로그인 뒤에 묻고
+	 * {@code PUT /api/me/consent}로 올린다. 판정을 여기 두어 소셜 로그인 경로마다 같은 규칙이 된다.
+	 * 지운 계정은 {@code provider_id}를 익명화해 찾히지 않으므로 "계정 없음"이다.
+	 *
+	 * @param consentVersion {@link #requireConsentVersion}을 지난 값이거나 {@code null}
+	 * @throws ConsentRequiredException 계정이 없고 {@code consentVersion}도 없다
 	 */
 	@Transactional
 	public User findOrCreate(SocialIdentity identity, String consentVersion) {
 		User user = this.users.findByProviderAndProviderId(identity.provider(), identity.providerId())
-			.orElseGet(() -> create(identity));
+			.orElseGet(() -> {
+				if (consentVersion == null) {
+					throw new ConsentRequiredException();
+				}
+				return create(identity);
+			});
 		if (consentVersion != null) {
 			user.recordConsent(consentVersion, Instant.now());
 		}

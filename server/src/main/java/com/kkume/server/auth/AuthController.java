@@ -57,7 +57,10 @@ public class AuthController {
 			.body(new ErrorResponse("invalid_token", "로그인에 실패했습니다"));
 	}
 
-	/** {@code consentVersion}: 로그인 전 동의 시트에서 동의한 버전. 옛 앱은 보내지 않는다 */
+	/**
+	 * {@code consentVersion}: 동의 시트에서 동의한 버전. 없이 왔는데 꾸메 계정이 없으면 {@code 403 consent_required} —
+	 * 앱은 시트를 띄우고 같은 {@code idToken}에 이 값을 붙여 다시 보낸다(문서 074)
+	 */
 	public record GoogleLoginRequest(String idToken, String consentVersion) {
 	}
 

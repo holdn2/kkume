@@ -9,6 +9,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -37,6 +38,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import com.kkume.server.TestcontainersConfiguration;
 import com.kkume.server.audio.FakeAudioStorage;
 import com.kkume.server.auth.GoogleTokenVerifier;
+import com.kkume.server.auth.InvalidSocialTokenException;
 import com.kkume.server.auth.SocialIdentity;
 import com.kkume.server.user.Provider;
 
@@ -111,9 +113,16 @@ class ConsentAndModerationTest {
 	}
 
 	private Who login() throws Exception {
-		String r = loginRaw("google-sub-" + UUID.randomUUID(), null).andExpect(status().isOk())
+		String r = loginRaw("google-sub-" + UUID.randomUUID(), "2026-10-07").andExpect(status().isOk())
 			.andReturn().getResponse().getContentAsString();
 		return new Who(JsonPath.read(r, "$.user.id"), JsonPath.read(r, "$.accessToken"));
+	}
+
+	/** V5 전에 만들어져 동의 기록이 없는 계정. 이제 로그인으로는 만들 수 없어 기록을 지워 흉내 낸다 */
+	private Who legacy() throws Exception {
+		Who who = login();
+		this.jdbc.update("update users set consent_version = null, consented_at = null where id = ?", UUID.fromString(who.id()));
+		return who;
 	}
 
 	private ResultActions call(Who who, MockHttpServletRequestBuilder req) throws Exception {
@@ -166,7 +175,7 @@ class ConsentAndModerationTest {
 
 	@Test
 	void PUT_동의는_처음_시각을_덮지_않고_옛_버전으로_내리지_않는다() throws Exception {
-		Who me = login();
+		Who me = legacy();
 		assertThat(JsonPath.<Object>read(call(me, get("/api/me")).andReturn().getResponse().getContentAsString(),
 				"$.consentVersion")).isNull();
 
@@ -215,11 +224,62 @@ class ConsentAndModerationTest {
 		assertThat(n).isZero();
 	}
 
+	// ---------------------------------------------------------------- 계정을 고른 뒤에 동의 (074)
+
 	@Test
-	void 동의_없는_옛_로그인은_지금처럼_된다() throws Exception {
-		String r = loginRaw("google-sub-" + UUID.randomUUID(), null).andExpect(status().isOk())
-			.andReturn().getResponse().getContentAsString();
+	void 계정이_없는데_동의도_없으면_403_consent_required이고_아무것도_쓰지_않는다() throws Exception {
+		String sub = "google-sub-" + UUID.randomUUID();
+		Integer settingsBefore = this.jdbc.queryForObject("select count(*) from user_settings", Integer.class);
+
+		ResultActions r = loginRaw(sub, null).andExpect(status().isForbidden());
+		assertThat(code(r)).isEqualTo("consent_required");
+		assertThat(JsonPath.<String>read(r.andReturn().getResponse().getContentAsString(), "$.message"))
+			.isEqualTo("가입하려면 이용약관과 개인정보 수집 · 이용에 동의해 주세요");
+
+		assertThat(this.jdbc.queryForObject("select count(*) from users where provider_id = ?", Integer.class, sub)).isZero();
+		assertThat(this.jdbc.queryForObject("select count(*) from user_settings", Integer.class)).isEqualTo(settingsBefore);
+	}
+
+	@Test
+	void consent_required를_받고_같은_토큰에_동의를_붙여_다시_보내면_계정이_생긴다() throws Exception {
+		String sub = "google-sub-" + UUID.randomUUID();
+		loginRaw(sub, null).andExpect(status().isForbidden());
+
+		String r = loginRaw(sub, "2026-10-07").andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		assertThat(JsonPath.<String>read(r, "$.user.consentVersion")).isEqualTo("2026-10-07");
+		assertThat(this.jdbc.queryForObject("select count(*) from users where provider_id = ?", Integer.class, sub)).isEqualTo(1);
+	}
+
+	@Test
+	void 동의_기록이_없는_기존_계정은_동의_없이도_로그인된다() throws Exception {
+		Who me = legacy();
+		String sub = (String) this.jdbc.queryForMap("select provider_id from users where id = ?", UUID.fromString(me.id())).get("provider_id");
+
+		String r = loginRaw(sub, null).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		assertThat(JsonPath.<String>read(r, "$.user.id")).isEqualTo(me.id());
 		assertThat(JsonPath.<Object>read(r, "$.user.consentVersion")).isNull();
+	}
+
+	@Test
+	void 구글_토큰이_틀리면_계정이_없어도_consent_required가_아니라_401이다() throws Exception {
+		// 토큰을 검증한 뒤에만 "꾸메 계정이 없다"를 알려 준다 — 남의 구글 계정이 가입했는지 떠보지 못하게
+		willThrow(new InvalidSocialTokenException("x")).given(this.googleVerifier).verify(anyString());
+		ResultActions r = this.mockMvc.perform(post("/api/auth/google").contentType(MediaType.APPLICATION_JSON)
+			.content("{\"idToken\":\"x\"}")).andExpect(status().isUnauthorized());
+		assertThat(code(r)).isEqualTo("invalid_token");
+	}
+
+	@Test
+	void 지운_뒤_동의_없이_다시_로그인하면_consent_required이고_동의하면_새_계정이다() throws Exception {
+		String sub = "google-sub-" + UUID.randomUUID();
+		String r = loginRaw(sub, "2026-10-07").andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		Who old = new Who(JsonPath.read(r, "$.user.id"), JsonPath.read(r, "$.accessToken"));
+		call(old, delete("/api/me")).andExpect(status().isNoContent());
+
+		assertThat(code(loginRaw(sub, null).andExpect(status().isForbidden()))).isEqualTo("consent_required");
+
+		String again = loginRaw(sub, "2026-10-07").andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		assertThat(JsonPath.<String>read(again, "$.user.id")).isNotEqualTo(old.id());
 	}
 
 	// ---------------------------------------------------------------- 이용 정지 (03장)

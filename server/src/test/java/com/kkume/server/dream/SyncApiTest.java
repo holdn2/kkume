@@ -61,7 +61,7 @@ class SyncApiTest {
 
 		String response = this.mockMvc
 			.perform(post("/api/auth/google").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"idToken\":\"whatever\"}"))
+				.content("{\"idToken\":\"whatever\",\"consentVersion\":\"2026-10-07\"}"))
 			.andExpect(status().isOk())
 			.andReturn()
 			.getResponse()

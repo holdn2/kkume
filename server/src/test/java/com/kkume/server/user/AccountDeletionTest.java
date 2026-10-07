@@ -97,7 +97,7 @@ class AccountDeletionTest {
 	private Who login(String googleSub) throws Exception {
 		given(this.googleVerifier.verify(anyString())).willReturn(new SocialIdentity(Provider.GOOGLE, googleSub));
 		String r = this.mockMvc
-			.perform(post("/api/auth/google").contentType(MediaType.APPLICATION_JSON).content("{\"idToken\":\"x\"}"))
+			.perform(post("/api/auth/google").contentType(MediaType.APPLICATION_JSON).content("{\"idToken\":\"x\",\"consentVersion\":\"2026-10-07\"}"))
 			.andExpect(status().isOk())
 			.andReturn().getResponse().getContentAsString();
 		return new Who(JsonPath.read(r, "$.user.id"), JsonPath.read(r, "$.accessToken"), googleSub);
