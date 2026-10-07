@@ -14,6 +14,17 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 class AccountDeletedHandler {
 
+	@ExceptionHandler(AccountSuspendedException.class)
+	ResponseEntity<Map<String, String>> onSuspended(AccountSuspendedException ex) {
+		return ResponseEntity.status(HttpStatus.FORBIDDEN)
+			.body(Map.of("code", "account_suspended", "message", ex.getMessage()));
+	}
+
+	@ExceptionHandler(InvalidConsentVersionException.class)
+	ResponseEntity<Map<String, String>> onInvalidConsent(InvalidConsentVersionException ex) {
+		return ResponseEntity.badRequest().body(Map.of("code", "invalid_consent_version", "message", ex.getMessage()));
+	}
+
 	@ExceptionHandler(AccountDeletedException.class)
 	ResponseEntity<Map<String, String>> onDeleted(AccountDeletedException ex) {
 		return ResponseEntity.status(HttpStatus.UNAUTHORIZED)

@@ -38,11 +38,13 @@ public class AuthController {
 		if (request == null || request.idToken() == null || request.idToken().isBlank()) {
 			throw new InvalidSocialTokenException("idToken 이 비어 있습니다");
 		}
+		// 구글 토큰보다 먼저 본다. 틀린 동의 버전으로는 계정을 만들지 않는다
+		String consent = request.consentVersion() == null ? null : UserService.requireConsentVersion(request.consentVersion());
 		SocialIdentity identity = this.googleVerifier.verify(request.idToken());
-		User user = this.users.findOrCreate(identity);
+		User user = this.users.findOrCreate(identity, consent);
 		AppTokenService.IssuedToken token = this.tokens.issue(user.getId());
 		return new LoginResponse(token.accessToken(), token.expiresInSeconds(),
-				new LoginResponse.Me(user.getId().toString(), user.getNickname()));
+				new LoginResponse.Me(user.getId().toString(), user.getNickname(), user.getConsentVersion()));
 	}
 
 	/**
@@ -55,12 +57,14 @@ public class AuthController {
 			.body(new ErrorResponse("invalid_token", "로그인에 실패했습니다"));
 	}
 
-	public record GoogleLoginRequest(String idToken) {
+	/** {@code consentVersion}: 로그인 전 동의 시트에서 동의한 버전. 옛 앱은 보내지 않는다 */
+	public record GoogleLoginRequest(String idToken, String consentVersion) {
 	}
 
 	public record LoginResponse(String accessToken, long expiresIn, Me user) {
 
-		public record Me(String id, String nickname) {
+		/** {@code consentVersion}: 동의한 가장 새 버전. 없으면 {@code null} — 앱은 지금 버전과 같으면 다시 묻지 않는다 */
+		public record Me(String id, String nickname, String consentVersion) {
 		}
 	}
 

@@ -65,6 +65,8 @@ AI 작업은 원래 수 초 이상 걸린다.
 | `https.sh` | ssh로 EC2에 HTTPS 입구(Caddy)를 띄우고 바깥에서 확인. **앱은 건드리지 않는다** |
 | `ec2-https.sh` | EC2 안에서 도는 부분. `https.sh`가 stdin으로 밀어넣는다 |
 | `Caddyfile` | HTTPS 입구 설정. EC2의 `/opt/kkume/Caddyfile`로 올라간다 |
+| `moderate.sh` | **운영자 신고 처리**(문서 070 · 072) — `reports` · `show` · `remove` · `dismiss` · `suspend` · `unsuspend`. SSH 를 지금 IP 로 잠깐 열고 닫는다 |
+| `log-retention.sh` | EC2 에 "매달 1일 컨테이너 기록 비우기" 타이머를 설치한다. 몇 번 돌려도 같다 |
 
 ## 최초 1회 — 자원 만들기
 
@@ -96,7 +98,9 @@ chmod 400 ~/.ssh/kkume-deploy.pem
 
 ### 3. 보안그룹
 
-SSH는 **내 IP만** 연다. 바깥에는 **443(HTTPS)만** 연다 — 앱의 80 은 Caddy 가 서버 안에서만 쓴다(HTTPS 절).
+바깥에는 **443(HTTPS)만** 연다 — 앱의 80 은 Caddy 가 서버 안에서만 쓴다(HTTPS 절).
+**SSH(22)는 상시로 열어 두지 않는다**(2026-10-07부터). 배포 · 점검 · `moderate.sh` 때 그때의 IP 로 열고 끝나면 닫는다 —
+처리방침의 "외부에는 HTTPS(443)만 열려 있다"가 이것에 기댄다. 아래의 22 규칙은 최초 설치 때만 쓰고 지운다.
 
 ```bash
 MYIP=$(curl -s https://checkip.amazonaws.com)
@@ -262,6 +266,31 @@ aws iam put-role-policy --role-name kkume-ec2-ecr --policy-name kkume-audio \
 
 `.env` 의 `AUDIO_BUCKET` 에 버킷 이름을 넣는다. 비어 있으면 `deploy.sh` 가 멈춘다.
 
+### 5-3. 신고 알림(SNS)
+
+신고가 들어오면 운영자 메일로 알린다(문서 070 · 072). **SES 가 아니라 SNS 메일 구독이다** — 받는 사람이 하나이고
+주소 인증 · 샌드박스가 없다. 매달 1,000통까지 무료.
+
+```bash
+TOPIC=$(aws sns create-topic --name kkume-reports --attributes DisplayName=kkume --query TopicArn --output text)
+aws sns subscribe --topic-arn "$TOPIC" --protocol email --notification-endpoint <운영자 메일>
+# → 그 메일함에 "Subscription Confirmation" 이 온다. 링크를 눌러야 알림이 간다
+aws iam put-role-policy --role-name kkume-ec2-ecr --policy-name kkume-report-alerts \
+  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sns:Publish\",\"Resource\":\"$TOPIC\"}]}"
+```
+
+`.env` 의 `REPORT_TOPIC_ARN` 에 주제를 넣는다. 비어 있으면 `deploy.sh` 가 멈춘다 — 신고가 와도 운영자가 모르게 되므로.
+
+- **메일 제목은 ASCII 로만 쓴다.** SNS 는 제목에 ASCII 만 받고, 한글이 섞이면 발행을 거절한다
+- **메일에 신고된 글의 내용을 넣지 않는다.** 메일은 Gmail 을 거쳐 꿈 내용이 Google 로 넘어가게 된다. 내용은 `moderate.sh show` 로 본다
+
+### 5-4. 기록 보관(한 달)
+
+컨테이너 기록은 `--log-opt max-size=10m --log-opt max-file=3`(ec2-run.sh · ec2-https.sh)으로 크기를 막고,
+`./log-retention.sh` 가 설치한 systemd 타이머가 **매달 1일 04:00(KST)** 비운다. 처리방침의 "최대 1개월"이 이것이다.
+Docker 기본값(json-file)은 크기 제한이 없고, **Caddy 는 배포 때 다시 띄우지 않아** 상한이 없으면 계속 쌓인다(2026-10-07 실측: 9/14부터 쌓여 있었다).
+**`--log-opt` 는 컨테이너를 다시 만들어야 먹는다** — 앱은 `deploy.sh`, Caddy 는 `https.sh`(HTTPS 가 몇 초 끊긴다).
+
 ### 6. 준비 확인
 
 `user-data.sh`가 도는 데 1~2분 걸린다. 접속해서 세 가지를 확인한다.
@@ -368,19 +397,22 @@ cd server/deploy
 | --- | --- |
 | 리전 | `ap-southeast-2` |
 | ECR | `341860778310.dkr.ecr.ap-southeast-2.amazonaws.com/kkume-server` |
-| 보안그룹 | `kkume-server-sg` — 22는 개발 PC IP만, **443만 공개**(80은 2026-09-17에 닫음) |
+| 보안그룹 | `kkume-server-sg` — **443만 공개**. 22 는 상시 규칙 없음(2026-10-07에 지움) — 쓸 때만 그때 IP 로 열고 닫는다. 80은 2026-09-17에 닫음 |
 | HTTPS | `https://13.239.58.251.nip.io` — Caddy `2.11.4`, Let's Encrypt, 메모리 상한 128m |
 | 오디오 버킷 | `kkume-audio-341860778310` — 시드니, 공개 차단 4개 전부, AES256, ACL 비활성(2026-09-17) |
 | EC2 역할의 버킷 권한 | `kkume-ec2-ecr` 인라인 `kkume-audio` — `audio/*` 읽기·쓰기·삭제 + 버킷 목록. **`audio/` 밖에는 쓰지 못한다** |
 | 배포 사용자의 버킷 권한 | `kkume-deploy` 인라인 `kkume-audio-bucket-admin` — 이 버킷의 생성·설정만. **파일은 읽고 쓰지 못한다** |
+| 신고 알림 | SNS `kkume-reports`(시드니) → 메일 구독 `yoocy01@gmail.com`(2026-10-07) |
+| EC2 역할의 알림 권한 | `kkume-ec2-ecr` 인라인 `kkume-report-alerts` — 이 주제에 `sns:Publish` 만 |
+| 배포 사용자의 알림 권한 | `kkume-deploy` 인라인 `kkume-sns-reports-admin` — 이 주제의 생성 · 설정 · 구독 · 발행만 |
+| 기록 보관 | 컨테이너 기록 10MB × 3, systemd `kkume-log-clear.timer` 가 매달 1일 비움 |
 | 인스턴스 프로파일 | `kkume-ec2-ecr` (ECR 읽기 전용) |
 | 인스턴스 | `t3.micro`, Amazon Linux 2023, EBS 8GiB |
 | DB | `kkume-db` — PostgreSQL 17.11, db.t3.micro, gp3 20GiB, 암호화 켬, 퍼블릭 차단 |
 | DB 보안그룹 | `kkume-db-sg` — 5432 를 EC2 보안그룹에서만 허용 |
 | DB 서브넷 그룹 | `kkume-db-subnets` |
 
-**SSH 인바운드는 개발 PC의 공인 IP 하나로 묶여 있다.** 집·학교를 옮기거나
-IP가 바뀌면 접속이 막힌다. 그때는 규칙을 새 IP로 갈아준다.
+**SSH 인바운드는 상시로 두지 않는다.** 쓸 때 지금 IP 로 열고, 끝나면 그 규칙을 회수한다(`moderate.sh` 는 이것을 스스로 한다).
 
 > **IP 는 눈으로 옮겨 적지 않는다.** 2026-09-14 에 `210.106.232.208` 을 `.20` 으로 잘못 읽어
 > 남의 IP 에 SSH 를 연 적이 있다. 명령 안에서 `checkip` 결과를 그대로 쓰고, 옛 규칙은 회수한다.

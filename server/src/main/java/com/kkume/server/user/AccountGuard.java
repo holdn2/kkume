@@ -1,10 +1,13 @@
 package com.kkume.server.user;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+
+import com.kkume.server.moderation.ModerationProperties;
 
 /**
  * 계정이 살아 있는지 본다.
@@ -18,8 +21,27 @@ public class AccountGuard {
 
 	private final JdbcTemplate jdbc;
 
-	public AccountGuard(JdbcTemplate jdbc) {
+	private final ModerationProperties moderation;
+
+	public AccountGuard(JdbcTemplate jdbc, ModerationProperties moderation) {
 		this.jdbc = jdbc;
+		this.moderation = moderation;
+	}
+
+	/**
+	 * {@link #lockActive}에 더해 이용 정지도 본다. 남에게 보이는 것을 만드는 쓰기 — 글 · 댓글 · 공감 · 닉네임 — 가 부른다.
+	 * 신고 · 차단 · 내 꿈 동기화 · 동의 · 계정 삭제는 정지돼도 되므로 {@link #lockActive}만 부른다(문서 072 03장).
+	 */
+	public void lockWritable(UUID userId) {
+		List<Map<String, Object>> rows = this.jdbc.queryForList(
+				"select deleted_at is not null as deleted, suspended_at is not null as suspended from users where id = ? for share",
+				userId);
+		if (rows.isEmpty() || Boolean.TRUE.equals(rows.get(0).get("deleted"))) {
+			throw new AccountDeletedException();
+		}
+		if (Boolean.TRUE.equals(rows.get(0).get("suspended"))) {
+			throw new AccountSuspendedException(this.moderation.contact());
+		}
 	}
 
 	/**

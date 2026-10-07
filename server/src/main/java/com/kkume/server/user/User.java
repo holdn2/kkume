@@ -40,6 +40,14 @@ public class User {
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
+	/** 동의한 가장 새 약관 버전(YYYY-MM-DD). 동의 전이면 비어 있다 */
+	@Column(name = "consent_version", length = 10)
+	private String consentVersion;
+
+	/** 그 버전에 처음 동의한 서버 시각 */
+	@Column(name = "consented_at")
+	private Instant consentedAt;
+
 	protected User() {
 		// JPA
 	}
@@ -93,5 +101,26 @@ public class User {
 
 	public boolean isDeleted() {
 		return deletedAt != null;
+	}
+
+	public String getConsentVersion() {
+		return consentVersion;
+	}
+
+	public Instant getConsentedAt() {
+		return consentedAt;
+	}
+
+	/**
+	 * 동의를 기록한다(문서 070 02장). 같은 버전이면 처음 시각을 덮지 않고 — "언제 동의했나"의 답이 바뀌면 안 된다 —
+	 * 더 옛 버전이면 내리지 않는다(옛 앱이 옛 버전을 보내도 새 동의가 지워지지 않게). 버전은 날짜 모양이라 문자열 비교가 곧 순서다.
+	 */
+	public void recordConsent(String version, Instant now) {
+		if (this.consentVersion != null && this.consentVersion.compareTo(version) >= 0) {
+			return;
+		}
+		this.consentVersion = version;
+		this.consentedAt = now;
+		this.updatedAt = now;
 	}
 }

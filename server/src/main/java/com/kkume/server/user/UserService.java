@@ -38,8 +38,51 @@ public class UserService {
 	 */
 	@Transactional
 	public User findOrCreate(SocialIdentity identity) {
-		return this.users.findByProviderAndProviderId(identity.provider(), identity.providerId())
+		return findOrCreate(identity, null);
+	}
+
+	/**
+	 * 찾거나 만들고, 동의 버전이 있으면 <b>같은 트랜잭션에서</b> 기록한다(문서 071 · 072).
+	 * 로그인 직후 따로 기록하면 그 요청이 실패했을 때 "계정은 있는데 동의 기록이 없는" 틈이 생긴다.
+	 *
+	 * @param consentVersion {@link #requireConsentVersion}을 지난 값이거나 {@code null}(옛 앱)
+	 */
+	@Transactional
+	public User findOrCreate(SocialIdentity identity, String consentVersion) {
+		User user = this.users.findByProviderAndProviderId(identity.provider(), identity.providerId())
 			.orElseGet(() -> create(identity));
+		if (consentVersion != null) {
+			user.recordConsent(consentVersion, Instant.now());
+		}
+		return user;
+	}
+
+	/** 이미 로그인한 사람이 다시 동의했다. 정지돼도 기록한다 */
+	@Transactional
+	public User recordConsent(UUID id, String version) {
+		String checked = requireConsentVersion(version);
+		this.accounts.lockActive(id);
+		User user = get(id);
+		user.recordConsent(checked, Instant.now());
+		return user;
+	}
+
+	/**
+	 * 동의 버전은 공개 문서 시행일 모양({@code YYYY-MM-DD}). 뜻은 따지지 않는다 — 동의 버전과 문서 시행일은 달라도 된다(071).
+	 *
+	 * @throws InvalidConsentVersionException 모양이 다르거나 없는 날짜
+	 */
+	public static String requireConsentVersion(String version) {
+		if (version == null || !version.matches("\\d{4}-\\d{2}-\\d{2}")) {
+			throw new InvalidConsentVersionException();
+		}
+		try {
+			java.time.LocalDate.parse(version);
+		}
+		catch (java.time.format.DateTimeParseException ex) {
+			throw new InvalidConsentVersionException();
+		}
+		return version;
 	}
 
 	private User create(SocialIdentity identity) {
@@ -72,8 +115,8 @@ public class UserService {
 		if (name.replaceAll("\\s", "").equals(AccountDeletionService.DELETED_NICKNAME.replaceAll("\\s", ""))) {
 			throw new InvalidNicknameException();
 		}
-		// 삭제 뒤에 커밋하면 익명화한 이름을 원래 이름으로 덮는다
-		this.accounts.lockActive(id);
+		// 삭제 뒤에 커밋하면 익명화한 이름을 원래 이름으로 덮는다. 정지된 계정은 남은 글에 보이는 이름을 바꾸지 못한다
+		this.accounts.lockWritable(id);
 		User user = get(id);
 		user.rename(name, Instant.now());
 		return user;
