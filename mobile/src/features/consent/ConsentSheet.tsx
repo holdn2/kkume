@@ -20,6 +20,8 @@ type Props = {
   /** 아래쪽 버튼 이름. 로그인 전이면 「그만두기」, 이미 로그인한 사람이면 「로그아웃」 */
   dismissLabel: string;
   busy?: boolean;
+  /** 저장 실패 같은 이유. 있으면 버튼 위에 보인다 */
+  error?: string | null;
 };
 
 /**
@@ -27,7 +29,7 @@ type Props = {
  * 낮 화면(마이 탭)에서만 뜬다 — 새벽 기록 흐름에는 로그인이 없다(절대 규칙 1 · 7).
  * 여는 순간마다 체크를 비운다 — 지난번에 체크하다 닫은 것이 남아 있으면 읽지 않고 넘어가게 된다
  */
-export function ConsentSheet({ visible, onAgree, onClose, onDismiss, dismissLabel, busy }: Props) {
+export function ConsentSheet({ visible, onAgree, onClose, onDismiss, dismissLabel, busy, error }: Props) {
   const [checks, setChecks] = useState<Partial<Record<ConsentKey, boolean>>>({});
   const [wasVisible, setWasVisible] = useState(visible);
   if (wasVisible !== visible) {
@@ -73,6 +75,11 @@ export function ConsentSheet({ visible, onAgree, onClose, onDismiss, dismissLabe
           받는 것: 구글 계정 식별자 · 닉네임 · 서버에 보관하는 꿈 기록과 녹음 · 꿈 나눔 글. 이메일 · 이름 · 사진은 받지
           않습니다. 계정은 마이 탭에서 언제든 삭제할 수 있습니다.
         </AppText>
+        {!!error && (
+          <AppText size="caption" color={c.danger}>
+            {error}
+          </AppText>
+        )}
         <Stack gap={sp[2]}>
           <Button label={busy ? '진행 중' : '동의하고 계속'} disabled={!canAgree(checks) || busy} onPress={onAgree} />
           <Button label={dismissLabel} variant="ghost" disabled={busy} onPress={onDismiss} />

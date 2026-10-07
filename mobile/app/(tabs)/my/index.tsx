@@ -75,14 +75,23 @@ export default function MyScreen() {
   const startSignIn = () => {
     void readConsent().then((need) => (need ? setConsent('signIn') : void auth.signIn()));
   };
+  const [consentError, setConsentError] = useState<string | null>(null);
+  const setConsentRecord = (value: string) => getDreamRepo().then((repo) => repo.setSetting(SETTINGS.consent, value));
   const agree = () => {
     const after = consent;
-    void getDreamRepo()
-      .then((repo) => repo.setSetting(SETTINGS.consent, recordConsent()))
-      .then(() => {
+    setConsentError(null);
+    // 로그인보다 먼저 저장한다 — 로그인이 되는 순간 위의 포커스 확인이 다시 물으면 안 되므로.
+    // 저장이 실패하면 시트를 열어 둔 채 이유를 보인다(PR #73 리뷰)
+    void setConsentRecord(recordConsent())
+      .then(async () => {
         setConsent(null);
-        if (after === 'signIn') void auth.signIn();
-      });
+        if (after !== 'signIn') return;
+        // **로그인이 취소 · 실패하면 동의를 지운다**(PR #73 리뷰) — 남겨 두면 다음에 이 폰으로 다른 사람이 로그인할 때
+        // 묻지 않고 지나간다. 동의는 계정의 것이다
+        const ok = await auth.signIn();
+        if (!ok) await setConsentRecord('').catch(() => {});
+      })
+      .catch((e) => setConsentError(`동의를 저장하지 못했습니다. 다시 눌러 주세요.\n${String(e)}`));
   };
   const declineConsent = () => {
     const was = consent;
@@ -242,6 +251,7 @@ export default function MyScreen() {
         onDismiss={declineConsent}
         dismissLabel={consent === 'existing' ? '동의하지 않고 로그아웃' : '그만두기'}
         busy={auth.busy}
+        error={consentError}
       />
 
       {/* 시트가 세션을 저장한 뒤 이 탭이 들고 있는 세션도 다시 읽는다 */}
