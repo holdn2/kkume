@@ -71,9 +71,13 @@ export default function MyScreen() {
   useFocusEffect(
     useCallback(() => {
       if (!signedIn) return;
+      // 서버를 기다리는 사이 로그아웃하면(또는 탭을 떠나면) 이 확인은 버린다 — 지운 계정의 시트를 띄우거나,
+      // 거기서 받은 동의가 다음 계정으로 넘어가지 않게(PR #77 리뷰)
+      let alive = true;
       void (async () => {
         const local = await readLocalConsent();
         const server = await serverConsent(CONSENT_VERSION);
+        if (!alive) return;
         const action = consentAction(local, server);
         if (action === 'ask') setConsent('existing');
         // 서버가 이미 안다 — 폰 기록도 맞춰 둔다(오프라인으로 열었을 때 다시 묻지 않게)
@@ -83,13 +87,14 @@ export default function MyScreen() {
         // 이 폰에서 동의했는데 서버에 없다 — 조용히 올린다. 실패하면 다음에 마이 탭을 열 때 다시
         else if (action === 'upload') await sendConsent(CONSENT_VERSION).catch(() => {});
       })().catch(() => {});
+      return () => {
+        alive = false;
+      };
     }, [signedIn, readLocalConsent, serverConsent, sendConsent]),
   );
-  const startSignIn = () => {
-    void readLocalConsent()
-      .then(needsConsent)
-      .then((need) => (need ? setConsent('signIn') : void auth.signIn(CONSENT_VERSION)));
-  };
+  // **로그인할 때는 언제나 묻는다.** 로그아웃한 채 폰에 남은 동의는 누구의 것인지 알 수 없다 — 그대로 실어 보내면
+  // 동의하지 않은 다음 계정에 서버가 동의를 기록한다(PR #77 리뷰). 시트는 열 때마다 체크가 비어 있다
+  const startSignIn = () => setConsent('signIn');
   const [consentError, setConsentError] = useState<string | null>(null);
   const agree = () => {
     const after = consent;
