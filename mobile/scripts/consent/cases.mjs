@@ -2,7 +2,7 @@
  * 가입 동의(이슈 #71). 화면 없이 규칙만 — 언제 동의 시트를 띄우는가, 언제 「동의하고 계속」이 눌리는가.
  * 구현보다 먼저 넣었다.
  */
-import { CONSENT_ITEMS, CONSENT_VERSION, canAgree, needsConsent, recordConsent } from '@features/consent/logic';
+import { CONSENT_ITEMS, CONSENT_VERSION, canAgree, consentAction, needsConsent, recordConsent } from '@features/consent/logic';
 
 let failed = 0;
 let total = 0;
@@ -27,6 +27,13 @@ for (const item of CONSENT_ITEMS) {
   check(`K8·${item.key}`, `${item.label}이 빠지면 못 한다`, canAgree(one) === false);
 }
 check('K9', '아무것도 안 했으면 못 한다', canAgree({}) === false);
+
+// 로그인한 채 마이 탭을 열 때(계약 072) — 서버 값을 믿는다
+const old = JSON.stringify({ version: '2000-01-01', at: '2000-01-01T00:00:00Z' });
+check('K10', '서버가 이번 버전이라 하면 폰 기록이 없어도 묻지 않는다(다른 기기에서 동의)', consentAction(null, CONSENT_VERSION) === 'skip');
+check('K11', '폰에서 동의했는데 서버에 없으면 묻지 않고 올린다', consentAction(now, null) === 'upload' && consentAction(now, '2000-01-01') === 'upload');
+check('K12', '폰에도 서버에도 없으면 묻는다', consentAction(null, null) === 'ask' && consentAction(old, '2000-01-01') === 'ask');
+check('K13', '서버 값을 모르면(오프라인 · 옛 서버) 폰 기록으로 정한다', consentAction(now, undefined) === 'skip' && consentAction(null, undefined) === 'ask');
 
 console.log(`\n${total}개 중 실패 ${failed}개`);
 if (failed) process.exitCode = 1;

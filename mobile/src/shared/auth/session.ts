@@ -21,7 +21,8 @@ export type Session = {
   accessToken: string;
   /** ISO 문자열. 서버가 준 `expiresIn`(초)을 받은 시각에 더해 둔 것이다 */
   expiresAt: string;
-  user: { id: string; nickname: string };
+  /** `consentVersion` — 로그인 응답 · 동의 기록 뒤의 서버 값. 이 필드가 생기기 전에 저장한 세션에는 없다(`undefined` = 모름) */
+  user: { id: string; nickname: string; consentVersion?: string | null };
 };
 
 let memory: Session | null = null;
@@ -72,7 +73,7 @@ export function isExpired(s: Session, now = Date.now()): boolean {
 }
 
 export function toSession(
-  res: { accessToken: string; expiresIn: number; user: { id: string; nickname: string } },
+  res: { accessToken: string; expiresIn: number; user: { id: string; nickname: string; consentVersion?: string | null } },
   now = Date.now(),
 ): Session {
   return {
