@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { deleteMe, fetchMe, loginWithGoogle, putConsent } from '@shared/api/auth';
 import { isApiError, setAccountDeletedHandler } from '@shared/api/client';
@@ -46,6 +46,12 @@ setAccountDeletedHandler(() => void forgetAccount().catch(() => {}));
 export { googleBackend, HAS_NATIVE_GOOGLE } from './google';
 export { sessionBackend, type Session } from './session';
 
+/**
+ * 로그인 결과. `consent` — 구글 계정은 골랐는데 **꾸메 계정이 없다.** 서버가 동의 전에는 계정을 만들지 않는다
+ * (`403 consent_required`, 문서 074). 화면은 동의 시트를 띄우고 `finishSignUp`(동의) · `cancelSignUp`(거절)으로 잇는다
+ */
+export type SignInResult = 'ok' | 'consent' | 'failed';
+
 export type AuthState = {
   /** 아직 저장소를 읽는 중이면 `null`. 화면은 이때 아무것도 결정하지 않는다 */
   session: Session | null;
@@ -53,10 +59,17 @@ export type AuthState = {
   busy: boolean;
   error: string | null;
   /**
-   * 로그인됐으면 true. 취소 · 실패면 false(이유는 `error`).
-   * `consentVersion` — 방금 받은 동의. 로그인 요청에 실어 서버가 계정과 함께 기록한다(계약 072)
+   * 구글 계정을 고르고 **동의 값 없이** 로그인한다(문서 074). 이미 있는 계정은 그대로 들어간다 — 동의가 없거나
+   * 옛 버전이면 마이 탭이 로그인한 뒤에 묻는다. 새 계정이면 `consent`. 취소 · 실패는 `failed`(이유는 `error`)
    */
-  signIn: (consentVersion?: string) => Promise<boolean>;
+  signIn: () => Promise<SignInResult>;
+  /**
+   * `signIn`이 `consent`를 돌려준 뒤 동의했다 — 고른 구글 계정의 **같은 토큰**에 동의 버전을 실어 다시 보낸다.
+   * 서버가 계정을 만드는 것과 같은 트랜잭션에 동의를 기록한다(계약 072). 로그인됐으면 true
+   */
+  finishSignUp: (consentVersion: string) => Promise<boolean>;
+  /** 동의 시트에서 그만뒀다 — 들고 있던 토큰을 버리고 구글에서도 로그아웃한다 */
+  cancelSignUp: () => Promise<void>;
   signOut: () => Promise<void>;
   /** 계정 삭제(MY-5, 이슈 #65). 성공하면 이 훅의 세션도 비워진다 */
   deleteAccount: () => Promise<DeletionResult>;
@@ -105,17 +118,43 @@ export function useAuth(): AuthState {
     };
   }, []);
 
-  const signIn = useCallback(async (consentVersion?: string) => {
+  /**
+   * 동의를 기다리는 구글 ID 토큰. **메모리에만 둔다** — 저장소에 남기면 앱을 다시 열었을 때 누구의 것인지 모르는
+   * 토큰이 남는다. 구글 토큰은 한 시간쯤 살고, 서버는 같은 토큰을 두 번 받아 준다(문서 074 03장 1)
+   */
+  const pending = useRef<{ idToken: string; aud: string | null } | null>(null);
+
+  /** 서버 로그인 한 번. 성공하면 세션을 남기고, 실패하면 이유를 `error`에 둔다. `consent_required`는 던진다 */
+  const login = useCallback(async (idToken: string, aud: string | null, consentVersion?: string) => {
+    try {
+      const res = await loginWithGoogle(idToken, consentVersion);
+      const s = toSession(res);
+      await saveSession(s);
+      setSession(s);
+      // 로그인 전에 쌓인 기록을 바로 올린다. 소유자는 서버가 토큰에서 정하므로
+      // 로컬 `user_id`를 따로 잇지 않아도 이 사용자 것이 된다.
+      // 기다리지 않는다 — 로그인 완료가 동기화에 묶이면 느린 망에서 버튼이 안 풀린다
+      void syncIfSignedIn({ force: true });
+      return true;
+    } catch (e) {
+      if (isApiError(e) && e.code === 'consent_required') throw e;
+      // 서버가 주는 문구는 이미 존댓말이라 그대로 보여준다
+      const base = isApiError(e) ? e.message : '로그인에 실패했습니다';
+      setError(aud ? `${base}\n토큰 대상: ${aud}` : base);
+      return false;
+    }
+  }, []);
+
+  const signIn = useCallback(async (): Promise<SignInResult> => {
     setBusy(true);
     setError(null);
-    // try 바깥에 둔다. catch에서 함께 보여줘야 하는데 안에 두면 안 보인다
-    let aud: string | null = null;
+    pending.current = null;
     try {
       const g = await signInWithGoogle();
       if (!g.ok) {
         // 취소는 실패가 아니다. 사용자가 스스로 닫은 것에 오류 문구를 띄우면
         // 자기가 뭘 잘못한 줄 알고 다시 시도하지 않는다
-        if (g.reason === 'cancelled') return false;
+        if (g.reason === 'cancelled') return 'failed';
         // **`detail`을 버리지 않는다.** 2026-09-12에 계정 선택까지 되고 그 뒤에 실패했는데,
         // 화면에 "구글 로그인에 실패했습니다"만 떠서 **원인을 좁힐 근거가 하나도 없었다.**
         // 구글 쪽 오류는 코드가 제각각이라 미리 문구를 매핑해 둘 수 없다 —
@@ -126,31 +165,53 @@ export function useAuth(): AuthState {
             ? '이 빌드에는 구글 로그인이 들어 있지 않습니다'
             : '구글 로그인에 실패했습니다';
         setError(g.detail ? `${base}\n${g.detail}` : base);
-        return false;
+        return 'failed';
       }
       // **실패하면 토큰의 `aud`를 함께 보여준다.** 서버는 이 값이 허용 목록에
       // 없으면 401을 주는데 이유를 알려주지 않는다(일부러 그렇게 만들었다).
       // 그러면 화면만 보고는 "서버가 안 뜬 것"과 "대상이 안 맞는 것"을 못 가른다.
       // 임시가 아니라 남겨 둔다 — 클라이언트 ID는 앱에 어차피 박혀 있어 비밀이 아니고,
       // 이 한 줄이 없으면 다음에 같은 자리에서 또 막힌다
-      aud = audienceOf(g.idToken);
-      const res = await loginWithGoogle(g.idToken, consentVersion);
-      const s = toSession(res);
-      await saveSession(s);
-      setSession(s);
-      // 로그인 전에 쌓인 기록을 바로 올린다. 소유자는 서버가 토큰에서 정하므로
-      // 로컬 `user_id`를 따로 잇지 않아도 이 사용자 것이 된다.
-      // 기다리지 않는다 — 로그인 완료가 동기화에 묶이면 느린 망에서 버튼이 안 풀린다
-      void syncIfSignedIn({ force: true });
-      return true;
-    } catch (e) {
-      // 서버가 주는 문구는 이미 존댓말이라 그대로 보여준다
-      const base = isApiError(e) ? e.message : '로그인에 실패했습니다';
-      setError(aud ? `${base}\n토큰 대상: ${aud}` : base);
-      return false;
+      const aud = audienceOf(g.idToken);
+      try {
+        return (await login(g.idToken, aud)) ? 'ok' : 'failed';
+      } catch {
+        // 새 계정이다 — 동의를 받은 뒤 같은 토큰으로 다시 보낸다
+        pending.current = { idToken: g.idToken, aud };
+        return 'consent';
+      }
     } finally {
       setBusy(false);
     }
+  }, [login]);
+
+  const finishSignUp = useCallback(
+    async (consentVersion: string) => {
+      const p = pending.current;
+      pending.current = null;
+      if (!p) {
+        setError('로그인이 끊겼습니다. 다시 로그인해 주세요.');
+        return false;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        // 동의 버전을 실었으니 consent_required 는 오지 않는다. 토큰이 만료됐으면 401 — 다시 로그인하라는 문구로
+        return await login(p.idToken, p.aud, consentVersion);
+      } catch {
+        setError('로그인하지 못했습니다. 다시 로그인해 주세요.');
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [login],
+  );
+
+  const cancelSignUp = useCallback(async () => {
+    pending.current = null;
+    // 고른 구글 계정을 놓는다 — 다음에 「구글로 계속하기」를 누르면 계정을 다시 고른다
+    await signOutFromGoogle().catch(() => {});
   }, []);
 
   const signOut = useCallback(async () => {
@@ -229,7 +290,20 @@ export function useAuth(): AuthState {
     }
   }, []);
 
-  return { session, loading, busy, error, signIn, signOut, deleteAccount, refresh, serverConsent, sendConsent };
+  return {
+    session,
+    loading,
+    busy,
+    error,
+    signIn,
+    finishSignUp,
+    cancelSignUp,
+    signOut,
+    deleteAccount,
+    refresh,
+    serverConsent,
+    sendConsent,
+  };
 }
 
 /**

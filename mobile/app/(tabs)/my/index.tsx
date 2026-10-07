@@ -66,9 +66,13 @@ export default function MyScreen() {
    * (서버 기록 · 꿈 나눔은 동의한 계정만). 폰의 기록은 그대로다.
    *
    * **로그인한 뒤에는 서버 값을 믿는다**(계약 072) — 다른 기기에서 동의했으면 묻지 않는다. 판단은 `consentAction`.
-   * 로그인 전 시트는 서버 값으로 건너뛸 수 없다 — 어느 계정인지 모르고, 동의보다 계정이 먼저 생기면 안 된다(문서 071)
+   *
+   * **로그인할 때는 구글 계정을 고른 뒤에 묻는다**(문서 074, 2026-10-08 사용자 요청 — "한번 동의하면 그 이후에는 안떠야하지
+   * 않아? 그리고 계정 선택 이후 해당 시트가 떠야하는거 아니야?"). 동의 값 없이 로그인해 보고, 서버가 꾸메 계정이 없다고
+   * 하면(`consent_required`) 그때 시트를 띄운다(`signUp`). 이미 있는 계정은 시트 없이 들어가고, 동의가 없거나 옛 버전이면
+   * 아래 포커스 확인이 로그인 직후 묻는다(`existing`)
    */
-  const [consent, setConsent] = useState<null | 'signIn' | 'existing'>(null);
+  const [consent, setConsent] = useState<null | 'signUp' | 'existing'>(null);
   const readLocalConsent = useCallback(() => getDreamRepo().then((repo) => repo.getSetting(SETTINGS.consent)), []);
   const setConsentRecord = (value: string) => getDreamRepo().then((repo) => repo.setSetting(SETTINGS.consent, value));
   const signedIn = !!auth.session;
@@ -97,9 +101,13 @@ export default function MyScreen() {
       };
     }, [signedIn, readLocalConsent, serverConsent, sendConsent]),
   );
-  // **로그인할 때는 언제나 묻는다.** 로그아웃한 채 폰에 남은 동의는 누구의 것인지 알 수 없다 — 그대로 실어 보내면
-  // 동의하지 않은 다음 계정에 서버가 동의를 기록한다(PR #77 리뷰). 시트는 열 때마다 체크가 비어 있다
-  const startSignIn = () => setConsent('signIn');
+  // 폰에 남은 동의를 로그인 요청에 싣지 않는다 — 로그아웃한 채 남은 동의는 누구의 것인지 알 수 없다(PR #77 리뷰).
+  // 새 계정이면 그 자리에서 묻고, 시트는 열 때마다 체크가 비어 있다
+  const startSignIn = () => {
+    void auth.signIn().then((r) => {
+      if (r === 'consent') setConsent('signUp');
+    });
+  };
   const [consentError, setConsentError] = useState<string | null>(null);
   const agree = () => {
     const after = consent;
@@ -114,11 +122,11 @@ export default function MyScreen() {
           await sendConsent(CONSENT_VERSION).catch(() => {});
           return;
         }
-        if (after !== 'signIn') return;
-        // 동의를 로그인 요청에 싣는다 — 서버가 계정을 만드는 것과 같은 트랜잭션에 기록한다(계약 072).
-        // **로그인이 취소 · 실패하면 동의를 지운다**(PR #73 리뷰) — 남겨 두면 다음에 이 폰으로 다른 사람이 로그인할 때
+        if (after !== 'signUp') return;
+        // 고른 계정의 같은 토큰에 동의를 실어 다시 보낸다 — 서버가 계정을 만드는 것과 같은 트랜잭션에 기록한다(계약 072).
+        // **로그인이 실패하면 동의를 지운다**(PR #73 리뷰) — 남겨 두면 다음에 이 폰으로 다른 사람이 로그인할 때
         // 묻지 않고 지나간다. 동의는 계정의 것이다
-        const ok = await auth.signIn(CONSENT_VERSION);
+        const ok = await auth.finishSignUp(CONSENT_VERSION);
         if (!ok) await setConsentRecord('').catch(() => {});
       })
       .catch((e) => {
@@ -130,6 +138,8 @@ export default function MyScreen() {
     const was = consent;
     setConsent(null);
     if (was === 'existing') void auth.signOut();
+    // 가입을 그만뒀다 — 고른 구글 계정과 들고 있던 토큰을 놓는다. 서버에는 아무것도 생기지 않았다
+    if (was === 'signUp') void auth.cancelSignUp();
   };
 
   return (
