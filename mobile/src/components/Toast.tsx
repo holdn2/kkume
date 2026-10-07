@@ -77,6 +77,9 @@ export function Toast({ visible, message, tone = 'neutral', actionLabel, onActio
     <Animated.View
       // 누르거나 밀 것이 없으면 터치를 받지 않는다 — 위에 뜨면 헤더(뒤로 · ⋯)를 덮는다
       pointerEvents={visible && (!!actionLabel || !!onDismiss) ? 'auto' : 'none'}
+      // 사라진 뒤에도 글자는 남아 있다(흐려질 뿐) — 스크린리더가 지난 문장을 읽지 않게 숨긴다(PR #79 리뷰)
+      accessibilityElementsHidden={!visible}
+      importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}
       {...pan.panHandlers}
       style={[
         s.wrap,

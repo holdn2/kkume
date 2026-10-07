@@ -36,7 +36,8 @@ export default function DreamDetail() {
   /** 저장 · 지우기가 실패한 이유는 아래 안내 줄에 적고 토스트로도 띄운다 — 긴 본문을 고치던 중이면 안내 줄이 화면 밖이다(2026-10-08) */
   const fail = (e: unknown) => {
     setError(String(e));
-    showToast(String(e));
+    // 토스트에는 고정 문구 — 자동 저장이 계속 실패하면 멈출 때마다 같은 오류 원문이 다시 뜬다. 원문은 안내 줄에 남는다(PR #79 리뷰)
+    showToast('작업을 완료하지 못했습니다. 다시 시도해 주세요.');
   };
   const [askDelete, setAskDelete] = useState(false);
   /**
