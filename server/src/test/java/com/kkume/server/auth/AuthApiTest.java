@@ -46,7 +46,7 @@ class AuthApiTest {
 	private GoogleTokenVerifier googleVerifier;
 
 	private static final String BODY = """
-			{"idToken":"whatever"}""";
+			{"idToken":"whatever","consentVersion":"2026-10-07"}""";
 
 	@Test
 	void 토큰이_없으면_401이다() throws Exception {

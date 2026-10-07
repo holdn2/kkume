@@ -71,7 +71,7 @@ class AudioUploadWithoutSttTest {
 		given(this.googleVerifier.verify(anyString()))
 			.willReturn(new SocialIdentity(Provider.GOOGLE, "google-sub-" + UUID.randomUUID()));
 		String token = JsonPath.read(this.mockMvc
-			.perform(post("/api/auth/google").contentType(MediaType.APPLICATION_JSON).content("{\"idToken\":\"x\"}"))
+			.perform(post("/api/auth/google").contentType(MediaType.APPLICATION_JSON).content("{\"idToken\":\"x\",\"consentVersion\":\"2026-10-07\"}"))
 			.andExpect(status().isOk())
 			.andReturn().getResponse().getContentAsString(), "$.accessToken");
 		String auth = "Bearer " + token;

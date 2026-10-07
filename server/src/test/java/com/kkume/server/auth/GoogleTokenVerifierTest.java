@@ -81,6 +81,16 @@ class GoogleTokenVerifierTest {
 	}
 
 	@Test
+	void 같은_토큰을_만료_전에_다시_보내도_검증된다() {
+		// 앱은 403 consent_required 를 받으면 같은 ID 토큰에 동의를 붙여 다시 보낸다(문서 074).
+		// 재사용 막기(nonce · jti)를 넣으면 이 흐름이 깨진다
+		String token = validToken();
+		this.verifier.verify(token);
+
+		assertThat(this.verifier.verify(token).providerId()).isEqualTo("google-sub-1");
+	}
+
+	@Test
 	void 다른_앱을_위해_발급된_토큰은_거부한다() {
 		String other = token("https://accounts.google.com",
 				List.of("999-someone-else.apps.googleusercontent.com"), "google-sub-1",

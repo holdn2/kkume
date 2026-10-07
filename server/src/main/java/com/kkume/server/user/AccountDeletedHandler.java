@@ -20,6 +20,12 @@ class AccountDeletedHandler {
 			.body(Map.of("code", "account_suspended", "message", ex.getMessage()));
 	}
 
+	@ExceptionHandler(ConsentRequiredException.class)
+	ResponseEntity<Map<String, String>> onConsentRequired(ConsentRequiredException ex) {
+		return ResponseEntity.status(HttpStatus.FORBIDDEN)
+			.body(Map.of("code", "consent_required", "message", ex.getMessage()));
+	}
+
 	@ExceptionHandler(InvalidConsentVersionException.class)
 	ResponseEntity<Map<String, String>> onInvalidConsent(InvalidConsentVersionException ex) {
 		return ResponseEntity.badRequest().body(Map.of("code", "invalid_consent_version", "message", ex.getMessage()));
