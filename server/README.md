@@ -51,6 +51,16 @@ Content-Type: application/json
 **가입과 로그인을 나누지 않는다.** 처음 온 사람은 그 자리에서 만들어지고
 랜덤 닉네임이 붙는다. 앱에 회원가입 화면을 두지 않는다.
 
+#### 애플 로그인
+
+`POST /api/auth/apple` `{ "identityToken": "<애플 ID 토큰>", "consentVersion"?: "2026-10-07" }` — 계약은 모바일 075 · 서버 076.
+**규칙 · 응답 · 오류는 구글과 모양까지 같다**(동의 · `consent_required` · 판정 순서 · 정지 · 삭제 뒤 재가입). 판정이 `UserService.findOrCreate` 하나라서다.
+
+- 서명은 애플 JWKS(`https://appleid.apple.com/auth/keys`), `iss = https://appleid.apple.com`, `aud = com.holdn2.kkume`(번들 ID — 네이티브 로그인이라
+  Services ID 가 아니다, `kkume.auth.apple.client-ids`, 비면 기동하지 않는다). `sub` → `provider_id`
+- **이메일 · 이름은 읽지도 남기지도 않는다.** `nonce` 도 보지 않는다 — `consent_required` 뒤 같은 토큰을 다시 보내는 흐름(074)이라. 애플 ID 토큰은 10분이다
+- 같은 사람의 구글 계정과 애플 계정은 서로 다른 꾸메 계정이다. 이메일을 받지 않으므로 이을 근거가 없다
+
 ### 이후 모든 요청
 
 ```http
@@ -121,6 +131,26 @@ GET /api/me
   삭제와 겹친 쓰기가 삭제 뒤에 커밋하면 꿈이 되살아나고 익명화한 닉네임이 덮인다. 삭제는 같은 행을 `FOR UPDATE` 로 잡아 줄을 세운다.
   **새 쓰기 경로를 만들면 이것을 빠뜨리지 않는다**
 - 닉네임 `탈퇴한 사용자`는 공백을 무시하고 비교해 쓸 수 없다(`400 nickname_invalid`)
+
+#### 애플 계정 삭제 — 애플 토큰 회수
+
+App Store 5.1.1(v)은 애플 로그인 계정을 지울 때 애플 토큰을 회수(`/auth/revoke`)하라고 요구한다. **서버는 애플 토큰을 보관하지 않는다**(076, 075의 A) —
+앱이 삭제 직전에 애플 인증을 다시 받아 그 인가 코드를 싣는다. 구글 계정은 지금처럼 본문 없이 보낸다.
+
+```http
+DELETE /api/me
+{ "appleAuthorizationCode": "<애플이 방금 준 코드 — 5분 · 한 번만>" }
+```
+
+| 순서 | 실패하면 |
+| --- | --- |
+| ① 코드를 `/auth/token` 에서 바꾸고, 받은 ID 토큰을 로그인과 같은 검증기로 본 뒤 `sub` 가 `provider_id` 와 같은지 | 코드 없음 · 애플이 거절(`invalid_grant`) → `400 apple_reauth_required`, 다른 애플 ID → `400 apple_account_mismatch`, 애플 장애 · 우리 키 문제 → `503 deletion_failed`. **어느 것이든 아무것도 지우지 않는다** |
+| ② 지금의 삭제(위 표) | `503 deletion_failed`(S3) |
+| ③ `/auth/revoke`(refresh token, 없으면 access token) | **②를 되돌리지 않는다** — 이용자가 지우라고 한 것은 꾸메의 기록이다. 로그만 남긴다 |
+
+- client secret 은 요청마다 새로 만드는 5분짜리 ES256 JWT — `kid` = 키 ID, `iss` = 팀 ID(`3PW3FZG3GR`), `sub` = 번들 ID, `aud` = `https://appleid.apple.com`
+- **회수용 키(`KKUME_APPLE_KEY_ID` · `KKUME_APPLE_PRIVATE_KEY`)가 없으면 로그인은 되고 ①③만 건너뛴다**(기동 · 삭제 때 경고). 요청 모양은 키와 무관하게
+  같다 — 애플 계정은 키가 없어도 코드를 실어야 한다. 키를 넣는 날 앱을 바꾸지 않아도 되게. 키가 있는데 읽지 못하면 기동하지 않는다
 
 ### 동기화
 
@@ -301,11 +331,6 @@ POST /api/sync/dreams
 
 **client id 는 앱에 박히는 공개 값**이라 저장소에 둔다. **client secret 은 쓰지 않는다.**
 서명 키는 저장소에 두지 않는다 — 두면 그것을 읽은 누구나 남의 토큰을 위조할 수 있다.
-
-## 애플 로그인을 붙일 때
-
-`SocialTokenVerifier` 에 구현을 하나 더하고, `provider` CHECK 제약에 `'apple'` 을
-더하는 마이그레이션을 쓰면 된다. 로그인 흐름과 토큰 발급은 그대로다.
 
 ## Spring Boot 4 에서 달라진 것
 

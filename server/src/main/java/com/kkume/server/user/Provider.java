@@ -12,7 +12,8 @@ import jakarta.persistence.Converter;
 public enum Provider {
 
 	KAKAO("kakao"),
-	GOOGLE("google");
+	GOOGLE("google"),
+	APPLE("apple");
 
 	private final String code;
 

@@ -62,11 +62,28 @@ public class MeController {
 	/**
 	 * 계정 삭제(문서 064 · 066). 폰의 기록은 남고 서버의 기록은 지운다.
 	 * 이미 지운 계정이면 토큰 단계에서 {@code 401 account_deleted}로 막힌다 — 앱은 그것을 성공으로 본다.
+	 *
+	 * <p>애플 계정은 본문에 {@code appleAuthorizationCode}(앱이 삭제 직전에 다시 받은 것)를 싣는다(문서 076).
+	 * 구글 계정은 지금처럼 본문 없이 보낸다.
 	 */
 	@DeleteMapping("/api/me")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	public void delete(@AuthenticationPrincipal Jwt jwt) {
-		this.deletion.delete(UUID.fromString(jwt.getSubject()));
+	public void delete(@AuthenticationPrincipal Jwt jwt, @RequestBody(required = false) DeleteRequest request) {
+		this.deletion.deleteAccount(UUID.fromString(jwt.getSubject()),
+				request == null ? null : request.appleAuthorizationCode());
+	}
+
+	public record DeleteRequest(String appleAuthorizationCode) {
+	}
+
+	@ExceptionHandler(AccountDeletionService.AppleReauthRequiredException.class)
+	ResponseEntity<Map<String, String>> onAppleReauth(AccountDeletionService.AppleReauthRequiredException ex) {
+		return ResponseEntity.badRequest().body(Map.of("code", "apple_reauth_required", "message", ex.getMessage()));
+	}
+
+	@ExceptionHandler(AccountDeletionService.AppleAccountMismatchException.class)
+	ResponseEntity<Map<String, String>> onAppleMismatch(AccountDeletionService.AppleAccountMismatchException ex) {
+		return ResponseEntity.badRequest().body(Map.of("code", "apple_account_mismatch", "message", ex.getMessage()));
 	}
 
 	@ExceptionHandler(AccountDeletionService.DeletionFailedException.class)

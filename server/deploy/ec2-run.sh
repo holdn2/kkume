@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # EC2 안에서 도는 스크립트. deploy.sh 가 ssh로 밀어넣어 실행한다.
 # 인자: <레지스트리> <리포지터리> <호스트포트> <리전> <DB URL> <DB 사용자> <DB 비밀번호> <JWT 서명키> <오디오 버킷> <신고 알림 주제>
+#       [<애플 키 ID> <애플 키(.p8 의 base64 한 줄)>] — 비면 애플 로그인은 되고 계정 삭제 때 애플 토큰 회수만 건너뛴다
 #
 # 비밀번호와 서명키는 인자로 받아 컨테이너 환경변수로만 넘긴다. EC2 디스크에
 # 파일로 남기지 않는다 — 남기면 지우는 것을 잊는다.
@@ -16,6 +17,8 @@ DB_PASSWORD="$7"
 JWT_SECRET="$8"
 AUDIO_BUCKET="$9"
 REPORT_TOPIC_ARN="${10}"
+APPLE_KEY_ID="${11:-}"
+APPLE_PRIVATE_KEY="${12:-}"
 NAME=kkume-server
 
 echo "== ECR 로그인"
@@ -51,6 +54,8 @@ sudo docker run -d \
   -e KKUME_JWT_SECRET="${JWT_SECRET}" \
   -e KKUME_AUDIO_BUCKET="${AUDIO_BUCKET}" \
   -e KKUME_REPORT_TOPIC_ARN="${REPORT_TOPIC_ARN}" \
+  -e KKUME_APPLE_KEY_ID="${APPLE_KEY_ID}" \
+  -e KKUME_APPLE_PRIVATE_KEY="${APPLE_PRIVATE_KEY}" \
   -p "127.0.0.1:${HOST_PORT}:8080" \
   "${REGISTRY}/${REPO}:latest"
 

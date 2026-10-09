@@ -284,6 +284,15 @@ aws iam put-role-policy --role-name kkume-ec2-ecr --policy-name kkume-report-ale
 - **메일 제목은 ASCII 로만 쓴다.** SNS 는 제목에 ASCII 만 받고, 한글이 섞이면 발행을 거절한다
 - **메일에 신고된 글의 내용을 넣지 않는다.** 메일은 Gmail 을 거쳐 꿈 내용이 Google 로 넘어가게 된다. 내용은 `moderate.sh show` 로 본다
 
+### 5-3-1. 애플 토큰 회수 키
+
+애플 계정을 지울 때 애플 토큰을 회수하려면(서버 README "애플 계정 삭제") Sign in with Apple 키가 있어야 한다.
+Apple Developer → Certificates, IDs & Profiles → Keys → Sign in with Apple(Primary App ID `com.holdn2.kkume`)로 만들고
+`.p8` 을 **한 번만** 내려받는다. `.env` 에 `APPLE_KEY_ID`(10자)와 `APPLE_KEY_FILE`(이 PC 의 `.p8` 경로)을 넣는다 — **키 내용을 `.env` · 저장소 · 채팅에 옮기지 않는다.**
+`deploy.sh` 가 머리줄 · 줄바꿈을 뺀 한 줄로 바꿔 컨테이너 환경변수(`KKUME_APPLE_PRIVATE_KEY`)로만 넘긴다. DB 비밀번호와 같은 길이다.
+
+**비어 있어도 배포는 된다** — 애플 로그인은 되고 회수만 건너뛴다(`deploy.sh` 와 서버 기동 로그에 경고). **App Store 제출 전에는 넣는다**(5.1.1(v)).
+
 ### 5-4. 기록 보관(한 달)
 
 컨테이너 기록은 `--log-opt max-size=10m --log-opt max-file=3`(ec2-run.sh · ec2-https.sh)으로 크기를 막고,
