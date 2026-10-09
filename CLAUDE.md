@@ -178,7 +178,8 @@ lucide-react-native · @shopify/flash-list · @gorhom/bottom-sheet ·
 
 **인프라** — AWS EC2(t3.micro, Postgres 컨테이너) + S3 · EAS Build
 
-**DB는 RDS가 아니라 EC2 안 Postgres 컨테이너다**(2026-10-10 이전, 문서 077 · 080).
+**DB는 RDS가 아니라 EC2 안 Postgres 컨테이너다**(2026-10-10에 RDS에서 옮김 · 완료, 문서 077 · 080,
+절차는 `server/deploy/README.md` 5-1 · 5-5).
 크레딧이 하루 약 $1.1씩 줄어 무료 기간(2027-03-04) 전에 바닥날 상황이었고, 그중 55%가 RDS였다.
 꾸메는 기록을 폰에 먼저 쓰므로 서버 DB를 잃어도 꿈 원본은 폰에 남는다 — 그래서 관리형 DB 대신
 매일 백업으로 메운다. DB 데이터는 암호화된 별도 EBS에 둔다(루트 디스크는 암호화가 안 돼 있다).
