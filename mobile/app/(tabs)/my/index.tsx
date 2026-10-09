@@ -6,13 +6,13 @@ import { Button, Card, Chip, ListRow, Row, Screen, Sheet, showToast, Stack, Titl
 import { NicknameSheet } from '@features/community/NicknameSheet';
 import { ConsentSheet } from '@features/consent/ConsentSheet';
 import { CONSENT_VERSION, consentAction, needsConsent, recordConsent } from '@features/consent/logic';
-import { useAuth } from '@shared/auth';
+import { appleAvailable, HAS_NATIVE_APPLE, useAuth, type Provider } from '@shared/auth';
 import { getDreamRepo, SETTINGS } from '@shared/db';
 import { STORYBOOK_ENABLED } from '@shared/storybook';
 import { syncIfSignedIn } from '@shared/sync';
 import { openWebPage, PRIVACY_URL, TERMS_URL } from '@shared/web';
 import { AppText } from '@shared/ui';
-import { c, sp } from '@theme/token';
+import { c, hit, r, sp } from '@theme/token';
 
 /**
  * MY-1. 계정(로그인 · 닉네임) · 위젯 설치 다시 보기 · 차단한 사용자 · 이용약관 · 개인정보처리방침(MY-3 · 4) ·
@@ -104,11 +104,29 @@ export default function MyScreen() {
   );
   // 폰에 남은 동의를 로그인 요청에 싣지 않는다 — 로그아웃한 채 남은 동의는 누구의 것인지 알 수 없다(PR #77 리뷰).
   // 새 계정이면 그 자리에서 묻고, 시트는 열 때마다 체크가 비어 있다
-  const startSignIn = () => {
-    void auth.signIn().then((r) => {
-      if (r === 'consent') setConsent('signUp');
-    });
+  // busy는 다시 그린 뒤에야 바뀐다 — 그 사이 애플 · 구글을 연달아 누르면 두 시도가 pending을 덮어쓴다(PR #87 리뷰)
+  const signingIn = useRef(false);
+  const startSignIn = (provider: Provider = 'google') => {
+    if (auth.busy || signingIn.current) return;
+    signingIn.current = true;
+    void auth
+      .signIn(provider)
+      .then((res) => {
+        if (res === 'consent') setConsent('signUp');
+      })
+      .finally(() => {
+        signingIn.current = false;
+      });
   };
+  // 애플 로그인은 iOS 13 이상 · 모듈이 든 빌드에서만 뜬다. 안드로이드에는 버튼이 없다
+  const [canApple, setCanApple] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void appleAvailable().then((ok) => alive && setCanApple(ok));
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [consentError, setConsentError] = useState<string | null>(null);
   const agree = () => {
     const after = consent;
@@ -187,10 +205,11 @@ export default function MyScreen() {
             <AppText size="caption" color={c.fgFaint}>
               로그인하면 기기를 바꿔도 기록이 따라옵니다.
             </AppText>
+            {canApple && <AppleButton onPress={() => startSignIn('apple')} />}
             <Button
               label="구글로 계속하기"
               loading={auth.busy}
-              onPress={startSignIn}
+              onPress={() => startSignIn('google')}
             />
             {/* 동의는 누르면 뜨는 시트에서 받는다(이슈 #71). 여기서는 무엇이 있는지만 */}
             <AppText size="caption" color={c.fgFaint}>
@@ -308,5 +327,26 @@ export default function MyScreen() {
         onSaved={() => void refresh()}
       />
     </Screen>
+  );
+}
+
+/**
+ * 「Apple로 계속하기」. **애플이 주는 버튼을 그대로 쓴다** — 로고 · 글자 · 색을 직접 그리면 App Store 심사에서 거절된다
+ * (Human Interface Guidelines). 글자는 기기 언어를 따른다. 높이 · 모서리만 우리 버튼과 맞춘다.
+ * 모듈은 있을 때만 부른다(절대 규칙 10) — 안드로이드에서는 그 자리에 아무것도 없다
+ */
+function AppleButton({ onPress }: { onPress: () => void }) {
+  if (!HAS_NATIVE_APPLE) return null;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Apple = require('expo-apple-authentication') as typeof import('expo-apple-authentication');
+  return (
+    <Apple.AppleAuthenticationButton
+      buttonType={Apple.AppleAuthenticationButtonType.CONTINUE}
+      // 어두운 화면이라 흰 버튼
+      buttonStyle={Apple.AppleAuthenticationButtonStyle.WHITE}
+      cornerRadius={r.control}
+      style={{ height: hit.base }}
+      onPress={onPress}
+    />
   );
 }

@@ -23,7 +23,11 @@ export type Session = {
   expiresAt: string;
   /** `consentVersion` — 로그인 응답 · 동의 기록 뒤의 서버 값. 이 필드가 생기기 전에 저장한 세션에는 없다(`undefined` = 모름) */
   user: { id: string; nickname: string; consentVersion?: string | null };
+  /** 어느 계정으로 들어왔나(이슈 #72). 애플 계정은 삭제할 때 애플 인증을 한 번 더 받는다. 이 필드가 생기기 전 세션은 구글이다 */
+  provider?: Provider;
 };
+
+export type Provider = 'google' | 'apple';
 
 let memory: Session | null = null;
 
@@ -75,10 +79,12 @@ export function isExpired(s: Session, now = Date.now()): boolean {
 export function toSession(
   res: { accessToken: string; expiresIn: number; user: { id: string; nickname: string; consentVersion?: string | null } },
   now = Date.now(),
+  provider: Provider = 'google',
 ): Session {
   return {
     accessToken: res.accessToken,
     expiresAt: new Date(now + res.expiresIn * 1000).toISOString(),
     user: res.user,
+    provider,
   };
 }

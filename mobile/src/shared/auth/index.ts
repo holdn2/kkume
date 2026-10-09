@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { deleteMe, fetchMe, loginWithGoogle, putConsent } from '@shared/api/auth';
+import { deleteMe, fetchMe, loginWithApple, loginWithGoogle, putConsent } from '@shared/api/auth';
 import { isApiError, setAccountDeletedHandler } from '@shared/api/client';
 import { getDreamRepo, SETTINGS } from '@shared/db';
 import { pauseSync, resetSyncPosition, syncIfSignedIn } from '@shared/sync';
 
 import { deleteAccount as runDeletion, onceAtATime, runSteps, type DeletionResult } from './deletion';
+import { signInWithApple } from './apple';
 import { signInWithGoogle, signOutFromGoogle } from './google';
-import { clearSession, isExpired, loadSession, saveSession, toSession, type Session } from './session';
+import { clearSession, isExpired, loadSession, saveSession, toSession, type Provider, type Session } from './session';
 
 export type { DeletionResult } from './deletion';
 
@@ -44,7 +45,8 @@ export const forgetAccount = onceAtATime(() =>
 setAccountDeletedHandler(() => void forgetAccount().catch(() => {}));
 
 export { googleBackend, HAS_NATIVE_GOOGLE } from './google';
-export { sessionBackend, type Session } from './session';
+export { appleAvailable, HAS_NATIVE_APPLE } from './apple';
+export { sessionBackend, type Provider, type Session } from './session';
 
 /**
  * 로그인 결과. `consent` — 구글 계정은 골랐는데 **꾸메 계정이 없다.** 서버가 동의 전에는 계정을 만들지 않는다
@@ -62,9 +64,9 @@ export type AuthState = {
    * 구글 계정을 고르고 **동의 값 없이** 로그인한다(문서 074). 이미 있는 계정은 그대로 들어간다 — 동의가 없거나
    * 옛 버전이면 마이 탭이 로그인한 뒤에 묻는다. 새 계정이면 `consent`. 취소 · 실패는 `failed`(이유는 `error`)
    */
-  signIn: () => Promise<SignInResult>;
+  signIn: (provider?: Provider) => Promise<SignInResult>;
   /**
-   * `signIn`이 `consent`를 돌려준 뒤 동의했다 — 고른 구글 계정의 **같은 토큰**에 동의 버전을 실어 다시 보낸다.
+   * `signIn`이 `consent`를 돌려준 뒤 동의했다 — 고른 구글 · 애플 계정의 **같은 토큰**에 동의 버전을 실어 다시 보낸다.
    * 서버가 계정을 만드는 것과 같은 트랜잭션에 동의를 기록한다(계약 072). 로그인됐으면 true
    */
   finishSignUp: (consentVersion: string) => Promise<boolean>;
@@ -119,16 +121,16 @@ export function useAuth(): AuthState {
   }, []);
 
   /**
-   * 동의를 기다리는 구글 ID 토큰. **메모리에만 둔다** — 저장소에 남기면 앱을 다시 열었을 때 누구의 것인지 모르는
-   * 토큰이 남는다. 구글 토큰은 한 시간쯤 살고, 서버는 같은 토큰을 두 번 받아 준다(문서 074 03장 1)
+   * 동의를 기다리는 ID 토큰. **메모리에만 둔다** — 저장소에 남기면 앱을 다시 열었을 때 누구의 것인지 모르는
+   * 토큰이 남는다. 구글 토큰은 한 시간쯤, 애플 토큰은 10분 살고, 서버는 같은 토큰을 두 번 받아 준다(문서 074 03장 1 · 075 01장)
    */
-  const pending = useRef<{ idToken: string; aud: string | null } | null>(null);
+  const pending = useRef<{ provider: Provider; idToken: string; aud: string | null } | null>(null);
 
   /** 서버 로그인 한 번. 성공하면 세션을 남기고, 실패하면 이유를 `error`에 둔다. `consent_required`는 던진다 */
-  const login = useCallback(async (idToken: string, aud: string | null, consentVersion?: string) => {
+  const login = useCallback(async (provider: Provider, idToken: string, aud: string | null, consentVersion?: string) => {
     try {
-      const res = await loginWithGoogle(idToken, consentVersion);
-      const s = toSession(res);
+      const res = await (provider === 'apple' ? loginWithApple : loginWithGoogle)(idToken, consentVersion);
+      const s = toSession(res, Date.now(), provider);
       await saveSession(s);
       setSession(s);
       // 로그인 전에 쌓인 기록을 바로 올린다. 소유자는 서버가 토큰에서 정하므로
@@ -145,11 +147,26 @@ export function useAuth(): AuthState {
     }
   }, []);
 
-  const signIn = useCallback(async (): Promise<SignInResult> => {
+  const signIn = useCallback(async (provider: Provider = 'google'): Promise<SignInResult> => {
     setBusy(true);
     setError(null);
     pending.current = null;
     try {
+      if (provider === 'apple') {
+        const a = await signInWithApple();
+        if (!a.ok) {
+          if (a.reason === 'cancelled') return 'failed';
+          const base = a.reason === 'unavailable' ? '이 기기에서는 애플 로그인을 쓸 수 없습니다' : '애플 로그인에 실패했습니다';
+          setError(a.detail ? `${base}\n${a.detail}` : base);
+          return 'failed';
+        }
+        try {
+          return (await login('apple', a.identityToken, null)) ? 'ok' : 'failed';
+        } catch {
+          pending.current = { provider: 'apple', idToken: a.identityToken, aud: null };
+          return 'consent';
+        }
+      }
       const g = await signInWithGoogle();
       if (!g.ok) {
         // 취소는 실패가 아니다. 사용자가 스스로 닫은 것에 오류 문구를 띄우면
@@ -174,10 +191,10 @@ export function useAuth(): AuthState {
       // 이 한 줄이 없으면 다음에 같은 자리에서 또 막힌다
       const aud = audienceOf(g.idToken);
       try {
-        return (await login(g.idToken, aud)) ? 'ok' : 'failed';
+        return (await login('google', g.idToken, aud)) ? 'ok' : 'failed';
       } catch {
         // 새 계정이다 — 동의를 받은 뒤 같은 토큰으로 다시 보낸다
-        pending.current = { idToken: g.idToken, aud };
+        pending.current = { provider: 'google', idToken: g.idToken, aud };
         return 'consent';
       }
     } finally {
@@ -197,7 +214,7 @@ export function useAuth(): AuthState {
       setError(null);
       try {
         // 동의 버전을 실었으니 consent_required 는 오지 않는다. 토큰이 만료됐으면 401 — 다시 로그인하라는 문구로
-        return await login(p.idToken, p.aud, consentVersion);
+        return await login(p.provider, p.idToken, p.aud, consentVersion);
       } catch {
         setError('로그인하지 못했습니다. 다시 로그인해 주세요.');
         return false;
@@ -209,9 +226,11 @@ export function useAuth(): AuthState {
   );
 
   const cancelSignUp = useCallback(async () => {
+    const was = pending.current?.provider;
     pending.current = null;
-    // 고른 구글 계정을 놓는다 — 다음에 「구글로 계속하기」를 누르면 계정을 다시 고른다
-    await signOutFromGoogle().catch(() => {});
+    // 고른 구글 계정을 놓는다 — 다음에 「구글로 계속하기」를 누르면 계정을 다시 고른다.
+    // 애플은 앱에서 놓을 것이 없다(로그아웃 API가 없다) — 토큰을 버리는 것으로 끝이다
+    if (was !== 'apple') await signOutFromGoogle().catch(() => {});
   }, []);
 
   const signOut = useCallback(async () => {
@@ -280,7 +299,20 @@ export function useAuth(): AuthState {
           const s = await loadSession();
           // 만료된 토큰을 보내면 서버가 401 unauthorized — 같은 안내로 간다
           if (!s || isExpired(s)) throw { code: 'unauthorized', message: '', status: 401 };
-          await deleteMe(s.accessToken);
+          // 애플 계정이면 애플 인증을 한 번 더 받는다 — 서버가 그 코드로 애플 토큰을 회수한다(App Store 5.1.1(v), 문서 075 02장).
+          // 서버는 애플 토큰을 보관하지 않으므로 지울 때 새로 받아야 한다
+          let appleCode: string | undefined;
+          if (s.provider === 'apple') {
+            const a = await signInWithApple();
+            if (!a.ok || !a.authorizationCode) {
+              const message = a.ok || a.reason !== 'cancelled'
+                ? '애플 인증을 받지 못해 삭제하지 않았습니다. 다시 시도해 주세요.'
+                : '애플 인증을 마치지 않아 삭제하지 않았습니다.';
+              throw { code: 'apple_reauth_required', message, status: 400 };
+            }
+            appleCode = a.authorizationCode;
+          }
+          await deleteMe(s.accessToken, appleCode);
         },
         // 서버는 이미 지웠다 — 이 기기 정리의 한 단계가 실패해도 결과는 "지웠음"이다(알림은 runSteps 가 보장)
         forget: () => forgetAccount().catch(() => {}),
