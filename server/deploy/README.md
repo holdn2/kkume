@@ -1,6 +1,7 @@
 # 서버 배포
 
-EC2 + RDS 로 `/health` 와 `/health/ready` 가 200 을 주고, 그 앞에 HTTPS 입구를 붙이기까지의 절차.
+EC2 로 `/health` 와 `/health/ready` 가 200 을 주고, 그 앞에 HTTPS 입구를 붙이기까지의 절차.
+DB 는 **같은 EC2 안의 Postgres 컨테이너**다(2026-10-10 RDS 에서 옮김, 5-1).
 S3 는 아직 포함하지 않는다.
 
 **이 이미지는 PostgreSQL 없이는 뜨지 않는다.** Flyway 가 시작할 때 연결을 요구한다.
@@ -18,8 +19,10 @@ t3.micro(1GiB)의 메모리로는 아예 되지 않는다.
 1GiB에 맞춰 두 가지를 해 두었다.
 
 - **스왑 2GB** (`user-data.sh`) — 메모리가 순간적으로 몰릴 때 죽는 대신 느려지게 한다
-- **컨테이너 메모리 상한 768m + `MaxRAMPercentage=70`** (`ec2-run.sh`) —
-  상한을 주지 않으면 JVM이 호스트 전체를 기준으로 힙을 잡아 OS 몫까지 먹는다
+- **컨테이너 메모리 상한 + `MaxRAMPercentage=70`** (`ec2-run.sh`) —
+  상한을 주지 않으면 JVM이 호스트 전체를 기준으로 힙을 잡아 OS 몫까지 먹는다.
+  앱 640m · DB 192m · Caddy 128m. 합이 물리 메모리(913MB)를 조금 넘지만 실제 사용은 약 360MB 이고 스왑이 받친다
+  (2026-10-10 실측: 앱 RSS 300~350MB · DB 48MB · Caddy 15MB). 모자라면 t3.small 인데 **정지 → 시작이라 IP 가 바뀐다**(HTTPS 절)
 
 ## 리전은 시드니(ap-southeast-2)다
 
@@ -53,6 +56,9 @@ AI 작업은 원래 수 초 이상 걸린다.
 
 **퍼블릭 IPv4 주소는 프리 티어가 없다**(시간당 $0.005 ≈ 월 $3.65). 빼먹기 쉬운 고정비다.
 
+**RDS 를 쓰지 않는다**(2026-10-10, 문서 077 · 080). 10/1~10/9 비용의 55% 가 RDS 인스턴스였고, 그대로면 크레딧이
+12월 중순에 바닥났다. DB 는 수 MB 라 EC2 안 컨테이너로 충분하다. 대신 백업 · 암호화를 직접 챙긴다(5-1 · 5-5).
+
 ## 파일
 
 | 파일 | 언제 쓰나 |
@@ -67,6 +73,8 @@ AI 작업은 원래 수 초 이상 걸린다.
 | `Caddyfile` | HTTPS 입구 설정. EC2의 `/opt/kkume/Caddyfile`로 올라간다 |
 | `moderate.sh` | **운영자 신고 처리**(문서 070 · 072) — `reports` · `show` · `remove` · `dismiss` · `suspend` · `unsuspend`. SSH 를 지금 IP 로 잠깐 열고 닫는다 |
 | `log-retention.sh` | EC2 에 "매달 1일 컨테이너 기록 비우기" 타이머를 설치한다. 몇 번 돌려도 같다 |
+| `ec2-db.sh` | EC2 안에서 Postgres 컨테이너(`kkume-db`)를 띄운다. 처음 한 번, 또는 DB 설정을 바꿀 때만(5-1) |
+| `db-backup.sh` | EC2 에 "매일 DB 백업 → S3" 타이머를 설치한다. 몇 번 돌려도 같다(5-5) |
 
 ## 최초 1회 — 자원 만들기
 
@@ -165,58 +173,42 @@ aws ec2 describe-instances --filters Name=tag:Name,Values=kkume-server \
   --query 'Reservations[].Instances[].PublicIpAddress' --output text
 ```
 
-### 5-1. RDS PostgreSQL
+### 5-1. PostgreSQL — EC2 안 컨테이너
 
-DB 는 인터넷에 열지 않는다. **EC2 의 보안그룹에서만 5432 를 허용한다.**
+**DB 는 앱과 같은 EC2 안의 `kkume-db` 컨테이너다**(`postgres:17-alpine`, 2026-10-10 RDS 에서 옮김 — 문서 077 · 080).
+RDS 시절 절차(보안그룹 `kkume-db-sg` · 서브넷 그룹 · `create-db-instance`)는 이 커밋 이전의 git 이력에 있다.
 
-```bash
-# DB 전용 보안그룹 — 출발지를 CIDR 이 아니라 EC2 보안그룹으로 준다
-RDS_SG=$(aws ec2 create-security-group --group-name kkume-db-sg \
-  --description "kkume RDS - EC2 only" --query GroupId --output text)
-aws ec2 authorize-security-group-ingress --group-id "$RDS_SG" \
-  --protocol tcp --port 5432 --source-group <EC2 보안그룹 id>
+- **포트를 열지 않는다.** 호스트 포트 없이 docker 네트워크 `kkume-net` 으로만 앱과 붙는다. `.env` 의 `DB_HOST=kkume-db`
+- **데이터는 암호화된 별도 EBS 에 둔다** — 루트 EBS(8GiB)는 암호화돼 있지 않고, 처리방침이 "DB 저장 시 암호화"를 약속한다(070).
+  `ec2-db.sh` 는 `/var/lib/kkume-db` 가 마운트돼 있지 않으면 띄우지 않는다
+- **17 로 맞춘다.** 로컬(`compose.yaml`) · 테스트(Testcontainers) · RDS 가 17 이었다
+- 메모리 상한 192m, `shared_buffers=32MB` · `max_connections=20`(앱 Hikari 풀 10 + 운영) · `max_wal_size=256MB`
+- **DB 는 스왑을 쓰지 않는다**(`--memory-swap 192m`). 스왑 파일(`user-data.sh`)이 암호화 안 된 루트 디스크에 있다
 
-aws rds create-db-subnet-group --db-subnet-group-name kkume-db-subnets \
-  --db-subnet-group-description "kkume default vpc subnets" \
-  --subnet-ids <기본 VPC 서브넷 3개>
-
-aws rds create-db-instance \
-  --db-instance-identifier kkume-db --db-instance-class db.t3.micro \
-  --engine postgres --engine-version 17.11 \
-  --master-username kkume --master-user-password "$(openssl rand -hex 24)" \
-  --db-name kkume \
-  --allocated-storage 20 --storage-type gp3 --storage-encrypted \
-  --db-subnet-group-name kkume-db-subnets --vpc-security-group-ids "$RDS_SG" \
-  --no-publicly-accessible --no-multi-az --backup-retention-period 1
-```
-
-**엔진 버전을 17.11 로 박는다.** RDS 의 기본값은 18.x 인데 로컬(`compose.yaml`)과
-테스트(Testcontainers)가 17 이라, 그대로 두면 배포에서만 다른 버전을 쓰게 된다.
-
-> **백업 보존은 1일이 상한이다.** 무료 플랜에서 7일을 주면
-> `FreeTierRestrictionError` 로 거부된다. **하루 안에 발견하지 못한 데이터 손상은
-> 되돌릴 수 없다는 뜻이다** — 발표 전에는 스냅샷을 손으로 한 번 떠 둔다.
->
-> ```bash
-> aws rds create-db-snapshot --db-instance-identifier kkume-db \
->   --db-snapshot-identifier kkume-db-before-demo
-> ```
-
-엔드포인트를 `.env` 의 `DB_HOST` 에 넣는다.
+처음 한 번 — 암호화 볼륨을 만들어 붙인다(인스턴스를 정지하지 않는다. IP 가 그대로다).
 
 ```bash
-aws rds describe-db-instances --db-instance-identifier kkume-db \
-  --query 'DBInstances[0].Endpoint.Address' --output text
+# Git Bash 에서는 MSYS_NO_PATHCONV=1 — 아니면 /dev/sdf 가 Windows 경로로 바뀐다
+VOL=$(aws ec2 create-volume --availability-zone ap-southeast-2b --size 2 --volume-type gp3 --encrypted \
+  --tag-specifications 'ResourceType=volume,Tags=[{Key=Name,Value=kkume-db-data}]' --query VolumeId --output text)
+MSYS_NO_PATHCONV=1 aws ec2 attach-volume --volume-id "$VOL" --instance-id <인스턴스 id> --device /dev/sdf
 ```
 
-**비밀번호는 `.env` 에만 있다.** 저장소에도, EC2 디스크에도 두지 않는다 —
-`deploy.sh` 가 ssh 인자로 넘기고 `ec2-run.sh` 가 컨테이너 환경변수로만 쓴다.
-잃어버리면 다시 만든다.
+EC2 안에서(새 디스크는 `/dev/nvme1n1` 로 보인다. **`blkid` 가 비어 있을 때만 포맷한다**):
 
 ```bash
-aws rds modify-db-instance --db-instance-identifier kkume-db \
-  --master-user-password "$(openssl rand -hex 24)" --apply-immediately
+sudo mkfs.ext4 -L kkume-db /dev/nvme1n1
+sudo mkdir -p /var/lib/kkume-db
+echo "UUID=$(sudo blkid -o value -s UUID /dev/nvme1n1) /var/lib/kkume-db ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab
+sudo mount /var/lib/kkume-db
 ```
+
+그다음 `ec2-db.sh` 를 돌린다(인자: DB 이름 · 사용자 · 비밀번호 — `.env` 의 값). 비밀번호는 컨테이너 환경변수로만 넘기고,
+**데이터 디렉터리가 이미 있으면 Postgres 는 그 값을 무시한다**(처음 초기화 때만 쓴다). 바꾸려면 `ALTER ROLE` 로 바꾸고 `.env` 를 고친다.
+
+> **`docker run -i` 를 `bash -s` 스크립트 안에서 쓰지 않는다.** ssh 로 stdin 에 밀어 넣은 스크립트의 **나머지를 그 컨테이너가 먹는다** —
+> 스크립트가 그 줄에서 말없이 끝난다. 2026-10-10 이전 중에 앱만 멈춘 채 끝나 25초 끊겼다. stdin 이 필요 없으면 `-i` 를 빼고,
+> 필요하면(`pg_restore < 파일`) 스크립트 전체를 `{ ... }` 로 감싸 bash 가 끝까지 읽은 뒤 돌게 한다.
 
 ### 5-2. S3 오디오 버킷
 
@@ -300,6 +292,29 @@ Apple Developer → Certificates, IDs & Profiles → Keys → Sign in with Apple
 Docker 기본값(json-file)은 크기 제한이 없고, **Caddy 는 배포 때 다시 띄우지 않아** 상한이 없으면 계속 쌓인다(2026-10-07 실측: 9/14부터 쌓여 있었다).
 **`--log-opt` 는 컨테이너를 다시 만들어야 먹는다** — 앱은 `deploy.sh`, Caddy 는 `https.sh`(HTTPS 가 몇 초 끊긴다).
 
+### 5-5. DB 백업(매일 · 1일 보관)
+
+RDS 의 자동 백업이 없어졌으므로 `./db-backup.sh` 가 설치한 systemd 타이머가 **매일 04:30(KST)** `pg_dump -Fc` 를
+`s3://kkume-audio-341860778310/backup/` 에 올린다(AES256). **배포할 때마다 `ec2-run.sh` 도 직전에 한 번 뜬다**(`-pre-deploy`) —
+RDS 때의 "배포 전 수동 스냅숏"을 대신한다. 백업이 실패하면 배포하지 않는다.
+
+- **보관 1일** — 처리방침의 "자동 백업 1일"(070)이다. 지난 것은 백업 스크립트가 지운다. 늘리려면 처리방침부터 고친 뒤
+  `.env` 에 `BACKUP_KEEP_DAYS` 를 넣고 `./db-backup.sh` 를 다시 돌린다
+- 덤프는 암호화 볼륨(`/var/lib/kkume-db`)에 잠깐 썼다가 올리고 지운다. 루트 디스크에는 남기지 않는다
+- 권한: EC2 역할 `kkume-ec2-ecr` 의 인라인 `kkume-db-backup` — `backup/*` 쓰기 · 읽기 · 지우기만
+- 손으로 한 번: `sudo systemctl start kkume-db-backup.service` → `sudo journalctl -u kkume-db-backup.service -n 5`
+
+**복원**(2026-10-10 시험 통과 — 행 수 전부 일치):
+
+```bash
+aws s3 cp s3://kkume-audio-341860778310/backup/<파일> /var/lib/kkume-db/restore.dump
+sudo docker exec -i kkume-db pg_restore -U kkume -d kkume --clean --if-exists --no-owner --no-acl < /var/lib/kkume-db/restore.dump
+sudo rm /var/lib/kkume-db/restore.dump
+```
+
+> **시험 복원은 임시 컨테이너를 `docker rm -fv` 로 지운다.** `postgres` 이미지는 데이터 디렉터리를 익명 볼륨으로 잡아서,
+> `-v` 없이 지우면 **복원한 데이터가 암호화 안 된 루트 디스크에 남는다**(2026-10-10 실제로 남았고 지웠다).
+
 ### 6. 준비 확인
 
 `user-data.sh`가 도는 데 1~2분 걸린다. 접속해서 세 가지를 확인한다.
@@ -344,7 +359,7 @@ IP 는 받지 않아서, IP 주소로는 앱 쪽에서 좁게 열 방법이 없�
   **모바일이 옮긴 뒤 보안그룹에서 80 을 닫았다**(2026-09-17, #42). Caddy 는 서버 안에서 `127.0.0.1:80` 으로
   앱에 닿으므로 보안그룹과 무관하게 동작한다
 
-그래서 `https.sh` 는 **배포가 아니다.** 앱 컨테이너 · RDS 를 건드리지 않는다.
+그래서 `https.sh` 는 **배포가 아니다.** 앱 · DB 컨테이너를 건드리지 않는다.
 
 > **대체 발급처가 없다.** 발급처를 직접 지정하면 Caddy 의 기본 목록(Let's Encrypt + ZeroSSL)이
 > 사라지고, ZeroSSL 대체 발급은 원래도 이메일을 설정해야 켜진다. 저장소에 개인 이메일을
@@ -368,7 +383,7 @@ cd server/deploy
 `<IP>.nip.io` 도 함께 바뀐다. 모바일은 주소를 박아 쓰므로 OTA 를 다시 내보내야 한다.
 
 재부팅(`reboot`)은 괜찮다 — IP 가 유지되고 두 컨테이너 모두 `--restart unless-stopped` 로 돌아온다.
-**비용을 줄여야 하면 RDS 만 정지한다.** 전체 비용의 61% 가 RDS 이고, IP 문제가 없다.
+**인스턴스 타입을 바꾸는 것(t3.small 등)도 정지 → 시작이다.** IP 가 바뀌므로 모바일 OTA 와 날짜를 맞춘다.
 
 지금 Elastic IP 를 붙이지 않은 이유 — **붙이는 순간 IP 가 바뀐다.** 모바일이 아직
 `http://13.239.58.251` 을 쓰고 있어서 그 주소가 즉시 죽는다. 모바일이 새 주소로 옮긴 뒤,
@@ -393,7 +408,7 @@ cd server/deploy
 | 컨테이너는 떴는데 바깥에서 안 됨 | 보안그룹 인바운드 443 (3번)과 `sudo docker ps` 의 `kkume-caddy`. SSH가 안 되면 내 공인 IP가 바뀐 것이다 |
 | `http://<IP>` 가 안 됨 | **정상이다.** 80 은 닫았다. 앱은 `https://<IP>.nip.io` 로 붙는다 |
 | `/health`가 502·연결 거부 | `sudo docker logs kkume-server` |
-| **`/health` 는 200 인데 `/health/ready` 가 아님** | **RDS 쪽이다.** `kkume-db-sg` 가 EC2 보안그룹에서 5432 를 열어 주는지, `.env` 의 `DB_*` 가 맞는지 본다 |
+| **`/health` 는 200 인데 `/health/ready` 가 아님** | **DB 쪽이다.** `sudo docker ps` 에 `kkume-db` 가 있는지, 앱이 `kkume-net` 에 붙었는지(`docker inspect kkume-server`), `.env` 의 `DB_*` 가 맞는지 본다 |
 | 컨테이너가 재시작만 반복 | Flyway 가 DB 에 못 닿는 것이다. 로그의 `Database: jdbc:postgresql://...` 줄을 본다 |
 | `text contents could not be decoded` | `--user-data`에 `fileb://`를 썼는지 (5번) |
 | HTTPS 만 연결 거부 | 보안그룹 인바운드 443. 서버 안에서는 되는지 `https.sh` 출력의 "HTTPS 응답 확인" 줄을 본다 |
@@ -416,10 +431,12 @@ cd server/deploy
 | 배포 사용자의 알림 권한 | `kkume-deploy` 인라인 `kkume-sns-reports-admin` — 이 주제의 생성 · 설정 · 구독 · 발행만 |
 | 기록 보관 | 컨테이너 기록 10MB × 3, systemd `kkume-log-clear.timer` 가 매달 1일 비움 |
 | 인스턴스 프로파일 | `kkume-ec2-ecr` (ECR 읽기 전용) |
-| 인스턴스 | `t3.micro`, Amazon Linux 2023, EBS 8GiB |
-| DB | `kkume-db` — PostgreSQL 17.11, db.t3.micro, gp3 20GiB, 암호화 켬, 퍼블릭 차단 |
-| DB 보안그룹 | `kkume-db-sg` — 5432 를 EC2 보안그룹에서만 허용 |
-| DB 서브넷 그룹 | `kkume-db-subnets` |
+| 인스턴스 | `t3.micro`, Amazon Linux 2023, 루트 EBS 8GiB(암호화 안 됨) |
+| DB | 컨테이너 `kkume-db` — PostgreSQL 17.11, 메모리 상한 192m, 포트 없음(`kkume-net`), 데이터 `/var/lib/kkume-db/data` |
+| DB 볼륨 | EBS `kkume-db-data`(`vol-0d7b7acfdc57b4d78`) — gp3 2GiB, **암호화 켬**, `/var/lib/kkume-db`(fstab `nofail`) |
+| DB 백업 | systemd `kkume-db-backup.timer` 매일 04:30 KST + 배포 직전 → `s3://kkume-audio-341860778310/backup/`, 1일 보관 |
+| EC2 역할의 백업 권한 | `kkume-ec2-ecr` 인라인 `kkume-db-backup` — `backup/*` 쓰기 · 읽기 · 지우기만 |
+| RDS(옛) | `kkume-db` db.t3.micro — **2026-10-10 부터 쓰지 않음, 사용자 확인 뒤 삭제 예정**. `.env` 의 `RDS_HOST` 가 그 주소 — 되돌리려면 `DB_HOST` 를 그 값으로 |
 
 **SSH 인바운드는 상시로 두지 않는다.** 쓸 때 지금 IP 로 열고, 끝나면 그 규칙을 회수한다(`moderate.sh` 는 이것을 스스로 한다).
 
