@@ -32,7 +32,15 @@ export function loginWithGoogle(idToken: string, consentVersion?: string) {
   });
 }
 
-export type Me = { id: string; nickname: string; consentVersion?: string | null };
+/** 애플 ID 토큰으로 같은 일을 한다(이슈 #72, 문서 075). 응답 · 오류 · `consent_required`까지 구글과 같다 */
+export function loginWithApple(identityToken: string, consentVersion?: string) {
+  return request<LoginResponse>('/api/auth/apple', {
+    method: 'POST',
+    body: consentVersion ? { identityToken, consentVersion } : { identityToken },
+  });
+}
+
+export type Me ={ id: string; nickname: string; consentVersion?: string | null };
 
 export function fetchMe(token: string) {
   return request<Me>('/api/me', { token });
@@ -47,6 +55,11 @@ export function putConsent(token: string, version: string) {
  * 계정 삭제(서버 계약 064 · 066). `204`면 서버가 그 자리에서 다 지웠다 — 유예 없음.
  * `401 account_deleted`(이미 지움)도 성공이다. 해석은 `@shared/auth/deletion`이 한다
  */
-export function deleteMe(token: string) {
-  return request<void>('/api/me', { method: 'DELETE', token });
+export function deleteMe(token: string, appleAuthorizationCode?: string) {
+  // 애플 계정은 방금 받은 애플 인증 코드를 싣는다 — 서버가 애플 토큰을 회수한다(이슈 #72, 문서 075 02장)
+  return request<void>('/api/me', {
+    method: 'DELETE',
+    token,
+    ...(appleAuthorizationCode ? { body: { appleAuthorizationCode } } : {}),
+  });
 }
