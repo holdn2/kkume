@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -16,6 +17,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.kkume.server.audio.AudioStorage;
+import com.kkume.server.auth.AppleAccountClient;
+import com.kkume.server.auth.AppleAccountClient.AppleGrant;
 
 /**
  * 계정 삭제(MY-5). 계약은 문서 064 · 066(모바일 065에서 수용)이다.
@@ -46,10 +49,63 @@ public class AccountDeletionService {
 
 	private final AudioStorage audio;
 
-	public AccountDeletionService(NamedParameterJdbcTemplate jdbc, TransactionTemplate transactions, AudioStorage audio) {
+	private final AppleAccountClient apple;
+
+	public AccountDeletionService(NamedParameterJdbcTemplate jdbc, TransactionTemplate transactions, AudioStorage audio,
+			AppleAccountClient apple) {
 		this.jdbc = jdbc;
 		this.transactions = transactions;
 		this.audio = audio;
+		this.apple = apple;
+	}
+
+	/**
+	 * 앱의 「계정 삭제」({@code DELETE /api/me}). 애플 계정이면 애플 토큰 회수까지 한다(App Store 5.1.1(v), 문서 075 · 076).
+	 *
+	 * <p>애플 계정의 순서: ① 앱이 방금 받은 인가 코드를 토큰으로 바꾸고 같은 애플 ID 인지 본다 — 실패하면 아무것도 지우지 않는다
+	 * → ② 꾸메 쪽 삭제({@link #delete(UUID)}) → ③ 회수. ③이 실패해도 ②는 되돌리지 않는다 — 이용자가 지우라고 한 것은
+	 * 꾸메의 기록이고, 그것은 끝까지 지워져야 한다. 회수용 키가 없으면 ①③을 건너뛰고 경고만 남긴다.
+	 *
+	 * @param appleAuthorizationCode 애플 계정일 때만 쓴다. 구글 계정이면 무시한다
+	 * @throws AppleReauthRequiredException 애플 계정인데 코드가 없거나 애플이 거절했다. 지우지 않았다
+	 * @throws AppleAccountMismatchException 다른 애플 ID 로 인증했다. 지우지 않았다
+	 * @throws DeletionFailedException 애플에 닿지 못했거나 S3 에서 못 지웠다. 지우지 않았다
+	 */
+	public void deleteAccount(UUID userId, String appleAuthorizationCode) {
+		List<Map<String, Object>> rows = this.jdbc.queryForList(
+				"select provider, provider_id from users where id = :user and deleted_at is null",
+				new MapSqlParameterSource("user", userId));
+		if (rows.isEmpty() || !Provider.APPLE.code().equals(rows.get(0).get("provider"))) {
+			delete(userId);
+			return;
+		}
+
+		if (appleAuthorizationCode == null || appleAuthorizationCode.isBlank()) {
+			throw new AppleReauthRequiredException();
+		}
+		if (!this.apple.enabled()) {
+			log.warn("계정 삭제 — 애플 회수용 키가 없어 애플 토큰 회수를 건너뜀 user={}", userId);
+			delete(userId);
+			return;
+		}
+
+		AppleGrant grant;
+		try {
+			grant = this.apple.exchange(appleAuthorizationCode);
+		}
+		catch (AppleAccountClient.AppleCodeRejectedException ex) {
+			throw new AppleReauthRequiredException();
+		}
+		catch (AppleAccountClient.AppleUnavailableException ex) {
+			log.warn("계정 삭제 — 애플 토큰 교환 실패, 아무것도 지우지 않음 user={}", userId, ex);
+			throw new DeletionFailedException();
+		}
+		if (!grant.subject().equals(rows.get(0).get("provider_id"))) {
+			throw new AppleAccountMismatchException();
+		}
+
+		delete(userId);
+		this.apple.revoke(grant);
 	}
 
 	/**
@@ -123,7 +179,7 @@ public class AccountDeletionService {
 				""", p);
 		this.jdbc.update("delete from user_blocks where blocker_id = :user or blocked_id = :user", p);
 
-		// 구글 계정과의 연결을 끊는다. 그대로 두면 같은 구글 계정으로 로그인할 때 지운 계정이 되살아난다
+		// 소셜 계정과의 연결을 끊는다. 그대로 두면 같은 구글 · 애플 계정으로 로그인할 때 지운 계정이 되살아난다
 		this.jdbc.update("""
 				update users set provider_id = :anon, nickname = :nickname, deleted_at = :now, updated_at = :now,
 				  consent_version = null, consented_at = null, suspended_at = null
@@ -155,6 +211,22 @@ public class AccountDeletionService {
 	/** 녹음 키의 사용자 몫. 키 모양은 {@code AudioService.prefix}와 같다 */
 	static String audioPrefix(UUID userId) {
 		return "audio/" + userId + "/";
+	}
+
+	/** 애플 계정을 지우려면 앱이 애플 인증을 다시 받아 그 인가 코드를 실어야 한다. 아무것도 지우지 않았다 */
+	public static class AppleReauthRequiredException extends RuntimeException {
+
+		public AppleReauthRequiredException() {
+			super("계정을 삭제하려면 애플 계정으로 다시 인증해 주세요");
+		}
+	}
+
+	/** 앱이 다시 받은 애플 인증이 이 꾸메 계정의 애플 ID 가 아니다. 아무것도 지우지 않았다 */
+	public static class AppleAccountMismatchException extends RuntimeException {
+
+		public AppleAccountMismatchException() {
+			super("로그인한 애플 계정으로 인증해 주세요");
+		}
 	}
 
 	/** S3 에서 못 지웠다. 아무것도 지우지 않았으니 다시 누르면 된다 */

@@ -23,24 +23,48 @@ public class AuthController {
 
 	private final GoogleTokenVerifier googleVerifier;
 
+	private final AppleTokenVerifier appleVerifier;
+
 	private final UserService users;
 
 	private final AppTokenService tokens;
 
-	public AuthController(GoogleTokenVerifier googleVerifier, UserService users, AppTokenService tokens) {
+	public AuthController(GoogleTokenVerifier googleVerifier, AppleTokenVerifier appleVerifier, UserService users,
+			AppTokenService tokens) {
 		this.googleVerifier = googleVerifier;
+		this.appleVerifier = appleVerifier;
 		this.users = users;
 		this.tokens = tokens;
 	}
 
 	@PostMapping("/google")
 	public LoginResponse google(@RequestBody GoogleLoginRequest request) {
-		if (request == null || request.idToken() == null || request.idToken().isBlank()) {
-			throw new InvalidSocialTokenException("idToken 이 비어 있습니다");
+		if (request == null) {
+			throw new InvalidSocialTokenException("본문이 비어 있습니다");
 		}
-		// 구글 토큰보다 먼저 본다. 틀린 동의 버전으로는 계정을 만들지 않는다
-		String consent = request.consentVersion() == null ? null : UserService.requireConsentVersion(request.consentVersion());
-		SocialIdentity identity = this.googleVerifier.verify(request.idToken());
+		return login(this.googleVerifier, request.idToken(), request.consentVersion());
+	}
+
+	/**
+	 * 애플 로그인(문서 075 · 076). 규칙 · 응답 · 오류는 구글과 모양까지 같다 — 앱이 같은 코드로 받는다.
+	 * 애플 ID 토큰은 10분이라, 동의 시트를 그보다 오래 열어 두고 다시 보내면 {@code 401 invalid_token}이다.
+	 */
+	@PostMapping("/apple")
+	public LoginResponse apple(@RequestBody AppleLoginRequest request) {
+		if (request == null) {
+			throw new InvalidSocialTokenException("본문이 비어 있습니다");
+		}
+		return login(this.appleVerifier, request.identityToken(), request.consentVersion());
+	}
+
+	/** 판정 순서: 동의 버전 모양(400) → 소셜 토큰(401) → 계정 없음 + 동의 없음(403 consent_required, {@code findOrCreate}) */
+	private LoginResponse login(SocialTokenVerifier verifier, String socialToken, String consentVersion) {
+		if (socialToken == null || socialToken.isBlank()) {
+			throw new InvalidSocialTokenException("토큰이 비어 있습니다");
+		}
+		// 소셜 토큰보다 먼저 본다. 틀린 동의 버전으로는 계정을 만들지 않는다
+		String consent = consentVersion == null ? null : UserService.requireConsentVersion(consentVersion);
+		SocialIdentity identity = verifier.verify(socialToken);
 		User user = this.users.findOrCreate(identity, consent);
 		AppTokenService.IssuedToken token = this.tokens.issue(user.getId());
 		return new LoginResponse(token.accessToken(), token.expiresInSeconds(),
@@ -62,6 +86,10 @@ public class AuthController {
 	 * 앱은 시트를 띄우고 같은 {@code idToken}에 이 값을 붙여 다시 보낸다(문서 074)
 	 */
 	public record GoogleLoginRequest(String idToken, String consentVersion) {
+	}
+
+	/** {@code identityToken}: 애플이 준 ID 토큰(JWT). {@code consentVersion}은 구글과 같다 */
+	public record AppleLoginRequest(String identityToken, String consentVersion) {
 	}
 
 	public record LoginResponse(String accessToken, long expiresIn, Me user) {
