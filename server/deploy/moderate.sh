@@ -114,4 +114,4 @@ trap 'aws ec2 revoke-security-group-ingress --region "$AWS_REGION" --group-id "$
 opts="-v ON_ERROR_STOP=1 -P pager=off"
 [ "$expanded" = 1 ] && opts="$opts -x"
 printf '%s\n' "$sql" | ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "$EC2_USER@$EC2_HOST" \
-  "sudo docker run --rm -i -e PGPASSWORD='$DB_PASSWORD' postgres:17-alpine psql -h '$DB_HOST' -U '$DB_USER' -d '$DB_NAME' $opts"
+  "sudo docker run --rm -i --network kkume-net -e PGPASSWORD='$DB_PASSWORD' postgres:17-alpine psql -h '$DB_HOST' -U '$DB_USER' -d '$DB_NAME' $opts"
