@@ -176,7 +176,12 @@ lucide-react-native · @shopify/flash-list · @gorhom/bottom-sheet ·
 `@WebMvcTest`는 `org.springframework.boot.webmvc.test.autoconfigure`.
 3.x 예제를 그대로 붙여넣으면 컴파일되지 않으므로 **jar 안을 열어 확인한다.**
 
-**인프라** — AWS EC2(t3.micro) + RDS + S3 · EAS Build
+**인프라** — AWS EC2(t3.micro, Postgres 컨테이너) + S3 · EAS Build
+
+**DB는 RDS가 아니라 EC2 안 Postgres 컨테이너다**(2026-10-10 이전, 문서 077 · 080).
+크레딧이 하루 약 $1.1씩 줄어 무료 기간(2027-03-04) 전에 바닥날 상황이었고, 그중 55%가 RDS였다.
+꾸메는 기록을 폰에 먼저 쓰므로 서버 DB를 잃어도 꿈 원본은 폰에 남는다 — 그래서 관리형 DB 대신
+매일 백업으로 메운다. DB 데이터는 암호화된 별도 EBS에 둔다(루트 디스크는 암호화가 안 돼 있다).
 
 **EC2는 t3.micro이고 리전은 시드니(`ap-southeast-2`)다.**
 계획서는 t3.small · 서울이었지만 둘 다 바꿨다.
