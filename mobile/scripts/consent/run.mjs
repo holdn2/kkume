@@ -32,6 +32,10 @@ const alias = {
     b.onResolve({ filter: /^expo-modules-core$/ }, () => ({
       path: path.join(mobile, 'scripts', 'sync-repro', 'stub-expo-modules-core.mjs'),
     }));
+    // 동기화 입구 시험(K17 · K18)이 동기화 모듈을 부른다 — 파일 올리기는 expo-file-system에 묶여 있어 가짜로 바꾼다
+    b.onResolve({ filter: /^@shared\/audio\/upload$/ }, () => ({
+      path: path.join(mobile, 'scripts', 'sync-repro', 'fake-upload.mjs'),
+    }));
     b.onResolve({ filter: /^@(shared|features)\// }, (args) => {
       const [, root, rest] = /^@(shared|features)\/(.*)$/.exec(args.path);
       const p = resolveSource(path.join(src, root, rest));

@@ -9,6 +9,7 @@ import { CONSENT_VERSION, consentAction, needsConsent, recordConsent } from '@fe
 import { useAuth } from '@shared/auth';
 import { getDreamRepo, SETTINGS } from '@shared/db';
 import { STORYBOOK_ENABLED } from '@shared/storybook';
+import { syncIfSignedIn } from '@shared/sync';
 import { openWebPage, PRIVACY_URL, TERMS_URL } from '@shared/web';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
@@ -120,6 +121,8 @@ export default function MyScreen() {
         if (after === 'existing') {
           // 서버에 남긴다. 실패해도(오프라인) 시트를 다시 띄우지 않는다 — 폰에 동의가 있으니 다음 포커스가 조용히 다시 올린다
           await sendConsent(CONSENT_VERSION).catch(() => {});
+          // 동의 전에는 동기화가 멈춰 있었다 — 폰에 동의가 남았으니 지금 올린다
+          void syncIfSignedIn({ force: true });
           return;
         }
         if (after !== 'signUp') return;

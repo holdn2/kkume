@@ -1,3 +1,4 @@
+import { canSync } from '@features/consent/logic';
 import { completeUpload, fetchStt, requestUploadSlot } from '@shared/api/audio';
 import { uploadFormatFor } from '@shared/audio/format';
 import { HAS_API, isApiError } from '@shared/api/client';
@@ -352,6 +353,9 @@ export function syncIfSignedIn(opts: { force?: boolean } = {}): Promise<SyncRepo
       const s = await loadSession();
       // 로그인 안 했거나 만료됐으면 부르지 않는다. 401만 받고 끝난다
       if (!s || isExpired(s)) return null;
+      // 동의 전에는 올리지 않는다(PR #83 리뷰) — 이미 있는 계정은 동의 없이 로그인되고, 마이 탭이 물을 때까지 틈이 있다
+      const repo = await getDreamRepo();
+      if (!canSync(await repo.getSetting(SETTINGS.consent), s.user.consentVersion)) return null;
       lastRunAt = Date.now();
       return await syncOnce(s.accessToken);
     } finally {

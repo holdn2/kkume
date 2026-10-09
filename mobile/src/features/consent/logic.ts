@@ -51,6 +51,17 @@ export function consentAction(local: string | null, server: string | null | unde
   return server === undefined ? 'skip' : 'upload';
 }
 
+/**
+ * 꿈 기록을 서버와 주고받아도 되는가(PR #83 리뷰). 이미 있는 계정은 동의 없이도 로그인되므로(문서 074),
+ * 이번 버전 동의가 폰에도 서버에도 없으면 마이 탭에서 동의할 때까지 동기화하지 않는다 — 기록은 폰에 그대로 남는다.
+ *
+ * `server`가 `undefined`(이 필드가 생기기 전에 저장한 세션)면 막지 않는다 — #74 전부터 동기화하던 세션이고,
+ * 마이 탭을 열면 서버 값으로 채워진다
+ */
+export function canSync(local: string | null, server: string | null | undefined): boolean {
+  return server === undefined || consentAction(local, server) !== 'ask';
+}
+
 /** 설정에 저장할 값 */
 export function recordConsent(at: Date = new Date()): string {
   return JSON.stringify({ version: CONSENT_VERSION, at: at.toISOString() });
