@@ -104,11 +104,19 @@ export default function MyScreen() {
   );
   // 폰에 남은 동의를 로그인 요청에 싣지 않는다 — 로그아웃한 채 남은 동의는 누구의 것인지 알 수 없다(PR #77 리뷰).
   // 새 계정이면 그 자리에서 묻고, 시트는 열 때마다 체크가 비어 있다
+  // busy는 다시 그린 뒤에야 바뀐다 — 그 사이 애플 · 구글을 연달아 누르면 두 시도가 pending을 덮어쓴다(PR #87 리뷰)
+  const signingIn = useRef(false);
   const startSignIn = (provider: Provider = 'google') => {
-    if (auth.busy) return;
-    void auth.signIn(provider).then((res) => {
-      if (res === 'consent') setConsent('signUp');
-    });
+    if (auth.busy || signingIn.current) return;
+    signingIn.current = true;
+    void auth
+      .signIn(provider)
+      .then((res) => {
+        if (res === 'consent') setConsent('signUp');
+      })
+      .finally(() => {
+        signingIn.current = false;
+      });
   };
   // 애플 로그인은 iOS 13 이상 · 모듈이 든 빌드에서만 뜬다. 안드로이드에는 버튼이 없다
   const [canApple, setCanApple] = useState(false);
