@@ -29,13 +29,25 @@ aws ecr get-login-password --region "${REGION}" \
 echo "== pull"
 sudo docker pull "${REGISTRY}/${REPO}:latest"
 
+# DB(kkume-db, ec2-db.sh)와 같은 네트워크에 붙는다. DB_URL 의 호스트가 kkume-db 다(문서 080).
+# 없으면 만든다 — DB 보다 앱을 먼저 띄우는 순서에서도 여기서 걸리지 않게.
+sudo docker network inspect kkume-net >/dev/null 2>&1 || sudo docker network create kkume-net
+
+# 배포 전 백업 — 새 이미지의 Flyway 가 스키마를 바꾸기 전 상태를 S3 에 남긴다(RDS 때의 "배포 전 스냅숏", db-backup.sh).
+# 실패하면 배포하지 않는다. DB 가 같은 인스턴스에 있어서 이것 말고는 되돌릴 사본이 없다.
+if sudo docker ps --format '{{.Names}}' | grep -qx kkume-db; then
+  echo "== 배포 전 백업"
+  sudo /usr/local/bin/kkume-db-backup pre-deploy
+fi
+
 echo "== 기존 컨테이너 교체"
 # 없을 때도 실패하지 않게 한다. 첫 배포가 여기서 걸리면 안 된다.
 sudo docker rm -f "${NAME}" 2>/dev/null || true
 
 # t3.micro는 메모리가 1GiB뿐이다. 컨테이너에 상한을 주지 않으면 JVM이
 # 호스트 전체를 기준으로 힙을 잡아 OS 몫까지 먹는다. 상한을 주고
-# 그 안에서 비율로 힙을 잡게 한다.
+# 그 안에서 비율로 힙을 잡게 한다. 640m 은 DB 를 같은 인스턴스에 들이면서 768m 에서 줄인 값이다 —
+# 실측 RSS 320MB · 최고 353MB(2026-10-10), 힙 상한은 그 70% 인 약 448MB.
 #
 # 앱은 127.0.0.1 에만 연다. 바깥에서는 Caddy(443)로만 들어온다(#42).
 # 0.0.0.0 으로 열어 두면 보안그룹이 실수로 80 을 다시 열었을 때 평문이 그대로 샌다.
@@ -45,7 +57,8 @@ sudo docker rm -f "${NAME}" 2>/dev/null || true
 sudo docker run -d \
   --name "${NAME}" \
   --restart unless-stopped \
-  --memory 768m \
+  --memory 640m \
+  --network kkume-net \
   --log-opt max-size=10m --log-opt max-file=3 \
   -e JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70" \
   -e SPRING_DATASOURCE_URL="${DB_URL}" \
@@ -61,7 +74,7 @@ sudo docker run -d \
 
 echo "== 기동 대기"
 # /health 가 아니라 /health/ready 를 본다. DB 가 붙은 뒤로는 프로세스가 떴다는 것만으로
-# 배포가 성공한 것이 아니다 — RDS 에 못 닿으면 Flyway 가 죽어 컨테이너가 재시작만 반복한다.
+# 배포가 성공한 것이 아니다 — DB 에 못 닿으면 Flyway 가 죽어 컨테이너가 재시작만 반복한다.
 for i in $(seq 1 90); do
   if curl -fsS "http://localhost:${HOST_PORT}/health/ready" >/dev/null 2>&1; then
     echo "== /health/ready 응답 확인 (${i}초)"

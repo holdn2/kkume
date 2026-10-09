@@ -53,7 +53,7 @@ done
 if [ "$fail" -ne 0 ]; then
   echo "컨테이너는 떴는데 바깥에서 안 되면 보안그룹의 인바운드 443 과 Caddy(sudo docker ps)를 본다." >&2
   echo "서버 안의 기동 확인(ec2-run.sh)은 통과했으므로 앱보다 입구 쪽일 가능성이 크다." >&2
-  echo "/health 는 200 인데 /health/ready 가 아니면 RDS 쪽이다 —" >&2
-  echo "DB 보안그룹이 EC2 보안그룹에서 5432 를 열어 주는지 확인한다." >&2
+  echo "/health 는 200 인데 /health/ready 가 아니면 DB 쪽이다 —" >&2
+  echo "sudo docker ps 에 kkume-db 가 떠 있는지, 앱과 같은 kkume-net 에 붙었는지 확인한다." >&2
   exit 1
 fi
