@@ -106,6 +106,11 @@ export type NewPost = {
   dreamRecordedAt: string;
   /** 한마디. 선택이라 빈 문자열이어도 된다 */
   body: string;
+  /**
+   * 함께 올릴 만화(문서 081 03장 초안). 내 것 · 다 만든 것이어야 한다. **서버가 아직 받지 않는다** —
+   * 만화가 꺼져 있는 동안(`COMIC_ENABLED`)은 화면이 넣지 않는다
+   */
+  comicId?: string;
 };
 
 /**

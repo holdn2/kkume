@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator } from 'react-native';
 
 import { Button, Card, Header, Input, Radio, Row, Screen, Sheet, showToast, Stack, Switch } from '@components';
+import { COMIC_ATTACH_ENABLED, useComicsForDream } from '@features/comic';
 import { getCommunityApi, shareDream, useInvalidateCommunity, useMe } from '@features/community';
 import { useDreamPages } from '@features/log/useDreamPages';
 import { isApiError } from '@shared/api/client';
@@ -29,10 +30,12 @@ import { c, sp } from '@theme/token';
  * 꿈 상세(LOG-2)에서 들어오면 `?dreamId=`로 그 꿈이 골라져 있다. 피드에서 들어오면 **꿈을 먼저 고른다.**
  */
 export default function NewPostScreen() {
-  const { dreamId } = useLocalSearchParams<{ dreamId?: string }>();
+  const { dreamId, comicId } = useLocalSearchParams<{ dreamId?: string; comicId?: string }>();
   const router = useRouter();
   const me = useMe();
   const invalidate = useInvalidateCommunity();
+  // 고른 꿈의 다 만든 만화. 만화 뷰어에서 들어왔으면(`?comicId=`) 그것, 아니면 그 꿈의 가장 최근 것(이슈 #92)
+  const [withComic, setWithComic] = useState(true);
 
   /** 지운 것을 뺀 꿈 개수. 0이면 "아직 남긴 꿈이 없습니다" */
   const [total, setTotal] = useState<number | null>(null);
@@ -83,6 +86,9 @@ export default function NewPostScreen() {
 
   // 꿈 내용은 한 글자 이상이어야 한다 — 목록이 꿈 내용을 보여 주고, 서버도 비면 400 dream_text_empty(계약 056).
   // 녹음만 남긴 꿈(글 없음)은 내용을 적어야 나눌 수 있다
+  const comics = useComicsForDream(COMIC_ATTACH_ENABLED ? me?.id : null, picked?.id);
+  const done = comics.data?.filter((x) => x.status === 'done') ?? [];
+  const comic = done.find((x) => x.id === comicId) ?? done[0];
   const canPost = !!picked && sharedPostId === null && !!dreamText.trim() && !posting;
 
   const post = () => {
@@ -95,6 +101,7 @@ export default function NewPostScreen() {
       dreamText: dreamText.trim(),
       dreamRecordedAt: picked.recordedAt,
       body: body.trim(),
+      ...(COMIC_ATTACH_ENABLED && withComic && comic ? { comicId: comic.id } : {}),
     })
       .then((p) => {
         // 피드 · 꿈 상세의 「공유한 글 보기」가 새 글을 보게 캐시를 무효로 한다.
@@ -239,8 +246,16 @@ export default function NewPostScreen() {
               counter
             />
 
-            {/* 만화는 9~10주차에 붙는다. 자리를 보여 두되 꺼 둔다 */}
-            <Switch value={false} onChange={() => {}} disabled label="만화 함께 올리기" description="만화 기능이 생기면 붙일 수 있습니다" />
+            {/* 이 꿈으로 다 만든 만화가 있을 때만 보인다. 전에는 꺼진 자리를 늘 보였는데,
+                "기능이 생기면"이라는 빈자리는 미완성 기능으로 읽힌다(App Store 2.1, 문서 078) */}
+            {COMIC_ATTACH_ENABLED && comic && (
+              <Switch
+                value={withComic}
+                onChange={setWithComic}
+                label="만화 함께 올리기"
+                description="이 꿈으로 만든 네 컷 만화를 글에 붙여요"
+              />
+            )}
           </>
         )}
 
