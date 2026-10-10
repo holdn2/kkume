@@ -30,3 +30,10 @@ export function getComicApi(): ComicApi {
  * 개발 번들(Metro)에서만 켠다 — OTA · 빌드 번들은 `__DEV__` 가 false 라 꺼진 채 나간다
  */
 export const COMIC_ENABLED = __DEV__;
+
+/**
+ * **꿈 나눔에 만화 붙이기는 따로 켠다.** 만화 만들기는 가짜 서버가 답하지만, 글 올리기는 개발 번들에서도
+ * **진짜 서버**로 나간다. 서버는 아직 `comicId` 를 모르므로 실어 보내면 조용히 버려지고, 사용자는
+ * 붙였다고 믿은 채 만화 없는 글이 올라간다(PR #93 리뷰). 서버가 문서 081 03장을 받으면 켠다
+ */
+export const COMIC_ATTACH_ENABLED = false;

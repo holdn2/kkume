@@ -47,6 +47,8 @@ check('M3', '그림 단계에서는 네 컷 해설이 이미 있다', drawing.st
 t = T0 + 6_500;
 const done = await api.get(c1.id);
 check('M4', '다 만들면 layout 이 정해지고 끝난 시각이 붙는다', done.status === 'done' && done.layout === 'grid2x2' && !!done.finishedAt);
+t = T0 + 60_000;
+check('M5a', '끝난 시각은 읽을 때마다 바뀌지 않는다(PR #93 리뷰)', (await api.get(c1.id)).finishedAt === done.finishedAt, `${done.finishedAt} → ${(await api.get(c1.id)).finishedAt}`);
 check('M5', '네 컷 해설은 꿈 문장을 순서대로 나눈다', done.panels[0].caption.startsWith('학교 옥상') && done.panels[3].caption.includes('침대'));
 
 // 하루 몫(081 01장 — 초안 1편, KST 자정)

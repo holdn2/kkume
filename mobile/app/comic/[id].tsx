@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { Button, Header, Screen, Sheet, showToast, Stack } from '@components';
@@ -29,11 +29,21 @@ export default function ComicDetail() {
   const back = () => (router.canGoBack() ? router.back() : router.replace('/log'));
   const data = comic.data;
 
+  // 지우기를 연달아 누르면 요청이 둘 나가고 뒤로 가기가 두 번 돈다(PR #93 리뷰).
+  // state 는 다시 그린 뒤에야 바뀌어서 ref 로 그 자리에서 막고, state 는 버튼의 loading 표시에만 쓴다
+  const deletingRef = useRef(false);
+  const [deleting, setDeleting] = useState(false);
   const del = () => {
-    if (!data) return;
+    if (!data || deletingRef.current) return;
+    deletingRef.current = true;
+    setDeleting(true);
     remove(data.id)
       .then(back)
-      .catch(() => showToast('만화를 지우지 못했습니다. 다시 시도해 주세요.'));
+      .catch(() => showToast('만화를 지우지 못했습니다. 다시 시도해 주세요.'))
+      .finally(() => {
+        deletingRef.current = false;
+        setDeleting(false);
+      });
   };
 
   let body;
@@ -125,7 +135,7 @@ export default function ComicDetail() {
             </AppText>
           </Stack>
           <Stack gap={sp[2]}>
-            <Button label="지우기" variant="danger" onPress={del} />
+            <Button label="지우기" variant="danger" onPress={del} loading={deleting} />
             <Button label="그만두기" variant="ghost" onPress={() => setAskDelete(false)} />
           </Stack>
         </Stack>

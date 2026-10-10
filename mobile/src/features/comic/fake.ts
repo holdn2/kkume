@@ -94,7 +94,16 @@ export function createFakeComicApi(opts: FakeComicOptions = {}): ComicApi {
           : status === 'failed'
             ? '만화를 만들지 못했습니다. 잠시 뒤 다시 만들어 주세요.'
             : null,
-      finishedAt: ended ? new Date(t).toISOString() : null,
+      // 끝난 시각은 한 번 정해지면 그대로다 — 읽은 시각을 쓰면 읽을 때마다 바뀐다(PR #93 리뷰).
+      // 거절은 시나리오 단계 끝에, 나머지는 그림 단계 끝에 끝난다
+      finishedAt: ended
+        ? new Date(
+            row.startedAt +
+              steps.queued +
+              steps.scripting +
+              (status === 'refused' ? 0 : steps.drawing),
+          ).toISOString()
+        : null,
     };
   }
 
