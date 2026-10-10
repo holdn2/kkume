@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 
 import { Badge, Button, Header, Input, Row, Screen, Sheet, showToast, Stack } from '@components';
+import { COMIC_ENABLED, useComicsForDream } from '@features/comic';
 import { useMe, usePostForDream, useRefetchOnFocus } from '@features/community';
 import { PlayerBar } from '@features/log/PlayerBar';
 import { MAX_TEXT_LENGTH, MAX_TITLE_LENGTH } from '@shared/api/sync';
@@ -50,6 +51,11 @@ export default function DreamDetail() {
   const sharedPostId = shared.error ? null : shared.data;
   // 공유하거나 지우고 돌아오면 캐시가 무효로 돼 있어 다시 묻는다
   useRefetchOnFocus(shared.refetch, shared.isStale);
+  // 이 꿈의 가장 최근 만화. 있으면(만드는 중 포함) 「만화 보기」, 없으면 「만화로 만들기」(이슈 #92).
+  // 꺼져 있으면 묻지도 않는다 — 로그인 전과 같은 null 을 넘긴다
+  const comics = useComicsForDream(COMIC_ENABLED ? me?.id : null, id);
+  useRefetchOnFocus(comics.refetch, comics.isStale);
+  const latestComic = comics.data?.find((x) => x.status !== 'failed' && x.status !== 'refused');
   // 화면을 연 시점의 본문 길이. 본문 입력칸 상한을 정하는 데만 쓴다(아래 Input 주석).
   // **`saved.text`로 대신하면 안 된다** — 저장할 때마다 갱신돼 상한이 계속 올라간다
   const [openedTextLength, setOpenedTextLength] = useState(0);
@@ -232,6 +238,17 @@ export default function DreamDetail() {
               onPress={() => router.push(`/community/new?dreamId=${dream.id}`)}
             />
           )}
+          {/* 서버가 붙기 전에는 숨긴다(`COMIC_ENABLED`, 문서 081) */}
+          {COMIC_ENABLED &&
+            (latestComic ? (
+              <Button label="만화 보기" variant="secondary" onPress={() => router.push(`/comic/${latestComic.id}`)} />
+            ) : (
+              <Button
+                label="만화로 만들기"
+                variant="secondary"
+                onPress={() => router.push(`/comic/new?dreamId=${dream.id}`)}
+              />
+            ))}
           <Pressable
             onPress={() => setAskDelete(true)}
             accessibilityRole="button"
