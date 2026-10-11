@@ -19,6 +19,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.kkume.server.audio.AudioStorage;
 import com.kkume.server.auth.AppleAccountClient;
 import com.kkume.server.auth.AppleAccountClient.AppleGrant;
+import com.kkume.server.comic.ComicStorage;
 
 /**
  * 계정 삭제(MY-5). 계약은 문서 064 · 066(모바일 065에서 수용)이다.
@@ -27,7 +28,7 @@ import com.kkume.server.auth.AppleAccountClient.AppleGrant;
  * 유예 동안 되살릴 길이 없고, 원본은 폰에 있어 서버 사본을 지워도 잃는 것이 없다.
  *
  * <ul>
- * <li>지운다: 꿈 기록 · 변환 작업 · 설정 · S3 녹음 · 내 공감 · 차단(양방향)
+ * <li>지운다: 꿈 기록 · 변환 작업 · 설정 · S3 녹음 · 만화(행 · 그림 · 꿈 나눔에 붙인 복사본) · 내 공감 · 차단(양방향)
  * <li>비운다: 내 글 · 댓글 — "지운 것"으로 두고 내용을 비운다. 남의 댓글 · 공감 · 신고가 가리키는 행이라 실제로 지우지 않는다
  * <li>남긴다: 신고(가려진 것이 풀리지 않게) · 사용자 행 — 대신 다시 알아볼 수 없게 익명화한다
  * </ul>
@@ -51,12 +52,15 @@ public class AccountDeletionService {
 
 	private final AppleAccountClient apple;
 
+	private final ComicStorage comics;
+
 	public AccountDeletionService(NamedParameterJdbcTemplate jdbc, TransactionTemplate transactions, AudioStorage audio,
-			AppleAccountClient apple) {
+			AppleAccountClient apple, ComicStorage comics) {
 		this.jdbc = jdbc;
 		this.transactions = transactions;
 		this.audio = audio;
 		this.apple = apple;
+		this.comics = comics;
 	}
 
 	/**
@@ -125,15 +129,34 @@ public class AccountDeletionService {
 			log.warn("계정 삭제 — 녹음 삭제 실패, 아무것도 지우지 않음 user={}", userId, ex);
 			throw new DeletionFailedException();
 		}
+		try {
+			deleteComicImages(userId);
+		}
+		catch (RuntimeException ex) {
+			log.warn("계정 삭제 — 만화 그림 삭제 실패, 아무것도 지우지 않음 user={}", userId, ex);
+			throw new DeletionFailedException();
+		}
 
 		this.transactions.executeWithoutResult(status -> deleteRows(userId));
 
-		// 삭제 직전에 받은 URL 로 그 사이 올라온 것. 여기서 실패해도 쓸어 내기가 받는다
+		// 삭제 직전에 받은 URL 로 그 사이 올라온 것 · 그리던 만화의 그림. 여기서 실패해도 쓸어 내기가 받는다
 		try {
 			this.audio.deleteAll(prefix);
+			this.comics.deleteAll(ComicStorage.userPrefix(userId));
 		}
 		catch (RuntimeException ex) {
-			log.warn("계정 삭제 — 뒤늦은 녹음 정리 실패, 쓸어 내기에 맡김 user={}", userId, ex);
+			log.warn("계정 삭제 — 뒤늦은 녹음 · 그림 정리 실패, 쓸어 내기에 맡김 user={}", userId, ex);
+		}
+	}
+
+	/** 내 만화 그림과, 꿈 나눔 글에 붙인 복사본(문서 081 04장). 글 행은 남지만 그림은 남기지 않는다 */
+	private void deleteComicImages(UUID userId) {
+		this.comics.deleteAll(ComicStorage.userPrefix(userId));
+		List<UUID> posts = this.jdbc.queryForList(
+				"select id from posts where author_id = :user and comic_image_key is not null",
+				new MapSqlParameterSource("user", userId), UUID.class);
+		for (UUID post : posts) {
+			this.comics.deleteAll(ComicStorage.postPrefix(post));
 		}
 	}
 
@@ -152,6 +175,8 @@ public class AccountDeletionService {
 		this.jdbc.update("delete from jobs where user_id = :user", p);
 		this.jdbc.update("delete from dreams where user_id = :user", p);
 		this.jdbc.update("delete from user_settings where user_id = :user", p);
+		// 만화는 지운 것까지 행째 지운다 — 하루 몫을 세려고 남긴 행이라 계정이 없으면 쓸모가 없다. 원가 기록은 사용자를 담지 않아 남는다
+		this.jdbc.update("delete from comics where user_id = :user", p);
 
 		List<UUID> liked = this.jdbc.queryForList("delete from post_likes where user_id = :user returning post_id", p, UUID.class);
 		if (!liked.isEmpty()) {
@@ -174,7 +199,8 @@ public class AccountDeletionService {
 		}
 
 		this.jdbc.update("""
-				update posts set deleted_at = coalesce(deleted_at, :now), title = null, dream_text = '', body = '', updated_at = :now
+				update posts set deleted_at = coalesce(deleted_at, :now), title = null, dream_text = '', body = '', updated_at = :now,
+				  comic_layout = null, comic_image_key = null, comic_panels = null
 				where author_id = :user
 				""", p);
 		this.jdbc.update("delete from user_blocks where blocker_id = :user or blocked_id = :user", p);
@@ -201,9 +227,11 @@ public class AccountDeletionService {
 		for (UUID userId : recent) {
 			try {
 				this.audio.deleteAll(audioPrefix(userId));
+				// 삭제하는 사이 일꾼이 그려 올린 만화 그림
+				this.comics.deleteAll(ComicStorage.userPrefix(userId));
 			}
 			catch (RuntimeException ex) {
-				log.warn("지운 계정의 녹음 쓸어 내기 실패 user={} — 다음 차례에 다시", userId, ex);
+				log.warn("지운 계정의 녹음 · 그림 쓸어 내기 실패 user={} — 다음 차례에 다시", userId, ex);
 			}
 		}
 	}

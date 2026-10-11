@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.kkume.server.comic.ComicAttachments;
 import com.kkume.server.community.CommunityStore.CommentRow;
 import com.kkume.server.community.CommunityStore.PostRow;
 import com.kkume.server.community.CommunityViews.Author;
@@ -60,10 +61,13 @@ public class CommunityService {
 
 	private final ReportAlerts alerts;
 
-	public CommunityService(CommunityStore store, AccountGuard accounts, ReportAlerts alerts) {
+	private final ComicAttachments comics;
+
+	public CommunityService(CommunityStore store, AccountGuard accounts, ReportAlerts alerts, ComicAttachments comics) {
 		this.store = store;
 		this.accounts = accounts;
 		this.alerts = alerts;
+		this.comics = comics;
 	}
 
 	// ------------------------------------------------------------------ 읽기
@@ -96,9 +100,11 @@ public class CommunityService {
 		Set<UUID> blocked = viewer == null ? Set.of() : this.store.blockedBy(viewer);
 		boolean liked = viewer != null && !this.store.likedAmong(viewer, List.of(post.id())).isEmpty();
 		PostSummary s = summary(post, liked);
+		ComicAttachments.PostComic comic = post.hasComic()
+				? this.comics.view(post.comicLayout(), post.comicImageKey(), post.comicPanels()) : null;
 		return new PostDetail(s.id(), s.author(), s.title(), s.excerpt(), s.dreamRecordedAt(), s.hasComic(), s.likeCount(),
-				s.commentCount(), s.likedByMe(), s.createdAt(), s.hidden(), post.dreamText(), post.body(), null,
-				comments(this.store.commentsOf(post.id()), blocked));
+				s.commentCount(), s.likedByMe(), s.createdAt(), s.hidden(), post.dreamText(), post.body(),
+				comic == null ? null : comic.imageUrls().get(0), comic, comments(this.store.commentsOf(post.id()), blocked));
 	}
 
 	/**
@@ -123,7 +129,8 @@ public class CommunityService {
 
 	// ------------------------------------------------------------------ 글쓰기
 
-	public record NewPost(String dreamId, String title, String dreamText, Instant dreamRecordedAt, String body) {
+	public record NewPost(String dreamId, String title, String dreamText, Instant dreamRecordedAt, String body,
+			String comicId) {
 	}
 
 	@Transactional
@@ -161,10 +168,30 @@ public class CommunityService {
 			throw new CommunityApiException(HttpStatus.CONFLICT, "dream_deleted", "지운 꿈입니다");
 		}
 
+		// 붙일 만화(문서 081 03장). 내 것 · 다 만든 것이어야 한다. 꿈이 같은지는 보지 않는다 — 앱이 고른 꿈의 만화만 보여 준다
+		ComicAttachments.Source comic = null;
+		if (input.comicId() != null && !input.comicId().isBlank()) {
+			comic = this.comics.find(viewer, input.comicId())
+				.orElseThrow(() -> CommunityApiException.badRequest("invalid_comic", "붙일 수 없는 만화입니다"));
+		}
+
 		UUID id = UUID.randomUUID();
 		Instant now = now();
-		if (this.store.insertPost(id, viewer, dreamId, title, dreamText, input.dreamRecordedAt(), body, now) == 0) {
+		String comicKey = comic == null ? null : ComicAttachments.postImageKey(id);
+		CommunityStore.PostComic postComic = comic == null ? null
+				: new CommunityStore.PostComic(comic.layout(), comicKey, comic.panels());
+		if (this.store.insertPost(id, viewer, dreamId, title, dreamText, input.dreamRecordedAt(), body, postComic, now) == 0) {
 			throw alreadyShared(viewer, dreamId);
+		}
+		if (comic != null) {
+			// 그림을 글 쪽으로 복사한다. 실패하면 글도 올리지 않는다(트랜잭션이 되돌린다) — 만화 없는 글이 조용히 올라가지 않게
+			try {
+				this.comics.copy(comic, comicKey);
+			}
+			catch (RuntimeException ex) {
+				throw new CommunityApiException(HttpStatus.SERVICE_UNAVAILABLE, "comic_unavailable",
+						"만화를 붙이지 못했어요. 잠시 뒤 다시 올려 주세요");
+			}
 		}
 		return summary(this.store.findPost(id).orElseThrow(), false);
 	}
@@ -190,6 +217,9 @@ public class CommunityService {
 			throw CommunityApiException.notOwner("내 글만 지울 수 있습니다");
 		}
 		this.store.deletePost(post.id(), now());
+		if (post.hasComic()) {
+			this.comics.deletePostCopy(post.id());
+		}
 	}
 
 	// ------------------------------------------------------------------ 공감
@@ -377,7 +407,7 @@ public class CommunityService {
 
 	private static PostSummary summary(PostRow p, boolean likedByMe) {
 		return new PostSummary(p.id().toString(), new Author(p.authorId().toString(), p.authorNickname()), p.title(),
-				excerpt(p.dreamText()), p.dreamRecordedAt(), false, p.likeCount(), p.commentCount(), likedByMe,
+				excerpt(p.dreamText()), p.dreamRecordedAt(), p.hasComic(), p.likeCount(), p.commentCount(), likedByMe,
 				p.createdAt(), p.isHidden());
 	}
 

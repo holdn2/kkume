@@ -40,7 +40,11 @@ class CommunityStore {
 
 	record PostRow(UUID id, UUID authorId, String authorNickname, String dreamId, String title, String dreamText,
 			Instant dreamRecordedAt, String body, int likeCount, int commentCount, Instant hiddenAt, Instant deletedAt,
-			Instant createdAt) {
+			Instant createdAt, String comicLayout, String comicImageKey, String comicPanels) {
+
+		boolean hasComic() {
+			return comicImageKey != null;
+		}
 
 		boolean isHidden() {
 			return hiddenAt != null;
@@ -53,14 +57,16 @@ class CommunityStore {
 
 	private static final String POST_COLUMNS = """
 			p.id, p.author_id, u.nickname, p.dream_id, p.title, p.dream_text, p.dream_recorded_at, p.body,
-			p.like_count, p.comment_count, p.hidden_at, p.deleted_at, p.created_at
+			p.like_count, p.comment_count, p.hidden_at, p.deleted_at, p.created_at,
+			p.comic_layout, p.comic_image_key, p.comic_panels
 			""";
 
 	private static final RowMapper<PostRow> POST = (rs, n) -> new PostRow(rs.getObject("id", UUID.class),
 			rs.getObject("author_id", UUID.class), rs.getString("nickname"), rs.getString("dream_id"),
 			rs.getString("title"), rs.getString("dream_text"), instant(rs, "dream_recorded_at"), rs.getString("body"),
 			rs.getInt("like_count"), rs.getInt("comment_count"), instant(rs, "hidden_at"), instant(rs, "deleted_at"),
-			instant(rs, "created_at"));
+			instant(rs, "created_at"), rs.getString("comic_layout"), rs.getString("comic_image_key"),
+			rs.getString("comic_panels"));
 
 	Optional<PostRow> findPost(UUID id) {
 		return this.jdbc.query("select " + POST_COLUMNS + " from posts p join users u on u.id = p.author_id where p.id = :id",
@@ -90,19 +96,29 @@ class CommunityStore {
 	 * 트랜잭션에서 다음 문장을 거절하므로, 예외를 받은 뒤 "그 글이 무엇인지" 다시 물을 수 없다.
 	 */
 	int insertPost(UUID id, UUID authorId, String dreamId, String title, String dreamText, Instant dreamRecordedAt,
-			String body, Instant now) {
+			String body, PostComic comic, Instant now) {
 		return this.jdbc.update("""
-				insert into posts (id, author_id, dream_id, title, dream_text, dream_recorded_at, body, created_at, updated_at)
-				values (:id, :author, :dream, :title, :text, :recorded, :body, :now, :now)
+				insert into posts (id, author_id, dream_id, title, dream_text, dream_recorded_at, body,
+				  comic_layout, comic_image_key, comic_panels, created_at, updated_at)
+				values (:id, :author, :dream, :title, :text, :recorded, :body, :layout, :key, :panels, :now, :now)
 				on conflict (author_id, dream_id) where deleted_at is null do nothing
 				""", new MapSqlParameterSource("id", id).addValue("author", authorId).addValue("dream", dreamId)
 			.addValue("title", title).addValue("text", dreamText).addValue("recorded", time(dreamRecordedAt))
-			.addValue("body", body).addValue("now", time(now)));
+			.addValue("body", body).addValue("layout", comic == null ? null : comic.layout())
+			.addValue("key", comic == null ? null : comic.imageKey()).addValue("panels", comic == null ? null : comic.panels())
+			.addValue("now", time(now)));
 	}
 
+	/** 글에 붙인 만화. 그림 키는 글 쪽 복사본({@code posts/{postId}/})이다 */
+	record PostComic(String layout, String imageKey, String panels) {
+	}
+
+	/** 붙인 만화도 떼어 낸다. 그림 복사본은 부른 쪽이 지운다 */
 	void deletePost(UUID id, Instant now) {
-		this.jdbc.update("update posts set deleted_at = :now, updated_at = :now where id = :id",
-				new MapSqlParameterSource("id", id).addValue("now", time(now)));
+		this.jdbc.update("""
+				update posts set deleted_at = :now, updated_at = :now, comic_layout = null, comic_image_key = null, comic_panels = null
+				where id = :id
+				""", new MapSqlParameterSource("id", id).addValue("now", time(now)));
 	}
 
 	void hidePost(UUID id, Instant now) {

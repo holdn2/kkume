@@ -56,7 +56,7 @@ public class CommunityController {
 	public PostSummary createPost(@AuthenticationPrincipal Jwt jwt, @RequestBody(required = false) NewPostRequest request) {
 		return this.community.createPost(viewer(jwt), request == null ? null
 				: new CommunityService.NewPost(request.dreamId(), request.title(), request.dreamText(),
-						request.dreamRecordedAt(), request.body()));
+						request.dreamRecordedAt(), request.body(), request.comicId()));
 	}
 
 	@DeleteMapping("/api/community/posts/{postId}")
@@ -129,7 +129,9 @@ public class CommunityController {
 		return jwt == null ? null : UUID.fromString(jwt.getSubject());
 	}
 
-	public record NewPostRequest(String dreamId, String title, String dreamText, Instant dreamRecordedAt, String body) {
+	/** {@code comicId}는 선택이다. 붙이려면 내 것 · 다 만든 만화여야 한다(문서 081 03장) */
+	public record NewPostRequest(String dreamId, String title, String dreamText, Instant dreamRecordedAt, String body,
+			String comicId) {
 	}
 
 	public record LikeRequest(boolean liked) {

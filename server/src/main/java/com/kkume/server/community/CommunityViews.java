@@ -3,6 +3,8 @@ package com.kkume.server.community;
 import java.time.Instant;
 import java.util.List;
 
+import com.kkume.server.comic.ComicAttachments;
+
 /**
  * 커뮤니티 응답 모양. 이름은 모바일 {@code CommunityApi}(문서 056 03장)와 같다.
  */
@@ -24,10 +26,15 @@ public final class CommunityViews {
 			boolean hasComic, int likeCount, int commentCount, boolean likedByMe, Instant createdAt, boolean hidden) {
 	}
 
-	/** 목록의 필드에 상세만의 것을 더한다. 모바일이 {@code PostSummary & {...}}로 받는다 */
+	/**
+	 * 목록의 필드에 상세만의 것을 더한다. 모바일이 {@code PostSummary & {...}}로 받는다.
+	 *
+	 * @param comicUrl 붙인 만화 그림 한 장(2×2). 지금 앱이 읽는 자리라 남긴다 — {@code comic.imageUrls[0]}과 같다
+	 * @param comic 붙인 만화 전체(문서 081 03장). 그림과 함께 컷마다 해설 · 대사가 와서 앱이 만화 뷰어로 그린다. 없으면 {@code null}
+	 */
 	public record PostDetail(String id, Author author, String title, String excerpt, Instant dreamRecordedAt,
 			boolean hasComic, int likeCount, int commentCount, boolean likedByMe, Instant createdAt, boolean hidden,
-			String dreamText, String body, String comicUrl, List<Comment> comments) {
+			String dreamText, String body, String comicUrl, ComicAttachments.PostComic comic, List<Comment> comments) {
 	}
 
 	/**
