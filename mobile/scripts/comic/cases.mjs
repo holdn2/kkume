@@ -28,7 +28,9 @@ const T0 = Date.parse('2026-10-10T03:00:00Z');
 let t = T0;
 let who = 'u-me';
 let budgetOut = false;
+// 아래 시나리오는 몫이 1편이던 때 짠 것이라 1편으로 고정해 규칙만 본다. 기본값(2편)은 M40 이 본다
 const api = createFakeComicApi({
+  dailyLimit: 1,
   now: () => t,
   me: async () => who,
   budgetExhausted: () => budgetOut,
@@ -125,6 +127,19 @@ const inProgress = explainCreateError({ code: 'comic_in_progress', status: 409, 
 check('M26', '만드는 중 오류는 그 만화로 보낸다', inProgress.kind === 'inProgress' && inProgress.comicId === 'x');
 check('M27', '401 은 로그인 안내', explainCreateError({ code: 'unauthorized', status: 401, message: '' }).kind === 'login');
 check('M28', '모르는 오류는 고정 문구', explainCreateError(new Error('boom')).message.includes('잠시 뒤'));
+
+// 기본 몫은 2편(서버 PR #109)
+{
+  let tt = Date.parse('2026-10-12T03:00:00Z');
+  const a = createFakeComicApi({ now: () => tt, me: async () => 'u-two', stepMs: { queued: 1, scripting: 1, drawing: 1 } });
+  const made = [];
+  for (let i = 0; i < 2; i++) {
+    made.push((await a.create(input(DREAM))).status);
+    tt += 100;
+  }
+  const third = await code(a.create(input(DREAM)));
+  check('M40', '기본 몫은 하루 2편 — 세 번째에 429', made.join() === 'queued,queued' && third?.code === 'comic_daily_limit', made.join() + ' / ' + (third?.code ?? '만들어짐'));
+}
 
 // 하루 시도 5회(083 01장) — 거절 · 실패는 1편 몫에서 빠지지만 시도로는 센다
 {

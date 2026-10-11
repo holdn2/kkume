@@ -24,7 +24,7 @@ export type FakeComicOptions = {
   now?: () => number;
   /** 로그인한 사람. null 이면 401 */
   me?: () => Promise<string | null>;
-  /** 1인 하루 몫(081 01장, 1편). 거절 · 실패는 세지 않는다 */
+  /** 1인 하루 몫(2편 — 10-12 서버 PR #109에서 1편 → 2편). 거절 · 실패는 세지 않는다 */
   dailyLimit?: number;
   /** 1인 하루 시도(083 01장, 5회). 거절 · 실패 · 지운 것까지 센다 — 거절을 되풀이해 서비스 몫을 혼자 쓰지 못하게 */
   dailyAttempts?: number;
@@ -66,7 +66,7 @@ export function fakePanels(text: string): ComicPanel[] {
 export function createFakeComicApi(opts: FakeComicOptions = {}): ComicApi {
   const now = opts.now ?? Date.now;
   const me = opts.me ?? (async () => 'me');
-  const limit = opts.dailyLimit ?? 1;
+  const limit = opts.dailyLimit ?? 2;
   const attempts = opts.dailyAttempts ?? 5;
   const steps = opts.stepMs ?? DEFAULT_STEPS;
   const rows = new Map<string, Row>();
