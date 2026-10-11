@@ -55,6 +55,35 @@ class ComicScriptTest {
 		assertThat(ComicScript.cut("😀".repeat(25), 20)).isEqualTo("😀".repeat(20));
 	}
 
+	private ComicScript withCaption(String caption) {
+		return ComicScript.parse(this.json, FakeComicAi.GOOD_SCRIPT.replace("복도를 걸었는데 길이 끝없이 늘어났다", caption)).orElseThrow();
+	}
+
+	@Test
+	void 해설이_말하는_어미로_끝나면_말투가_어긋난_것이다() {
+		assertThat(withCaption("기사님이 고양이였어").spokenCaption()).isTrue();
+		assertThat(withCaption("생선을 받았어요.").spokenCaption()).isTrue();
+		assertThat(withCaption("달에 도착했어!").spokenCaption()).isTrue();
+		assertThat(withCaption("정말 신기했죠 😀").spokenCaption()).isTrue();
+		assertThat(ComicScript.spoken("복도가 끝없이 길어졌어")).isTrue();
+		assertThat(ComicScript.spoken("학교에 갔어")).isTrue();
+		assertThat(ComicScript.spoken("하늘을 봤어...")).isTrue();
+		assertThat(ComicScript.spoken("이상한 꿈이야")).isTrue();
+	}
+
+	@Test
+	void 글말_과거형이나_어로_끝나는_명사는_괜찮다() {
+		assertThat(withCaption("복도가 끝없이 길어졌다").spokenCaption()).isFalse();
+		assertThat(withCaption("기사님은 고양이였다.").spokenCaption()).isFalse();
+		assertThat(withCaption("냉장고 속 고등어").spokenCaption()).isFalse();
+		assertThat(ComicScript.spoken("하늘을 날았다!")).isFalse();
+		assertThat(ComicScript.spoken("마지막 정류장은 달")).isFalse();
+		assertThat(ComicScript.spoken("기다리던 강아지")).isFalse();
+		assertThat(ComicScript.spoken("바다 위로 떠오른 해")).isFalse();
+		assertThat(ComicScript.spoken("")).isFalse();
+		assertThat(ComicScript.SYSTEM).contains("Never use spoken endings");
+	}
+
 	@Test
 	void 제목이_있으면_본문_앞에_붙인다() {
 		assertThat(ComicScript.userMessage("제목", "본문")).isEqualTo("제목\n\n본문");
