@@ -164,6 +164,10 @@ check('M28', '모르는 오류는 고정 문구', explainCreateError(new Error('
   reply = { status: 404, body: { code: 'comic_not_found', message: '없어요' } };
   check('M33', '남의 것 · 지운 것(404)은 null', (await http.get('c9')) === null && last().url.endsWith('/api/comics/c9'));
 
+  reply = { status: 404, body: { code: 'not_found', message: '없는 경로입니다' } };
+  const noRoute = await code(http.get('c9'));
+  check('M38', '만화가 아닌 404(경로 없음 등)는 null 로 삼키지 않는다(PR #99 리뷰)', noRoute?.status === 404 && noRoute?.code === 'not_found', noRoute === null ? 'null 로 바뀜' : '');
+
   reply = { status: 409, body: { code: 'comic_in_progress', message: '만들고 있는 만화가 있어요', comicId: 'c1' } };
   const busy = explainCreateError(await code(http.create(input(DREAM))));
   check('M34', '409 의 comicId 는 data 로 와서 화면이 그 만화로 보낸다', busy.kind === 'inProgress' && busy.comicId === 'c1');

@@ -7,7 +7,7 @@ import type { Comic, ComicApi, NewComic } from './comic';
  * 전부 로그인이 필요한 요청이다. 토큰이 없으면 보내지 않고 서버와 같은 `401 unauthorized` 를 여기서 던진다 —
  * 만료된 토큰을 붙이면 어차피 401 이다(커뮤니티 `communityHttp` 와 같은 규칙).
  *
- * - `GET /api/comics/{id}` 의 `404 comic_not_found`(남의 것 · 지운 것 · 없는 것)는 화면이 쓰는 null 로 바꾼다
+ * - `GET /api/comics/{id}` 의 `404 comic_not_found`(남의 것 · 지운 것 · 없는 것)만 화면이 쓰는 null 로 바꾼다
  * - 나머지 오류는 `request()` 가 준 `ApiError` 그대로다 — `409 comic_in_progress` 의 `comicId`,
  *   `429 comic_daily_limit` 의 `resetAt` 은 `data` 에 있다
  */
@@ -28,9 +28,11 @@ export function createHttpComic(auth: { token: () => Promise<string | null> }): 
         style: input.style,
       }),
 
+    // 만화가 없다는 404 만 null 이다. 경로가 없는 404(서버가 옛 버전 등)까지 삼키면 "지워졌을 수 있어요"로
+    // 보여 원인이 가려진다(PR #99 리뷰)
     get: (comicId) =>
       call<Comic>(`/api/comics/${id(comicId)}`).catch((e: ApiError) => {
-        if (e?.status === 404) return null;
+        if (e?.status === 404 && e.code === 'comic_not_found') return null;
         throw e;
       }),
 
