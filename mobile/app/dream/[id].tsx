@@ -238,7 +238,7 @@ export default function DreamDetail() {
               onPress={() => router.push(`/community/new?dreamId=${dream.id}`)}
             />
           )}
-          {/* 서버가 붙기 전에는 숨긴다(`COMIC_ENABLED`, 문서 081) */}
+          {/* 만화 진입점. 끄면 숨긴다(`COMIC_ENABLED`, 이슈 #100) */}
           {COMIC_ENABLED &&
             (latestComic ? (
               <Button label="만화 보기" variant="secondary" onPress={() => router.push(`/comic/${latestComic.id}`)} />
