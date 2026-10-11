@@ -257,7 +257,7 @@ class ComicApiTest {
 		String dream = dreamId();
 		String first = createId(this.me, dream);
 		drain();
-		// 하루 1편이라 두 번째는 어제 만든 것으로 옮겨 둔다
+		// 최신순이 갈리게 첫 편은 어제 만든 것으로 옮겨 둔다
 		this.jdbc.update("update comics set created_at = created_at - interval '1 day' where id = ?::uuid", first);
 		String second = createId(this.me, dream);
 		drain();
@@ -283,7 +283,9 @@ class ComicApiTest {
 	}
 
 	@Test
-	void 하루_한_편을_만들면_429_comic_daily_limit_와_KST_자정() throws Exception {
+	void 하루_두_편을_만들면_429_comic_daily_limit_와_KST_자정() throws Exception {
+		createId(this.me, dreamId());
+		drain();
 		createId(this.me, dreamId());
 		drain();
 		String r = json(create(this.me, dreamId(), "또 다른 꿈", "soft").andExpect(status().isTooManyRequests())
@@ -295,9 +297,11 @@ class ComicApiTest {
 
 	@Test
 	void 지운_만화도_하루_몫으로_센다() throws Exception {
-		String id = createId(this.me, dreamId());
-		drain();
-		call(this.me, delete("/api/comics/" + id)).andExpect(status().isNoContent());
+		for (int i = 0; i < 2; i++) {
+			String id = createId(this.me, dreamId());
+			drain();
+			call(this.me, delete("/api/comics/" + id)).andExpect(status().isNoContent());
+		}
 		create(this.me, dreamId(), "또 다른 꿈", "soft").andExpect(status().isTooManyRequests());
 	}
 
@@ -351,6 +355,8 @@ class ComicApiTest {
 		this.jdbc.update("update comics set status = 'drawing', locked_at = now() - interval '11 minutes' where id = ?::uuid", id);
 		this.worker.runOnce();
 		assertThat(this.jdbc.queryForObject("select status from comics where id = ?::uuid", String.class, id)).isEqualTo("failed");
+		createId(this.me, dreamId());
+		drain();
 		create(this.me, dreamId(), "또 다른 꿈", "soft").andExpect(status().isTooManyRequests());
 	}
 
