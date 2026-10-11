@@ -10,7 +10,8 @@ import {
 } from '@shared/api/comic';
 
 /**
- * 서버가 붙기 전까지 화면이 쓰는 가짜 만화 서버(문서 081 초안을 따른다).
+ * 가짜 만화 서버 — 서버가 붙기 전 화면을 만들 때 썼고, 지금은 규칙 테스트(`scripts/comic`)와 스토리가 쓴다.
+ * 진짜 서버(문서 083)와 같은 규칙 · 문구로 답한다.
  *
  * **상태는 저장하지 않고 시각으로 계산한다.** 만든 시각에서 얼마나 지났는지로
  * `queued → scripting → drawing → done` 을 정하므로, 화면이 폴링하면 실제처럼 단계가 넘어가고
@@ -23,9 +24,11 @@ export type FakeComicOptions = {
   now?: () => number;
   /** 로그인한 사람. null 이면 401 */
   me?: () => Promise<string | null>;
-  /** 1인 하루 몫(081 초안 1편) */
+  /** 1인 하루 몫(081 01장, 1편). 거절 · 실패는 세지 않는다 */
   dailyLimit?: number;
-  /** 서비스 전체 월 몫이 끝난 상태를 흉내 낸다 */
+  /** 1인 하루 시도(083 01장, 5회). 거절 · 실패 · 지운 것까지 센다 — 거절을 되풀이해 서비스 몫을 혼자 쓰지 못하게 */
+  dailyAttempts?: number;
+  /** 오늘 서비스 전체 몫이 끝난 상태를 흉내 낸다 */
   budgetExhausted?: () => boolean;
   /** 단계마다 걸리는 시간 */
   stepMs?: { queued: number; scripting: number; drawing: number };
@@ -64,6 +67,7 @@ export function createFakeComicApi(opts: FakeComicOptions = {}): ComicApi {
   const now = opts.now ?? Date.now;
   const me = opts.me ?? (async () => 'me');
   const limit = opts.dailyLimit ?? 1;
+  const attempts = opts.dailyAttempts ?? 5;
   const steps = opts.stepMs ?? DEFAULT_STEPS;
   const rows = new Map<string, Row>();
   let seq = 0;
@@ -129,16 +133,17 @@ export function createFakeComicApi(opts: FakeComicOptions = {}): ComicApi {
         throw err('comic_in_progress', 409, '만들고 있는 만화가 있어요', { comicId: running.comic.id });
       }
       if (opts.budgetExhausted?.()) {
-        throw err('comic_budget_exhausted', 503, '이번 달 만화가 마감됐어요. 다음 달에 다시 만들어 주세요');
+        throw err('comic_budget_exhausted', 503, '오늘 만화가 마감됐어요. 내일 다시 만들어 주세요');
       }
       const today = kstDay(now());
-      // 거절 · 실패는 몫에서 뺀다 — 사용자 탓이 아니다(081 02장). 지운 것은 센다 — 지워서 몫을 되살리지 못하게
-      const used = [...rows.values()].filter((r) => {
-        if (r.owner !== who || kstDay(r.startedAt) !== today) return false;
+      const todays = [...rows.values()].filter((r) => r.owner === who && kstDay(r.startedAt) === today);
+      // 거절 · 실패는 몫에서 뺀다 — 사용자 탓이 아니다(081 02장). 지운 것은 센다 — 지워서 몫을 되살리지 못하게.
+      // 다만 시도는 전부 센다(083) — 둘 중 하나라도 넘으면 같은 429
+      const used = todays.filter((r) => {
         const s = statusAt(r, now());
         return s !== 'failed' && s !== 'refused';
       }).length;
-      if (used >= limit) {
+      if (used >= limit || todays.length >= attempts) {
         const resetAt = new Date((today + 1) * DAY_MS - KST_MS).toISOString();
         throw err('comic_daily_limit', 429, '오늘 만들 수 있는 만화를 다 만들었어요. 내일 다시 만들어 주세요', {
           resetAt,

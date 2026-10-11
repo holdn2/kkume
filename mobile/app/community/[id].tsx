@@ -347,9 +347,12 @@ export default function PostScreen() {
           </AppText>
         )}
 
-        {/* 만화(이슈 #92). 지금 서버의 comicUrl 은 한 장이라 2×2 한 장으로 그린다 — 해설 · 대사까지 받으려면
-            서버가 comic 객체로 넓혀야 한다(문서 081 03장 제안). 서버가 만화를 받기 전에는 늘 null 이라 그리지 않는다 */}
-        {!!post.comicUrl && <ComicView layout="grid2x2" imageUrls={[post.comicUrl]} panels={[]} />}
+        {/* 만화(이슈 #98). 서버의 comic 객체로 해설 · 대사까지 그린다(083 04절). comicUrl 만 있으면 그림 한 장으로 */}
+        {post.comic ? (
+          <ComicView layout={post.comic.layout} imageUrls={post.comic.imageUrls} panels={post.comic.panels} />
+        ) : (
+          !!post.comicUrl && <ComicView layout="grid2x2" imageUrls={[post.comicUrl]} panels={[]} />
+        )}
 
         <Row gap={sp[5]}>
           <Pressable

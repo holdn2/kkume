@@ -1,8 +1,9 @@
 /**
- * 꿈 만화(이슈 #92). 화면 없이 규칙만 — 가짜 서버가 계약 초안(문서 081)대로 답하는가, 화면이 쓰는 계산이 맞는가.
- * 서버가 붙으면 서버 테스트와 이름을 맞춰 같은 기준으로 쓴다(커뮤니티와 같은 방식).
+ * 꿈 만화(이슈 #92 · #98). 화면 없이 규칙만 — 가짜 서버가 계약(문서 081 · 서버의 답 083)대로 답하는가,
+ * 진짜 서버 구현(comicHttp)이 경로 · 오류를 맞게 옮기는가, 화면이 쓰는 계산이 맞는가.
  */
 import { isComicRunning } from '@shared/api/comic';
+import { createHttpComic } from '@shared/api/comicHttp';
 import { createFakeComicApi, fakePanels } from '@features/comic/fake';
 import { explainCreateError, gridCrop, stepStates } from '@features/comic/logic';
 
@@ -91,7 +92,12 @@ who = 'u-other';
 check('M18', '남의 만화는 보이지 않는다', (await api.get(c2.id)) === null && (await api.forDream('d-1')).length === 0);
 budgetOut = true;
 const budget = await code(api.create(input(DREAM)));
-check('M19', '월 몫이 끝나면 503 comic_budget_exhausted', budget?.status === 503 && budget?.code === 'comic_budget_exhausted');
+check(
+  'M19',
+  '오늘 서비스 몫이 끝나면 503 comic_budget_exhausted, 문구는 "오늘"(083)',
+  budget?.status === 503 && budget?.code === 'comic_budget_exhausted' && budget?.message.startsWith('오늘'),
+  budget?.message,
+);
 budgetOut = false;
 who = 'u-me';
 t += 7_000;
@@ -114,6 +120,71 @@ const inProgress = explainCreateError({ code: 'comic_in_progress', status: 409, 
 check('M26', '만드는 중 오류는 그 만화로 보낸다', inProgress.kind === 'inProgress' && inProgress.comicId === 'x');
 check('M27', '401 은 로그인 안내', explainCreateError({ code: 'unauthorized', status: 401, message: '' }).kind === 'login');
 check('M28', '모르는 오류는 고정 문구', explainCreateError(new Error('boom')).message.includes('잠시 뒤'));
+
+// 하루 시도 5회(083 01장) — 거절 · 실패는 1편 몫에서 빠지지만 시도로는 센다
+{
+  let tt = Date.parse('2026-10-12T03:00:00Z');
+  const a = createFakeComicApi({ now: () => tt, me: async () => 'u-try', stepMs: { queued: 1, scripting: 1, drawing: 1 } });
+  for (let i = 0; i < 5; i++) {
+    await a.create(input('[거절] 무서운 꿈이었다.'));
+    tt += 10;
+  }
+  const sixth = await code(a.create(input(DREAM)));
+  check('M29', '거절만 다섯 번이어도 여섯 번째는 429 comic_daily_limit', sixth?.status === 429 && sixth?.code === 'comic_daily_limit', sixth?.code ?? '만들어짐');
+  tt += 24 * 60 * 60 * 1000;
+  check('M30', '다음 날(KST)이면 다시 만들 수 있다', (await a.create(input(DREAM))).status === 'queued');
+}
+
+// 진짜 서버 구현(comicHttp) — fetch 를 흉내 내 경로 · 메서드 · 토큰 · 오류 변환을 본다
+{
+  const calls = [];
+  let reply = { status: 200, body: {} };
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, method: init.method, auth: init.headers.Authorization ?? null, body: init.body ? JSON.parse(init.body) : null });
+    const { status, body } = reply;
+    return { ok: status < 300, status, json: async () => body, text: async () => (body == null ? '' : JSON.stringify(body)) };
+  };
+  let token = 'tok';
+  const http = createHttpComic({ token: async () => token });
+  const last = () => calls[calls.length - 1];
+
+  reply = { status: 202, body: { id: 'c1', status: 'queued' } };
+  const made = await http.create(input(DREAM, { dreamId: 'd 1' }));
+  check(
+    'M31',
+    '만들기는 POST /api/comics, 토큰 · 꿈 복사본을 싣는다',
+    made.id === 'c1' && last().method === 'POST' && last().url.endsWith('/api/comics') && last().auth === 'Bearer tok' &&
+      last().body.dreamText === DREAM && last().body.style === 'soft' && last().body.dreamId === 'd 1',
+  );
+
+  reply = { status: 200, body: { items: [{ id: 'c1' }, { id: 'c0' }] } };
+  const items = await http.forDream('d 1');
+  check('M32', '꿈별 목록은 items 를 풀고 dreamId 를 인코딩한다', items.length === 2 && last().url.endsWith('/api/comics?dreamId=d%201'), last().url);
+
+  reply = { status: 404, body: { code: 'comic_not_found', message: '없어요' } };
+  check('M33', '남의 것 · 지운 것(404)은 null', (await http.get('c9')) === null && last().url.endsWith('/api/comics/c9'));
+
+  reply = { status: 404, body: { code: 'not_found', message: '없는 경로입니다' } };
+  const noRoute = await code(http.get('c9'));
+  check('M38', '만화가 아닌 404(경로 없음 등)는 null 로 삼키지 않는다(PR #99 리뷰)', noRoute?.status === 404 && noRoute?.code === 'not_found', noRoute === null ? 'null 로 바뀜' : '');
+
+  reply = { status: 409, body: { code: 'comic_in_progress', message: '만들고 있는 만화가 있어요', comicId: 'c1' } };
+  const busy = explainCreateError(await code(http.create(input(DREAM))));
+  check('M34', '409 의 comicId 는 data 로 와서 화면이 그 만화로 보낸다', busy.kind === 'inProgress' && busy.comicId === 'c1');
+
+  reply = { status: 503, body: { code: 'comic_unavailable', message: '지금은 만화를 만들 수 없어요' } };
+  const off = explainCreateError(await code(http.create(input(DREAM))));
+  check('M35', '503 comic_unavailable 은 서버 문구 그대로', off.message === '지금은 만화를 만들 수 없어요');
+
+  reply = { status: 204, body: null };
+  await http.remove('c1');
+  check('M36', '지우기는 DELETE /api/comics/{id}, 204 를 받는다', last().method === 'DELETE' && last().url.endsWith('/api/comics/c1'));
+
+  token = null;
+  const before = calls.length;
+  const anon = await code(http.get('c1'));
+  check('M37', '로그인 전에는 보내지 않고 401', anon?.status === 401 && calls.length === before && explainCreateError(anon).kind === 'login');
+}
 
 console.log(`\n${total}개 중 실패 ${failed}개`);
 if (failed) process.exitCode = 1;
