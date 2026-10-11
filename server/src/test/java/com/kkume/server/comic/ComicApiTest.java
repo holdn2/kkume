@@ -430,6 +430,50 @@ class ComicApiTest {
 			.extracting(m -> m.get("ok")).containsExactly(false, true);
 	}
 
+	private static String spoken() {
+		return FakeComicAi.GOOD_SCRIPT.replace("복도를 걸었는데 길이 끝없이 늘어났다", "복도가 끝없이 길어졌어");
+	}
+
+	private List<String> captions(String comicId) throws Exception {
+		return JsonPath.read(read(this.me, comicId), "$.panels[*].caption");
+	}
+
+	@Test
+	void 해설이_말하는_말투면_한_번_다시_불러_글말로_받는다() throws Exception {
+		this.ai.nextScript(FakeComicAi_spoken());
+		String id = createId(this.me, dreamId());
+		drain();
+		assertThat(this.ai.scriptCalls).hasValue(2);
+		assertThat(captions(id).get(0)).isEqualTo("복도를 걸었는데 길이 끝없이 늘어났다");
+		assertThat(this.jdbc.queryForList("select error from comic_costs where comic_id = ?::uuid and step = 'script' order by id",
+				String.class, id)).containsExactly("spoken_caption", null);
+	}
+
+	@Test
+	void 두_번_다_말투만_어긋나면_만화는_그대로_만든다() throws Exception {
+		this.ai.nextScript(FakeComicAi_spoken());
+		this.ai.nextScript(FakeComicAi_spoken());
+		String id = createId(this.me, dreamId());
+		drain();
+		assertThat(this.ai.scriptCalls).hasValue(2);
+		assertThat((String) JsonPath.read(read(this.me, id), "$.status")).isEqualTo("done");
+		assertThat(captions(id).get(0)).isEqualTo("복도가 끝없이 길어졌어");
+	}
+
+	@Test
+	void 다시_부른_대본이_계약을_어기면_첫_대본을_쓴다() throws Exception {
+		this.ai.nextScript(FakeComicAi_spoken());
+		this.ai.nextScript(() -> "만들 수 없습니다");
+		String id = createId(this.me, dreamId());
+		drain();
+		assertThat((String) JsonPath.read(read(this.me, id), "$.status")).isEqualTo("done");
+		assertThat(captions(id).get(0)).isEqualTo("복도가 끝없이 길어졌어");
+	}
+
+	private static java.util.function.Supplier<String> FakeComicAi_spoken() {
+		return ComicApiTest::spoken;
+	}
+
 	@Test
 	void 대본이_두_번_다_어긋나면_그리지_않고_failed() throws Exception {
 		this.ai.nextScript(() -> "죄송하지만 만들 수 없습니다");

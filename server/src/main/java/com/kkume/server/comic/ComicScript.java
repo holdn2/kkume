@@ -14,6 +14,9 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>검사(082에서 실제로 본 실패): 컷이 정확히 4개인지, {@code character} · {@code scene}이 영어인지 — 그림 모델은
  * 한국어를 읽지 못한다. 해설 30자 · 대사 20자를 넘으면 자른다. 어기면 한 번 다시 부르고, 두 번째도 어기면 실패다.
+ *
+ * <p>해설 말투({@link #spokenCaption})는 따로 본다. 말하듯 끝나면("~었어" · "~요") 한 번 다시 부르지만, 두 번째도 말투만
+ * 어긋났으면 그대로 받는다 — 말투 때문에 만화를 못 받는 것보다 낫다(083 · 081 06장 보강).
  */
 public record ComicScript(String character, List<Scene> scenes) {
 
@@ -37,9 +40,15 @@ public record ComicScript(String character, List<Scene> scenes) {
 			 "panels": [{"scene": "<English, concrete visual description of this panel, 1-2 sentences, no text or letters in the image>",
 			             "caption": "<Korean narration, max 30 characters>",
 			             "dialogue": "<Korean line a character says, max 20 characters, or null>"}]}
-			Keep the dream's own events; do not add new plot. Captions are written in the dreamer's past tense (~했다).
+			Keep the dream's own events; do not add new plot. Every caption is plain written-style Korean past tense ending in ~했다 / ~였다 / ~었다 (diary narration, e.g. "복도가 끝없이 길어졌다"). Never use spoken endings like ~었어, ~했어, ~요, ~어요.
 			"character" and every "scene" MUST be written in English (the image model does not read Korean); only "caption" and "dialogue" are Korean.
 			Exactly 4 panels in story order.""";
+
+	/** 해설 끝의 문장부호 · 공백 · 이모지 따위 */
+	private static final Pattern TRAILING = Pattern.compile("[^가-힣0-9A-Za-z]+$");
+
+	/** 끝 글자와 상관없이 말투로 보는 어미 */
+	private static final Pattern SPOKEN_ENDINGS = Pattern.compile("(거야|잖아|는데|야|요|죠)$");
 
 	private static final Pattern HANGUL = Pattern.compile("[\\u1100-\\u11FF\\u3130-\\u318F\\uAC00-\\uD7A3]");
 
@@ -119,6 +128,29 @@ public record ComicScript(String character, List<Scene> scenes) {
 		}
 		String s = node.asString().strip();
 		return s.isEmpty() || s.equalsIgnoreCase("null") ? null : s;
+	}
+
+	boolean spokenCaption() {
+		return this.scenes.stream().anyMatch(s -> spoken(s.caption()));
+	}
+
+	/**
+	 * 해설이 말하는 어미로 끝나는가. "~었어" · "~졌어" · "~갔어"처럼 줄어든 꼴이 많아 어미 목록 대신
+	 * <b>끝 글자가 "어"이고 바로 앞 글자의 받침이 ㅆ(과거)</b>인지로 본다. "고등어"처럼 "어"로 끝나는 명사는 앞 받침이 ㅆ이 아니라 걸리지 않는다
+	 */
+	static boolean spoken(String caption) {
+		String t = TRAILING.matcher(caption).replaceAll("");
+		if (t.isEmpty()) {
+			return false;
+		}
+		if (SPOKEN_ENDINGS.matcher(t).find()) {
+			return true;
+		}
+		if (t.length() >= 2 && t.charAt(t.length() - 1) == '어') {
+			char before = t.charAt(t.length() - 2);
+			return before >= '가' && before <= '힣' && (before - '가') % 28 == 20;
+		}
+		return false;
 	}
 
 	static boolean english(String s) {

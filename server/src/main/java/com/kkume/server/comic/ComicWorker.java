@@ -129,19 +129,33 @@ public class ComicWorker {
 		}
 	}
 
-	/** 대본. 계약에 맞지 않으면 한 번 다시 부른다(081 06장). 두 번 다 어기면 {@code null} */
+	/**
+	 * 대본. 계약에 맞지 않으면 한 번 다시 부른다(081 06장). 두 번 다 어기면 {@code null}.
+	 *
+	 * <p>해설 말투만 어긋난 것도 다시 부르지만, 마지막 차례면 그대로 쓴다 — 말투로 만화를 실패시키지 않는다.
+	 */
 	private ComicScript script(Claimed c) {
 		String user = ComicScript.userMessage(c.title(), c.dreamText());
+		ComicScript spoken = null;
 		for (int attempt = 1; attempt <= SCRIPT_ATTEMPTS; attempt++) {
 			ComicAi.Reply<String> reply = this.ai.script(ComicScript.SYSTEM, user);
 			Optional<ComicScript> parsed = ComicScript.parse(this.json, reply.value());
-			cost(c.id(), reply.usage(), parsed.isPresent(), parsed.isPresent() ? null : "invalid_script");
-			if (parsed.isPresent()) {
-				return parsed.get();
+			if (parsed.isEmpty()) {
+				cost(c.id(), reply.usage(), false, "invalid_script");
+				log.info("대본이 계약에 맞지 않음 comic={} attempt={}", c.id(), attempt);
+				continue;
 			}
-			log.info("대본이 계약에 맞지 않음 comic={} attempt={}", c.id(), attempt);
+			if (parsed.get().spokenCaption() && attempt < SCRIPT_ATTEMPTS) {
+				cost(c.id(), reply.usage(), false, "spoken_caption");
+				log.info("해설이 말하는 말투 comic={} attempt={} — 다시 부름", c.id(), attempt);
+				spoken = parsed.get();
+				continue;
+			}
+			cost(c.id(), reply.usage(), true, null);
+			return parsed.get();
 		}
-		return null;
+		// 두 번째가 계약을 어겼으면 첫 번째의 말투만 어긋난 대본이라도 쓴다
+		return spoken;
 	}
 
 	private void fail(Claimed c, ComicAiException ex) {
