@@ -247,6 +247,7 @@ export const fakeCommunity: CommunityApi = {
       dreamText: p.dreamText,
       body: p.body,
       comicUrl: null,
+      comic: null,
       comments: threaded(id, myId),
     };
     return detail;

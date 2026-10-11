@@ -1,3 +1,5 @@
+import type { ComicLayout, ComicPanel } from './comic';
+
 /**
  * 커뮤니티 — 화면과 서버 사이의 계약. **서버 계약 056 확정본으로 배포됐다(2026-09-30, 서버 #60 · PR #61).**
  *
@@ -69,13 +71,20 @@ export type Comment = {
   deleted: boolean;
 };
 
+export type PostComic = { layout: ComicLayout; imageUrls: string[]; panels: ComicPanel[] };
+
 export type PostDetail = PostSummary & {
   /** 게시할 때 복사한 꿈 본문 */
   dreamText: string;
   /** 올린 사람의 한마디. 없으면 빈 문자열 */
   body: string;
-  /** 만화 이미지 주소. 만화가 붙기 전에는 null */
+  /** 만화 그림 한 장(= `comic.imageUrls[0]`). 2026-10-11 전에 나간 앱이 읽어서 서버가 남겨 둔 필드다 */
   comicUrl: string | null;
+  /**
+   * 함께 올린 만화(083 04절). 올릴 때 그림 · 컷 글을 글 쪽으로 복사해 두므로 원래 만화를 지워도 남는다.
+   * 그림 주소는 짧게 산다 — 저장하지 않는다
+   */
+  comic: PostComic | null;
   /** 시간순. 답글은 부모 바로 뒤에 온다 — 화면이 순서를 다시 맞추지 않게 서버가 정렬해 준다 */
   comments: Comment[];
 };

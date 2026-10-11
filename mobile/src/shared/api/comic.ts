@@ -1,6 +1,6 @@
 /**
- * 꿈 만화 서버 계약(문서 081 초안, 이슈 #92). **아직 서버가 없다** — 화면은 이 인터페이스만 보고,
- * 지금은 가짜(`@features/comic/fake`)가 답한다. 서버가 붙으면 `@features/comic/api` 한 줄을 바꾼다.
+ * 꿈 만화 서버 계약(문서 081, 서버의 답 083). 화면은 이 인터페이스만 본다 — 진짜 서버는 `./comicHttp`,
+ * 규칙 테스트와 스토리는 가짜(`@features/comic/fake`)를 쓴다. 고르는 곳은 `@features/comic/api` 하나다.
  *
  * - AI 호출은 서버만 한다(절대 규칙 6). 앱은 만들기를 부탁하고 상태를 읽는다(폴링)
  * - **그림에는 글자가 없다.** 컷마다 해설 · 대사를 따로 받아 앱이 얹는다 — 이미지 안의 한글은 깨지기 쉽다
@@ -58,8 +58,11 @@ export type NewComic = {
  * |---|---|---|
  * | `invalid_comic_input` | 400 | 본문이 비었거나 너무 김, 모르는 그림체 |
  * | `comic_in_progress` | 409 | 만드는 중인 만화가 이미 있다. 오류에 `comicId` 가 붙는다 |
- * | `comic_daily_limit` | 429 | 오늘 몫을 다 썼다. 오류에 `resetAt` 이 붙는다 |
- * | `comic_budget_exhausted` | 503 | 이번 달 서비스 전체 몫이 끝났다 |
+ * | `comic_daily_limit` | 429 | 오늘 몫(1편)을 다 썼거나, 거절 · 실패까지 센 시도가 하루 5회다. 오류에 `resetAt` 이 붙는다 |
+ * | `comic_budget_exhausted` | 503 | 오늘 서비스 전체 몫(50편)이 끝났거나 Cloudflare 무료 한도를 다 썼다 |
+ * | `comic_unavailable` | 503 | 서버에 모델 키나 저장소가 없다(로컬 서버). 운영에서는 나오지 않는다 |
+ *
+ * 화면은 서버 문구(`message`)를 그대로 보여 준다 — 코드마다 문구를 앱에 따로 두지 않는다.
  */
 export interface ComicApi {
   create(input: NewComic): Promise<Comic>;
