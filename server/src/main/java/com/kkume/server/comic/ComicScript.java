@@ -36,11 +36,13 @@ public record ComicScript(String character, List<Scene> scenes) {
 	static final String SYSTEM = """
 			You turn a Korean dream journal entry into a 4-panel comic script.
 			Return ONLY a JSON object, no markdown, with this shape:
-			{"character": "<ENGLISH ONLY, no Hangul. One sentence: the dreamer's fixed look — age, hair, clothes. e.g. a young woman with long black hair in a white T-shirt and jeans>",
+			{"character": "<ENGLISH ONLY, no Hangul. One sentence: the dreamer's fixed look — age, gender, hair color and style, and one outfit with clear colors. e.g. a young woman with long black hair in a yellow raincoat and blue jeans>",
 			 "panels": [{"scene": "<ENGLISH ONLY, no Hangul. Concrete visual description of this panel, 1-2 sentences, no text or letters in the image>",
 			             "caption": "<Korean narration, max 30 characters>",
 			             "dialogue": "<Korean line a character says, max 20 characters, or null>"}]}
 			"character" and every "scene" are read by an image model that does not understand Korean: translate them into English even though the dream is written in Korean. A single Hangul character in "character" or "scene" makes the whole answer invalid.
+			In every scene call the dreamer "the main character" and do not describe their looks again; never change their age, gender, hair or outfit between panels.
+			Whenever another person or animal appears, describe their own look in that scene (e.g. "an old woman with grey hair in a beige cardigan") so it is clearly different from the main character.
 			Keep the dream's own events; do not add new plot. Every caption is plain written-style Korean past tense ending in ~했다 / ~였다 / ~었다 (diary narration, e.g. "복도가 끝없이 길어졌다"). Never use spoken endings like ~었어, ~했어, ~요, ~어요.
 			Only "caption" and "dialogue" are Korean.
 			Exactly 4 panels in story order.""";
@@ -53,6 +55,8 @@ public record ComicScript(String character, List<Scene> scenes) {
 
 	private static final Pattern HANGUL = Pattern.compile("[\\u1100-\\u11FF\\u3130-\\u318F\\uAC00-\\uD7A3]");
 
+	private static final Pattern MAIN_CHARACTER = Pattern.compile("the main character", Pattern.CASE_INSENSITIVE);
+
 	private static final Pattern OBJECT = Pattern.compile("\\{[\\s\\S]*\\}");
 
 	/** 꿈 제목 · 본문만 보낸다(081 05장 — 처리방침에 적는 범위) */
@@ -60,17 +64,34 @@ public record ComicScript(String character, List<Scene> scenes) {
 		return title == null || title.isBlank() ? dreamText : title.strip() + "\n\n" + dreamText;
 	}
 
-	/** 그림 프롬프트(081 06장). 그림에는 글자를 넣지 않는다 — 앱이 해설 · 대사를 얹는다 */
+	/**
+	 * 그림 프롬프트(081 06장, 10-12 보강). 그림에는 글자를 넣지 않는다 — 앱이 해설 · 대사를 얹는다.
+	 * 컷마다 주인공 모습을 다시 끼워 네 컷의 인물이 흔들리지 않게 한다.
+	 */
 	String gridPrompt(String style) {
 		return String.join(" ",
 				"A single comic page divided into a 2x2 grid of four equal square panels separated by thin white gutters.",
 				"Absolutely no text, no letters, no speech bubbles anywhere.",
-				"The same main character appears in every panel: " + this.character + ".",
+				"Main character, drawn identically in all four panels (same face, same hairstyle and hair color, same outfit): "
+						+ this.character + ".",
 				"Art style: " + styleText(style) + ".",
-				"Top-left panel: " + this.scenes.get(0).scene(),
-				"Top-right panel: " + this.scenes.get(1).scene(),
-				"Bottom-left panel: " + this.scenes.get(2).scene(),
-				"Bottom-right panel: " + this.scenes.get(3).scene());
+				"Top-left panel: " + withCharacter(this.scenes.get(0).scene()),
+				"Top-right panel: " + withCharacter(this.scenes.get(1).scene()),
+				"Bottom-left panel: " + withCharacter(this.scenes.get(2).scene()),
+				"Bottom-right panel: " + withCharacter(this.scenes.get(3).scene()),
+				"Reminder: no speech bubbles, no text, no letters, no signs or writing anywhere in the image.");
+	}
+
+	/**
+	 * 컷 설명의 첫 "the main character"(대소문자 무시) 뒤에 주인공 모습을 괄호로 붙인다. 그 말이 없으면 앞에 붙인다.
+	 * 찾은 말의 대소문자는 그대로 둔다.
+	 */
+	String withCharacter(String scene) {
+		Matcher m = MAIN_CHARACTER.matcher(scene);
+		if (m.find()) {
+			return scene.substring(0, m.end()) + " (" + this.character + ")" + scene.substring(m.end());
+		}
+		return "the main character (" + this.character + "). " + scene;
 	}
 
 	static String styleText(String style) {

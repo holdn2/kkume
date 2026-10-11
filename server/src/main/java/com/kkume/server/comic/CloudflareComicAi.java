@@ -27,7 +27,9 @@ import tools.jackson.databind.json.JsonMapper;
  * <li>그림: {@code POST /ai/run/{model}} multipart(prompt · width · height). 응답 {@code result.image}가 base64 JPEG
  * </ul>
  *
- * <p>오류 본문의 {@code errors[].code}로 가른다. 8007(NSFW)은 거절, 3036(무료 한도 다 씀)은 한도 초과, 그 밖은 실패.
+ * <p>오류 본문의 {@code errors[].code}로 가른다. 8007(NSFW)은 거절, 3036 · 4006(무료 한도 다 씀)은 한도 초과, 그 밖은 실패.
+ * 한도 초과는 코드가 바뀌어 왔다(10-12 운영에서 429 + 4006) — 코드를 모르는 429 도 메시지가 한도 초과면 한도 초과로 본다.
+ * 3040(일시적 용량 부족)도 429 라 상태 코드만으로 가르지 않는다 — 한도 초과로 보면 그날 남은 요청을 다 막는다.
  * 토큰은 로그 · 예외 메시지에 넣지 않는다.
  */
 class CloudflareComicAi implements ComicAi {
@@ -37,6 +39,12 @@ class CloudflareComicAi implements ComicAi {
 	private static final int NSFW = 8007;
 
 	private static final int ACCOUNT_LIMITED = 3036;
+
+	/** 10-12 운영에서 무료 한도를 다 썼을 때 실제로 온 코드(HTTP 429) */
+	private static final int DAILY_ALLOCATION = 4006;
+
+	/** 그림 결과가 검열에 걸림(HTTP 400). 입력이 아니라 결과라 같은 프롬프트로 다시 그리면 지나가기도 한다 */
+	static final String OUTPUT_FLAGGED = "cf_3030";
 
 	private final RestClient http;
 
@@ -136,7 +144,7 @@ class CloudflareComicAi implements ComicAi {
 		if (code == NSFW) {
 			return new ComicAiException(ComicAiException.Kind.REFUSED, label, message, u, ex);
 		}
-		if (code == ACCOUNT_LIMITED) {
+		if (code == ACCOUNT_LIMITED || code == DAILY_ALLOCATION || dailyAllocation(ex)) {
 			return new ComicAiException(ComicAiException.Kind.BUDGET, label, message, u, ex);
 		}
 		return new ComicAiException(ComicAiException.Kind.FAILED, label, message, u, ex);
@@ -146,6 +154,13 @@ class CloudflareComicAi implements ComicAi {
 		Usage u = new Usage(step, model, null, null, 0, BigDecimal.ZERO, ms);
 		String label = ex instanceof ResourceAccessException ? "network" : "client_error";
 		return new ComicAiException(ComicAiException.Kind.FAILED, label, "Workers AI " + step + " — 닿지 못함", u, ex);
+	}
+
+	/** 코드를 모르는 429 — 본문이 무료 한도를 다 썼다고 말하는가 */
+	private static boolean dailyAllocation(RestClientResponseException ex) {
+		String body = ex.getResponseBodyAsString();
+		return ex.getStatusCode().value() == 429 && body != null
+				&& body.toLowerCase(java.util.Locale.ROOT).contains("daily free allocation");
 	}
 
 	/** {@code {"errors":[{"code":8007,...}]}}의 첫 코드. 읽을 수 없으면 0 */

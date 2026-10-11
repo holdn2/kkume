@@ -99,6 +99,38 @@ class CloudflareComicAiTest {
 	}
 
 	@Test
+	void 한도_초과_4006_도_무료_한도_초과다() {
+		// 10-12 운영에서 실제로 온 응답
+		this.server.expect(requestTo(BASE + "/v1/chat/completions"))
+			.andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS).contentType(MediaType.APPLICATION_JSON).body("""
+					{"errors":[{"message":"you have used up your daily free allocation of 10,000 neurons","code":4006}],"success":false}"""));
+		assertThatThrownBy(() -> this.ai.script("s", "u")).isInstanceOfSatisfying(ComicAiException.class, ex -> {
+			assertThat(ex.kind()).isEqualTo(ComicAiException.Kind.BUDGET);
+			assertThat(ex.code()).isEqualTo("cf_4006");
+		});
+	}
+
+	@Test
+	void 코드를_모르는_429_도_메시지가_한도_초과면_무료_한도_초과다() {
+		this.server.expect(requestTo(BASE + "/v1/chat/completions"))
+			.andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS).contentType(MediaType.APPLICATION_JSON).body("""
+					{"errors":[{"message":"You have used up your Daily Free Allocation of 10,000 neurons","code":9999}]}"""));
+		assertThatThrownBy(() -> this.ai.script("s", "u")).isInstanceOfSatisfying(ComicAiException.class,
+				ex -> assertThat(ex.kind()).isEqualTo(ComicAiException.Kind.BUDGET));
+	}
+
+	@Test
+	void 그림_결과_검열_3030_은_실패이고_코드를_남긴다() {
+		this.server.expect(requestTo(BASE + "/run/@cf/black-forest-labs/flux-2-klein-4b"))
+			.andRespond(withStatus(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON).body("""
+					{"errors":[{"message":"AiError: Your output has been flagged. Please choose another prompt / input image combination","code":3030}]}"""));
+		assertThatThrownBy(() -> this.ai.draw("p")).isInstanceOfSatisfying(ComicAiException.class, ex -> {
+			assertThat(ex.kind()).isEqualTo(ComicAiException.Kind.FAILED);
+			assertThat(ex.code()).isEqualTo(CloudflareComicAi.OUTPUT_FLAGGED);
+		});
+	}
+
+	@Test
 	void 그_밖의_오류는_실패이고_본문이_JSON_이_아니면_상태_코드로_남긴다() {
 		this.server.expect(requestTo(BASE + "/run/@cf/black-forest-labs/flux-2-klein-4b"))
 			.andRespond(withStatus(HttpStatus.BAD_GATEWAY).body("<html>bad gateway</html>"));

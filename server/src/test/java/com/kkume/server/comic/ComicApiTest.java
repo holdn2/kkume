@@ -187,7 +187,7 @@ class ComicApiTest {
 		// 꿈 제목 · 본문만 모델에 간다. 그림 프롬프트에는 글자를 넣지 말라는 말과 그림체가 들어간다
 		assertThat(this.ai.lastUserMessage).isEqualTo("복도 꿈\n\n학교 복도가 끝없이 길어졌다.");
 		assertThat(this.ai.lastPrompt).contains("2x2 grid", "no text", "pastel watercolor",
-				"a young adult with short black hair", "Top-left panel: A long school hallway");
+				"a young adult with short black hair", "Top-left panel: the main character (a young adult with short black hair wearing a grey hoodie). A long school hallway");
 		assertThat(this.storage.has("comics/" + this.me.id() + "/" + id + "/grid.jpg")).isTrue();
 
 		// 끝난 만화에는 꿈 내용 · 장면 묘사가 남지 않는다
@@ -410,6 +410,34 @@ class ComicApiTest {
 	}
 
 	@Test
+	void 그림_결과가_검열에_걸리면_한_번_다시_그린다() throws Exception {
+		this.ai.nextImage(() -> {
+			throw FakeComicAi.failure(ComicAiException.Kind.FAILED, "cf_3030");
+		});
+		String id = createId(this.me, dreamId());
+		drain();
+		assertThat((String) JsonPath.read(read(this.me, id), "$.status")).isEqualTo("done");
+		assertThat(this.ai.drawCalls).hasValue(2);
+		assertThat(this.jdbc.queryForList("select error from comic_costs where comic_id = ?::uuid and step = 'image' order by id",
+				String.class, id)).containsExactly("cf_3030", null);
+	}
+
+	@Test
+	void 그림_결과가_두_번_검열에_걸리면_failed() throws Exception {
+		for (int i = 0; i < 2; i++) {
+			this.ai.nextImage(() -> {
+				throw FakeComicAi.failure(ComicAiException.Kind.FAILED, "cf_3030");
+			});
+		}
+		String id = createId(this.me, dreamId());
+		drain();
+		String r = read(this.me, id);
+		assertThat((String) JsonPath.read(r, "$.status")).isEqualTo("failed");
+		assertThat((String) JsonPath.read(r, "$.failMessage")).isEqualTo(ComicService.FAILED_MESSAGE);
+		assertThat(this.ai.drawCalls).hasValue(2);
+	}
+
+	@Test
 	void 무료_한도를_넘으면_그_만화는_failed_이고_오늘_남은_요청은_503() throws Exception {
 		this.ai.nextImage(() -> {
 			throw FakeComicAi.failure(ComicAiException.Kind.BUDGET, "cf_3036");
@@ -421,7 +449,9 @@ class ComicApiTest {
 		assertThat((String) JsonPath.read(r, "$.failMessage")).isEqualTo(ComicService.BUDGET_MESSAGE);
 
 		create(login(), dreamId(), "꿈", "soft").andExpect(status().isServiceUnavailable())
-			.andExpect(jsonPath("$.code").value("comic_budget_exhausted"));
+			.andExpect(jsonPath("$.code").value("comic_budget_exhausted"))
+			.andExpect(jsonPath("$.message").value("오늘 만화가 마감됐어요. 오전 9시 이후에 다시 만들어 주세요"));
+		assertThat(ComicService.BUDGET_MESSAGE).contains("오전 9시 이후에");
 	}
 
 	@Test

@@ -116,7 +116,7 @@ public class ComicWorker {
 			return;
 		}
 
-		ComicAi.Reply<byte[]> image = this.ai.draw(script.gridPrompt(c.style()));
+		ComicAi.Reply<byte[]> image = draw(c, script.gridPrompt(c.style()));
 		cost(c.id(), image.usage(), true, null);
 
 		String key = ComicStorage.comicPrefix(c.userId(), c.id()) + "grid.jpg";
@@ -126,6 +126,26 @@ public class ComicWorker {
 			// 그리는 사이 지웠다(앱 · 계정 삭제). 방금 올린 그림을 치운다 — 계정 삭제의 쓸어 내기도 한 번 더 본다
 			log.info("그리는 사이 지운 만화 comic={} — 그림을 치움", c.id());
 			this.storage.deleteAll(ComicStorage.comicPrefix(c.userId(), c.id()));
+		}
+	}
+
+	/**
+	 * 그림. 결과 검열(3030)에 걸리면 한 번 다시 그린다(081 06장) — 무해한 꿈에서도 그림마다 다르게 걸린다.
+	 * 두 번째도 걸리면 그 예외가 그대로 나가 failed 로 끝난다.
+	 */
+	private ComicAi.Reply<byte[]> draw(Claimed c, String prompt) {
+		try {
+			return this.ai.draw(prompt);
+		}
+		catch (ComicAiException ex) {
+			if (!CloudflareComicAi.OUTPUT_FLAGGED.equals(ex.code())) {
+				throw ex;
+			}
+			if (ex.usage() != null) {
+				cost(c.id(), ex.usage(), false, ex.code());
+			}
+			log.info("그림 결과가 검열에 걸림 comic={} — 한 번 다시 그림", c.id());
+			return this.ai.draw(prompt);
 		}
 	}
 
