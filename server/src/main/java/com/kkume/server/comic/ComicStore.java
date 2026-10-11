@@ -77,12 +77,21 @@ class ComicStore {
 				""", new MapSqlParameterSource("user", userId), UUID.class).stream().findFirst();
 	}
 
-	/** 하루 몫으로 세는 내 만화. 거절 · 실패는 빼고 지운 것은 센다(081 02장) */
+	/**
+	 * 하루 몫으로 세는 내 만화. 거절 · 실패는 빼고 지운 것은 센다(081 02장). 만드는 중에 지워 멈췄다가 실패로 끝난 것도
+	 * 지운 것이라 센다 — 빼면 만들고 지우기를 되풀이해 몫을 되살린다
+	 */
 	long countForUserSince(UUID userId, Instant since) {
 		return this.jdbc.queryForObject("""
 				select count(*) from comics where user_id = :user and created_at >= :since
-				  and status not in ('failed', 'refused')
+				  and (deleted_at is not null or status not in ('failed', 'refused'))
 				""", new MapSqlParameterSource("user", userId).addValue("since", time(since)), Long.class);
+	}
+
+	/** 오늘 시도한 수. 거절 · 실패까지 다 센다 */
+	long attemptsForUserSince(UUID userId, Instant since) {
+		return this.jdbc.queryForObject("select count(*) from comics where user_id = :user and created_at >= :since",
+				new MapSqlParameterSource("user", userId).addValue("since", time(since)), Long.class);
 	}
 
 	/** 서비스 전체 하루 몫. 실패도 센다 — 실패한 호출도 무료 한도를 쓴다 */

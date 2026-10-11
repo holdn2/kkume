@@ -321,6 +321,52 @@ class ComicApiTest {
 		create(this.me, dreamId(), "꿈", "soft").andExpect(status().isAccepted());
 	}
 
+	@Test
+	void 같은_사람이_동시에_만들어도_하나만_들어가고_나머지는_409() throws Exception {
+		int n = 4;
+		java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(n);
+		java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+		List<java.util.concurrent.Future<Integer>> results = new java.util.ArrayList<>();
+		for (int i = 0; i < n; i++) {
+			results.add(pool.submit(() -> {
+				start.await();
+				return create(this.me, dreamId(), "동시에 누른 꿈", "soft").andReturn().getResponse().getStatus();
+			}));
+		}
+		start.countDown();
+		List<Integer> codes = new java.util.ArrayList<>();
+		for (java.util.concurrent.Future<Integer> f : results) {
+			codes.add(f.get(30, java.util.concurrent.TimeUnit.SECONDS));
+		}
+		pool.shutdown();
+		assertThat(codes).containsOnly(202, 409);
+		assertThat(codes).filteredOn(c -> c == 202).hasSize(1);
+	}
+
+	@Test
+	void 만드는_중에_지워_실패로_끝나도_하루_몫으로_센다() throws Exception {
+		String id = createId(this.me, dreamId());
+		call(this.me, delete("/api/comics/" + id)).andExpect(status().isNoContent());
+		// 일꾼이 잡은 뒤 지워져 멈췄다가 lease 가 지나 실패로 끝난 경우
+		this.jdbc.update("update comics set status = 'drawing', locked_at = now() - interval '11 minutes' where id = ?::uuid", id);
+		this.worker.runOnce();
+		assertThat(this.jdbc.queryForObject("select status from comics where id = ?::uuid", String.class, id)).isEqualTo("failed");
+		create(this.me, dreamId(), "또 다른 꿈", "soft").andExpect(status().isTooManyRequests());
+	}
+
+	@Test
+	void 거절_실패가_이어져도_하루_시도는_다섯_번까지() throws Exception {
+		for (int i = 0; i < 5; i++) {
+			this.ai.nextImage(() -> {
+				throw FakeComicAi.failure(ComicAiException.Kind.REFUSED, "cf_8007");
+			});
+			createId(this.me, dreamId());
+			drain();
+		}
+		create(this.me, dreamId(), "여섯 번째", "soft").andExpect(status().isTooManyRequests())
+			.andExpect(jsonPath("$.code").value("comic_daily_limit"));
+	}
+
 	// ---------------------------------------------------------------- 실패 · 거절 (06장)
 
 	@Test
@@ -523,6 +569,17 @@ class ComicApiTest {
 		share(this.me, dream, "not-a-uuid").andExpect(status().isBadRequest());
 
 		call(this.me, get("/api/community/dreams/" + dream + "/post")).andExpect(jsonPath("$.postId").doesNotExist());
+	}
+
+	@Test
+	void 계정을_지우면_칸이_비어_있는_글의_그림_복사본도_지운다() throws Exception {
+		// 계정 삭제가 목록을 뽑은 뒤 들어온 글 · 글 삭제 때 못 지운 복사본처럼, 행이 그림을 가리키지 않는데 S3 에는 남은 것
+		String dream = syncDream(this.me);
+		String postId = JsonPath.read(json(share(this.me, dream, null).andExpect(status().isCreated())), "$.id");
+		this.storage.put("posts/" + postId + "/comic.jpg", FakeComicAi.IMAGE, "image/jpeg");
+
+		this.deletion.delete(UUID.fromString(this.me.id()));
+		assertThat(this.storage.keysUnder("posts/" + postId + "/")).isEmpty();
 	}
 
 	@Test

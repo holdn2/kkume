@@ -21,6 +21,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import com.kkume.server.comic.ComicScript.Panel;
 import com.kkume.server.comic.ComicStore.ComicRow;
+import com.kkume.server.user.AccountDeletedException;
 import com.kkume.server.user.AccountGuard;
 
 /**
@@ -92,10 +93,13 @@ public class ComicService {
 	 */
 	@Transactional
 	public ComicView create(UUID userId, NewComic input) {
-		// 지운 계정이면 401. 그다음 사용자 행을 FOR UPDATE 로 잡아 같은 사람의 두 요청이 줄을 서게 한다 —
-		// 둘 다 "만드는 중 없음 · 오늘 0편"을 보고 함께 들어오지 않게
-		this.accounts.lockActive(userId);
-		this.jdbc.queryForList("select id from users where id = ? for update", userId);
+		// 사용자 행을 처음부터 FOR UPDATE 로 잡아 같은 사람의 두 요청이 줄을 서게 한다 — 둘 다 "만드는 중 없음 · 오늘 0편"을
+		// 보고 함께 들어오지 않게. FOR SHARE(lockActive)로 잡은 뒤 올리면 두 요청이 서로의 SHARE 를 기다려 교착된다
+		List<Boolean> deleted = this.jdbc.queryForList("select deleted_at is not null from users where id = ? for update",
+				Boolean.class, userId);
+		if (deleted.isEmpty() || deleted.get(0)) {
+			throw new AccountDeletedException();
+		}
 
 		if (input == null || input.style() == null || !STYLES.contains(input.style())) {
 			throw ComicApiException.invalidInput();
@@ -125,7 +129,10 @@ public class ComicService {
 		}
 
 		LocalDate kstToday = now.atZone(KST).toLocalDate();
-		if (this.store.countForUserSince(userId, kstToday.atStartOfDay(KST).toInstant()) >= this.properties.userDailyLimit()) {
+		Instant kstStart = kstToday.atStartOfDay(KST).toInstant();
+		// 거절 · 실패는 몫에서 빠지지만 시도는 무료 한도를 쓴다. 거절을 되풀이해 서비스 몫을 혼자 쓰지 못하게 시도 수도 막는다
+		if (this.store.countForUserSince(userId, kstStart) >= this.properties.userDailyLimit()
+				|| this.store.attemptsForUserSince(userId, kstStart) >= this.properties.userDailyAttempts()) {
 			throw new ComicApiException(HttpStatus.TOO_MANY_REQUESTS, "comic_daily_limit",
 					"오늘 만들 수 있는 만화를 다 만들었어요. 내일 다시 만들어 주세요",
 					Map.of("resetAt", kstToday.plusDays(1).atStartOfDay(KST).toInstant().toString()));

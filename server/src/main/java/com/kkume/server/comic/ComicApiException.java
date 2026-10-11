@@ -58,7 +58,8 @@ public class ComicApiException extends RuntimeException {
 				"오늘 만화가 마감됐어요. 내일 다시 만들어 주세요");
 	}
 
-	@RestControllerAdvice(basePackageClasses = ComicApiException.class)
+	/** 커뮤니티 글 상세가 그림 주소를 만들다 던져도 이 모양으로 나가게 패키지를 가리지 않는다 */
+	@RestControllerAdvice
 	static class Handler {
 
 		@ExceptionHandler(ComicApiException.class)

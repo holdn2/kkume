@@ -11,6 +11,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param region 버킷 리전
  * @param imageTtl 앱에 주는 presigned GET 의 수명. 앱은 주소를 저장하지 않고 열 때마다 다시 받는다
  * @param userDailyLimit 1인 하루(KST 자정) 몫. 거절 · 실패는 세지 않는다
+ * @param userDailyAttempts 1인 하루 시도 수. 거절 · 실패까지 센다 — 거절을 되풀이해 서비스 몫을 혼자 쓰지 못하게
  * @param serviceDailyLimit 서비스 전체 하루(UTC 자정 — Cloudflare 무료 한도가 다시 채워지는 때) 몫. 실패도 센다
  * @param workerEnabled 끄면 만화를 받아 두기만 하고 그리지 않는다(테스트)
  * @param poll 줄을 들여다보는 간격
@@ -19,7 +20,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "kkume.comic")
 public record ComicProperties(String bucket, String region, Duration imageTtl, int userDailyLimit,
-		int serviceDailyLimit, boolean workerEnabled, Duration poll, Duration lease, Cloudflare cloudflare) {
+		int userDailyAttempts, int serviceDailyLimit, boolean workerEnabled, Duration poll, Duration lease, Cloudflare cloudflare) {
 
 	/**
 	 * @param accountId Cloudflare 계정 ID

@@ -142,18 +142,23 @@ public class AccountDeletionService {
 		// 삭제 직전에 받은 URL 로 그 사이 올라온 것 · 그리던 만화의 그림. 여기서 실패해도 쓸어 내기가 받는다
 		try {
 			this.audio.deleteAll(prefix);
-			this.comics.deleteAll(ComicStorage.userPrefix(userId));
+			deleteComicImages(userId);
 		}
 		catch (RuntimeException ex) {
 			log.warn("계정 삭제 — 뒤늦은 녹음 · 그림 정리 실패, 쓸어 내기에 맡김 user={}", userId, ex);
 		}
 	}
 
-	/** 내 만화 그림과, 꿈 나눔 글에 붙인 복사본(문서 081 04장). 글 행은 남지만 그림은 남기지 않는다 */
+	/**
+	 * 내 만화 그림과, 꿈 나눔 글에 붙인 복사본(문서 081 04장). 글 행은 익명화돼 남지만 그림은 남기지 않는다.
+	 *
+	 * <p>복사본은 <b>그림 칸이 비었어도 내 글 전부</b>에서 찾는다. 칸만 보면 놓치는 것이 있다 — 이 목록을 뽑은 뒤 삭제
+	 * 트랜잭션 전에 올라온 글(삭제가 칸을 비운다), 글을 지울 때 S3 에서 못 지운 복사본(칸은 이미 비었다).
+	 * 글 행은 지우지 않으니 삭제 뒤 정리 · 쓸어 내기도 같은 목록으로 다시 본다.
+	 */
 	private void deleteComicImages(UUID userId) {
 		this.comics.deleteAll(ComicStorage.userPrefix(userId));
-		List<UUID> posts = this.jdbc.queryForList(
-				"select id from posts where author_id = :user and comic_image_key is not null",
+		List<UUID> posts = this.jdbc.queryForList("select id from posts where author_id = :user",
 				new MapSqlParameterSource("user", userId), UUID.class);
 		for (UUID post : posts) {
 			this.comics.deleteAll(ComicStorage.postPrefix(post));
@@ -227,8 +232,8 @@ public class AccountDeletionService {
 		for (UUID userId : recent) {
 			try {
 				this.audio.deleteAll(audioPrefix(userId));
-				// 삭제하는 사이 일꾼이 그려 올린 만화 그림
-				this.comics.deleteAll(ComicStorage.userPrefix(userId));
+				// 삭제하는 사이 일꾼이 그려 올린 만화 그림 · 삭제 직전에 올라온 글의 복사본
+				deleteComicImages(userId);
 			}
 			catch (RuntimeException ex) {
 				log.warn("지운 계정의 녹음 · 그림 쓸어 내기 실패 user={} — 다음 차례에 다시", userId, ex);
