@@ -63,7 +63,7 @@ export type NewComic = {
  * |---|---|---|
  * | `invalid_comic_input` | 400 | 본문이 비었거나 너무 김, 모르는 그림체 |
  * | `comic_in_progress` | 409 | 만드는 중인 만화가 이미 있다. 오류에 `comicId` 가 붙는다 |
- * | `comic_daily_limit` | 429 | 오늘 몫(1편)을 다 썼거나, 거절 · 실패까지 센 시도가 하루 5회다. 오류에 `resetAt` 이 붙는다 |
+ * | `comic_daily_limit` | 429 | 오늘 몫(2편)을 다 썼거나, 거절 · 실패까지 센 시도가 하루 5회다. 오류에 `resetAt` 이 붙는다 |
  * | `comic_budget_exhausted` | 503 | 오늘 서비스 전체 몫(50편)이 끝났거나 Cloudflare 무료 한도를 다 썼다 |
  * | `comic_unavailable` | 503 | 서버에 모델 키나 저장소가 없다(로컬 서버). 운영에서는 나오지 않는다 |
  *
