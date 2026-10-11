@@ -36,12 +36,13 @@ public record ComicScript(String character, List<Scene> scenes) {
 	static final String SYSTEM = """
 			You turn a Korean dream journal entry into a 4-panel comic script.
 			Return ONLY a JSON object, no markdown, with this shape:
-			{"character": "<English, one sentence: the dreamer's fixed look — age, hair, clothes — reuse in every panel>",
-			 "panels": [{"scene": "<English, concrete visual description of this panel, 1-2 sentences, no text or letters in the image>",
+			{"character": "<ENGLISH ONLY, no Hangul. One sentence: the dreamer's fixed look — age, hair, clothes. e.g. a young woman with long black hair in a white T-shirt and jeans>",
+			 "panels": [{"scene": "<ENGLISH ONLY, no Hangul. Concrete visual description of this panel, 1-2 sentences, no text or letters in the image>",
 			             "caption": "<Korean narration, max 30 characters>",
 			             "dialogue": "<Korean line a character says, max 20 characters, or null>"}]}
+			"character" and every "scene" are read by an image model that does not understand Korean: translate them into English even though the dream is written in Korean. A single Hangul character in "character" or "scene" makes the whole answer invalid.
 			Keep the dream's own events; do not add new plot. Every caption is plain written-style Korean past tense ending in ~했다 / ~였다 / ~었다 (diary narration, e.g. "복도가 끝없이 길어졌다"). Never use spoken endings like ~었어, ~했어, ~요, ~어요.
-			"character" and every "scene" MUST be written in English (the image model does not read Korean); only "caption" and "dialogue" are Korean.
+			Only "caption" and "dialogue" are Korean.
 			Exactly 4 panels in story order.""";
 
 	/** 해설 끝의 문장부호 · 공백 · 이모지 따위 */
