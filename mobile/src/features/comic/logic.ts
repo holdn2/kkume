@@ -36,6 +36,16 @@ export function gridCrop(index: number, cell: number): { width: number; height: 
   return { width: cell * 2, height: cell * 2, left: -col * cell, top: -row * cell };
 }
 
+/**
+ * 말풍선을 둘 쪽. 서버가 준 `speaker` 를 믿되, 없거나 모르는 값이면 가운데 —
+ * 엉뚱한 사람을 가리키는 것보다 아래를 가리키는 편이 덜 틀린다
+ */
+export type BubbleSide = 'left' | 'right' | 'center';
+
+export function bubbleSide(speaker: unknown): BubbleSide {
+  return speaker === 'left' || speaker === 'right' ? speaker : 'center';
+}
+
 /** 만들기 요청이 실패했을 때 화면이 할 일. 서버 문구는 이미 존댓말이라 그대로 쓴다 */
 export type CreateFailure =
   | { kind: 'inProgress'; comicId: string; message: string }

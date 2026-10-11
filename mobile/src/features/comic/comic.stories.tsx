@@ -14,8 +14,8 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const PANELS: ComicPanel[] = [
-  { caption: '학교 옥상에 서 있었다. 아래가 까마득했다.', dialogue: '여기서 뛰면 어떻게 될까?' },
-  { caption: '뛰어내렸는데 떨어지지 않았다.', dialogue: null },
+  { caption: '학교 옥상에 서 있었다. 아래가 까마득했다.', dialogue: '여기서 뛰면 어떻게 될까?', speaker: 'left' },
+  { caption: '뛰어내렸는데 떨어지지 않았다.', dialogue: '어?', speaker: 'right' },
   { caption: '바다 위를 한참 날았다. 물빛이 이상하게 보라색이었다.', dialogue: '집이 어디였더라' },
   { caption: '눈을 떠 보니 침대였다.', dialogue: null },
 ];

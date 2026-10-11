@@ -21,6 +21,11 @@ export type ComicPanel = {
   caption: string;
   /** 인물의 말. 없으면 null — 말풍선을 그리지 않는다 */
   dialogue: string | null;
+  /**
+   * 말하는 사람이 컷의 어느 쪽에 서 있는지. 말풍선과 꼬리가 그쪽을 향한다(이슈 #106).
+   * 서버가 아직 주지 않을 수 있다 — 없거나 다른 값이면 가운데로 본다
+   */
+  speaker?: 'left' | 'right' | null;
 };
 
 export type Comic = {

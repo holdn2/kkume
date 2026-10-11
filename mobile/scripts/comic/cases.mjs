@@ -5,7 +5,7 @@
 import { isComicRunning } from '@shared/api/comic';
 import { createHttpComic } from '@shared/api/comicHttp';
 import { createFakeComicApi, fakePanels } from '@features/comic/fake';
-import { explainCreateError, gridCrop, stepStates } from '@features/comic/logic';
+import { bubbleSide, explainCreateError, gridCrop, stepStates } from '@features/comic/logic';
 
 let failed = 0;
 let total = 0;
@@ -114,6 +114,11 @@ check(
   '2×2 자르기는 왼쪽 위 → 오른쪽 위 → 왼쪽 아래 → 오른쪽 아래',
   crops.every((x) => x.width === 200 && x.height === 200) &&
     crops.map((x) => `${x.left},${x.top}`).join(' ') === '0,0 -100,0 0,-100 -100,-100',
+);
+check(
+  'M39',
+  '말풍선은 speaker 쪽, 없거나 모르는 값이면 가운데(이슈 #106)',
+  [bubbleSide('left'), bubbleSide('right'), bubbleSide(null), bubbleSide(undefined), bubbleSide('middle')].join() === 'left,right,center,center,center',
 );
 check('M25', '문장이 넷보다 적어도 컷은 넷', fakePanels('한 문장뿐인 꿈.').length === 4);
 const inProgress = explainCreateError({ code: 'comic_in_progress', status: 409, message: '만들고 있는 만화가 있어요', data: { comicId: 'x' } });
