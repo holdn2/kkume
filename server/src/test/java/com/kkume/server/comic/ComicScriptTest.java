@@ -86,6 +86,32 @@ class ComicScriptTest {
 	}
 
 	@Test
+	void 대본_프롬프트는_주인공을_the_main_character_로_부르게_한다() {
+		assertThat(ComicScript.SYSTEM).contains("age, gender, hair color and style, and one outfit with clear colors",
+				"In every scene call the dreamer \"the main character\"",
+				"Whenever another person or animal appears, describe their own look in that scene");
+	}
+
+	@Test
+	void 그림_프롬프트는_컷마다_주인공_모습을_끼우고_글자_금지로_끝난다() {
+		ComicScript script = ComicScript.parse(this.json, FakeComicAi.GOOD_SCRIPT
+			.replace("A long school hallway stretches endlessly.", "The main character walks down a long school hallway.")
+			.replace("She opens a door to a bright blue sea.", "A door opens and the Main Character sees a blue sea."))
+			.orElseThrow();
+		String c = "a young adult with short black hair wearing a grey hoodie";
+		String prompt = script.gridPrompt("soft");
+		assertThat(prompt).contains(
+				"Main character, drawn identically in all four panels (same face, same hairstyle and hair color, same outfit): " + c + ".",
+				"Top-left panel: The main character (" + c + ") walks down a long school hallway.",
+				"Top-right panel: A door opens and the Main Character (" + c + ") sees a blue sea.",
+				"Bottom-left panel: the main character (" + c + "). Another door shows the same ocean.");
+		assertThat(prompt).endsWith("Reminder: no speech bubbles, no text, no letters, no signs or writing anywhere in the image.");
+		// 첫 번째만 바꾼다
+		assertThat(script.withCharacter("the main character waves; the main character smiles"))
+			.isEqualTo("the main character (" + c + ") waves; the main character smiles");
+	}
+
+	@Test
 	void 제목이_있으면_본문_앞에_붙인다() {
 		assertThat(ComicScript.userMessage("제목", "본문")).isEqualTo("제목\n\n본문");
 		assertThat(ComicScript.userMessage(" ", "본문")).isEqualTo("본문");

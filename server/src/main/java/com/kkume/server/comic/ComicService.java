@@ -49,7 +49,7 @@ public class ComicService {
 
 	static final String FAILED_MESSAGE = "만화를 만들지 못했습니다. 잠시 뒤 다시 만들어 주세요.";
 
-	static final String BUDGET_MESSAGE = "오늘 만화가 마감됐어요. 내일 다시 만들어 주세요.";
+	static final String BUDGET_MESSAGE = "오늘 만화가 마감됐어요. 오전 9시 이후에 다시 만들어 주세요.";
 
 	private static final TypeReference<List<Panel>> PANELS = new TypeReference<>() {
 	};
