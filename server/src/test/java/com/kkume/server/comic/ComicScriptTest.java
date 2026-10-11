@@ -81,7 +81,8 @@ class ComicScriptTest {
 		assertThat(ComicScript.spoken("기다리던 강아지")).isFalse();
 		assertThat(ComicScript.spoken("바다 위로 떠오른 해")).isFalse();
 		assertThat(ComicScript.spoken("")).isFalse();
-		assertThat(ComicScript.SYSTEM).contains("Never use spoken endings");
+		assertThat(ComicScript.SYSTEM).contains("Never use spoken endings", "ENGLISH ONLY, no Hangul",
+				"translate them into English even though the dream is written in Korean");
 	}
 
 	@Test
