@@ -238,7 +238,9 @@ aws s3api put-bucket-encryption --bucket "$BUCKET" \
   "Statement": [
     { "Effect": "Allow",
       "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
-      "Resource": "arn:aws:s3:::kkume-audio-341860778310/audio/*" },
+      "Resource": ["arn:aws:s3:::kkume-audio-341860778310/audio/*",
+                   "arn:aws:s3:::kkume-audio-341860778310/comics/*",
+                   "arn:aws:s3:::kkume-audio-341860778310/posts/*"] },
     { "Effect": "Allow",
       "Action": "s3:ListBucket",
       "Resource": "arn:aws:s3:::kkume-audio-341860778310" }
@@ -250,6 +252,9 @@ aws s3api put-bucket-encryption --bucket "$BUCKET" \
 aws iam put-role-policy --role-name kkume-ec2-ecr --policy-name kkume-audio \
   --policy-document "file://C:\경로\kkume-audio-policy.json"
 ```
+
+`comics/*` 는 꿈 만화 그림(`comics/{userId}/{comicId}/grid.jpg`), `posts/*` 는 꿈 나눔 글에 붙인 복사본이다(문서 081 04장).
+글에 붙일 때 `CopyObject` 를 쓰므로 원본의 `GetObject` 와 대상의 `PutObject` 가 둘 다 있어야 한다.
 
 > **`s3:ListBucket` 을 빼면 "파일 없음"이 404 가 아니라 403 으로 온다.** S3 는 목록 권한이 없는 쪽에
 > 없는 키를 알려 주지 않는다. 서버는 404 만 "앱이 안 올렸다"(`422 upload_missing`)로 보고 403 은
@@ -284,6 +289,19 @@ Apple Developer → Certificates, IDs & Profiles → Keys → Sign in with Apple
 `deploy.sh` 가 머리줄 · 줄바꿈을 뺀 한 줄로 바꿔 컨테이너 환경변수(`KKUME_APPLE_PRIVATE_KEY`)로만 넘긴다. DB 비밀번호와 같은 길이다.
 
 **비어 있어도 배포는 된다** — 애플 로그인은 되고 회수만 건너뛴다(`deploy.sh` 와 서버 기동 로그에 경고). **App Store 제출 전에는 넣는다**(5.1.1(v)).
+
+### 5-3-2. 꿈 만화 — Cloudflare Workers AI 키
+
+대본 · 그림은 Cloudflare Workers AI 무료 플랜(하루 10,000뉴런, 카드 없음 — 넘치면 청구 대신 거절)이 만든다(문서 081 06장).
+Cloudflare 대시보드에서 **Workers AI 권한만 있는** API 토큰을 만들고, 이 PC 에 `ACCOUNT_ID=…` · `API_TOKEN=…` 두 줄짜리 파일로 둔다.
+`.env` 에는 그 경로만 `CLOUDFLARE_KEY_FILE` 로 넣는다 — 애플 키와 같이 **내용을 `.env` · 저장소 · 채팅에 옮기지 않는다.**
+`deploy.sh` 가 읽어 컨테이너 환경변수(`KKUME_CLOUDFLARE_ACCOUNT_ID` · `KKUME_CLOUDFLARE_API_TOKEN`)로만 넘긴다.
+
+**비어 있어도 배포는 된다** — 만화 만들기만 `503 comic_unavailable` 이 된다(`deploy.sh` 와 서버 기동 로그에 안내).
+Cloudflare 의 저장 서비스(R2 · KV)는 쓰지 않는다 — 처리방침(PR #95)이 약속한 것이다. 그림은 위 버킷의 `comics/*` 에 둔다.
+
+키를 바꾼 뒤 진짜로 한 편 그려 보려면(약 150뉴런):
+`KKUME_CF_KEY_FILE=<키 파일> ./gradlew test --tests '*CloudflareLiveTest'` → `build/comic-live.jpg`
 
 ### 5-4. 기록 보관(한 달)
 
@@ -424,7 +442,7 @@ cd server/deploy
 | 보안그룹 | `kkume-server-sg` — **443만 공개**. 22 는 상시 규칙 없음(2026-10-07에 지움) — 쓸 때만 그때 IP 로 열고 닫는다. 80은 2026-09-17에 닫음 |
 | HTTPS | `https://13.239.58.251.nip.io` — Caddy `2.11.4`, Let's Encrypt, 메모리 상한 128m |
 | 오디오 버킷 | `kkume-audio-341860778310` — 시드니, 공개 차단 4개 전부, AES256, ACL 비활성(2026-09-17) |
-| EC2 역할의 버킷 권한 | `kkume-ec2-ecr` 인라인 `kkume-audio` — `audio/*` 읽기·쓰기·삭제 + 버킷 목록. **`audio/` 밖에는 쓰지 못한다** |
+| EC2 역할의 버킷 권한 | `kkume-ec2-ecr` 인라인 `kkume-audio` — `audio/*` · `comics/*` · `posts/*` 읽기·쓰기·삭제 + 버킷 목록. **그 밖에는 쓰지 못한다** |
 | 배포 사용자의 버킷 권한 | `kkume-deploy` 인라인 `kkume-audio-bucket-admin` — 이 버킷의 생성·설정만. **파일은 읽고 쓰지 못한다** |
 | 신고 알림 | SNS `kkume-reports`(시드니) → 메일 구독 `yoocy01@gmail.com`(2026-10-07) |
 | EC2 역할의 알림 권한 | `kkume-ec2-ecr` 인라인 `kkume-report-alerts` — 이 주제에 `sns:Publish` 만 |
