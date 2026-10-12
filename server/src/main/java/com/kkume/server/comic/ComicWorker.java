@@ -188,8 +188,8 @@ public class ComicWorker {
 				finish(c.id(), "refused", ex.code());
 			}
 			case BUDGET -> {
-				// 그날(UTC) 남은 요청은 만들기 단계에서 503 comic_budget_exhausted 로 막힌다(ComicStore#budgetExhaustedSince)
-				log.warn("Workers AI 무료 한도 초과 — 오늘(UTC) 남은 만화 요청을 막음 comic={}", c.id());
+				// 한동안(kkume.comic.budget-block) 새 요청은 만들기 단계에서 503 comic_budget_exhausted 로 막힌다
+				log.warn("Workers AI 무료 한도 초과 — 잠시 새 만화 요청을 막음 comic={}", c.id());
 				finish(c.id(), "failed", "budget");
 			}
 			case FAILED -> {

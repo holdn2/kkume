@@ -124,7 +124,10 @@ public class ComicService {
 
 		Instant now = Instant.now();
 		Instant utcDay = now.atOffset(ZoneOffset.UTC).toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant();
-		if (this.store.budgetExhaustedSince(utcDay) || this.store.countSince(utcDay) >= this.properties.serviceDailyLimit()) {
+		// 한도 초과로 막는 것은 마지막 거절 뒤 잠깐뿐이다. 그 뒤 요청이 또 거절되면 다시 막힌다(거절된 호출은 청구되지 않는다)
+		Instant blockedSince = now.minus(this.properties.budgetBlock());
+		Instant budgetSince = blockedSince.isAfter(utcDay) ? blockedSince : utcDay;
+		if (this.store.budgetExhaustedSince(budgetSince) || this.store.countSince(utcDay) >= this.properties.serviceDailyLimit()) {
 			throw ComicApiException.budgetExhausted();
 		}
 
