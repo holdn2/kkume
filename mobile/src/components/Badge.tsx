@@ -4,7 +4,8 @@ import { AppText } from '@shared/ui';
 import { c, r, sp } from '@theme/token';
 
 // running은 "진행 중"에만 쓴다 — 녹음 중 · 생성 중 · 미확인 기록 (절대 규칙 5번).
-type Tone = 'running' | 'warning' | 'danger' | 'neutral';
+// inverse는 색 없이 눈에 띄어야 하는 분류다(꿈 나눔의 「만화」, 이슈 #115) — 상태가 아니라서 상태색을 빌리지 않는다.
+type Tone = 'running' | 'warning' | 'danger' | 'neutral' | 'inverse';
 
 /**
  * 채움과 테두리가 서로 다른 것을 뜻한다.
@@ -21,6 +22,7 @@ const TONE: Record<Tone, { fg: string; bg: string }> = {
   warning: { fg: c.warning, bg: c.warningBg },
   danger: { fg: c.danger, bg: c.dangerBg },
   neutral: { fg: c.fgMuted, bg: c.raised },
+  inverse: { fg: c.actionFg, bg: c.action },
 };
 
 export function Badge({
@@ -40,10 +42,10 @@ export function Badge({
       style={[
         s.badge,
         outline
-          ? { borderWidth: 1, borderColor: tone === 'neutral' ? c.line : t.fg }
+          ? { borderWidth: 1, borderColor: tone === 'neutral' ? c.line : tone === 'inverse' ? c.action : t.fg }
           : { backgroundColor: t.bg },
       ]}>
-      <AppText size="caption" weight="medium" color={outline && tone === 'neutral' ? c.fgFaint : t.fg}>
+      <AppText size="caption" weight="medium" color={outline && tone === 'neutral' ? c.fgFaint : outline && tone === 'inverse' ? c.action : t.fg}>
         {label}
       </AppText>
     </View>

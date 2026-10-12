@@ -21,8 +21,9 @@ const GAP = sp[1];
 /**
  * CM-3의 네 컷(계획서 003 — "4컷 그리드, 탭하면 전체화면 확대").
  *
- * **글자는 그림 위에 앱이 얹는다**(문서 081). 해설은 컷 아래쪽 띠에, 대사는 위쪽 말풍선에 —
- * 말풍선은 말하는 사람 쪽으로 붙는다(`speaker`).
+ * **글자는 그림 위에 앱이 얹는다**(문서 081). 대사는 위쪽 말풍선에 — 말풍선은 말하는 사람 쪽으로 붙는다(`speaker`).
+ * **해설은 그림 위에 얹지 않는다**(이슈 #115) — 짧게 줄인 해설이 오히려 꿈을 생략해 보였고, 만화는 늘
+ * 꿈 본문과 함께 보인다. 해설은 화면 읽기(접근성 이름)에만 쓴다.
  * 그림이 없으면(가짜 서버 · 받는 중) 그 자리에 자리 그림을 그린다 — 글자는 그대로 읽힌다.
  */
 export function ComicView({ layout, imageUrls, panels, onPressPanel }: Props) {
@@ -54,7 +55,7 @@ type PanelProps = {
   layout: ComicLayout | null;
   imageUrls: string[];
   panel: ComicPanel | undefined;
-  /** 크게 볼 때는 해설을 줄이지 않는다 */
+  /** 크게 볼 때는 대사를 줄이지 않는다 */
   full?: boolean;
 };
 
@@ -77,20 +78,15 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full }: 
         </View>
       )}
       {!!panel?.dialogue && <SpeechBubble text={panel.dialogue} side={bubbleSide(panel.speaker)} full={full} />}
-      {!!panel?.caption && (
-        <View style={s.caption}>
-          <AppText size="caption" color={c.fg} numberOfLines={full ? undefined : 3}>
-            {panel.caption}
-          </AppText>
-        </View>
-      )}
     </View>
   );
 }
 
 /**
  * 말풍선. 말하는 사람 쪽 위에 놓고 꼬리를 그쪽 아래로 뺀다(이슈 #106).
- * 꼬리는 테두리색 삼각형 위에 한 겹 작은 바탕색 삼각형을 겹쳐 테두리가 이어져 보이게 한다
+ * 꼬리는 테두리색 삼각형 위에 한 겹 작은 바탕색 삼각형을 겹쳐 테두리가 이어져 보이게 한다.
+ * 안쪽 삼각형은 몸통 안으로 `TAIL_OVERLAP`만큼 올려 그린다 — 테두리와 딱 맞닿게 두면 기기 픽셀 반올림에 따라
+ * 몸통 아래 테두리가 꼬리 입구에 한 줄 남았다(이슈 #115)
  */
 function SpeechBubble({ text, side, full }: { text: string; side: BubbleSide; full?: boolean }) {
   const align = side === 'left' ? 'flex-start' : side === 'right' ? 'flex-end' : 'center';
@@ -103,7 +99,7 @@ function SpeechBubble({ text, side, full }: { text: string; side: BubbleSide; fu
       </View>
       <View style={[s.tail, side === 'left' ? s.tailLeft : side === 'right' ? s.tailRight : null]}>
         <View style={[s.tri, triangle(side, TAIL, c.bg)]} />
-        <View style={[s.tri, s.triInner, side === 'right' ? { right: BUBBLE_LINE } : { left: BUBBLE_LINE }, triangle(side, TAIL - BUBBLE_LINE * 2, c.action)]} />
+        <View style={[s.tri, s.triInner, innerPlace(side), triangle(side, innerSize(side), c.action)]} />
       </View>
     </View>
   );
@@ -123,6 +119,26 @@ const TAIL = sp[4];
 /** 꼬리 밑변의 반폭 비율. 0.5면 가늘어 폰 크기 컷에서 꼬리로 읽히지 않았다 */
 const TAIL_SPREAD = 0.7;
 const BUBBLE_LINE = 1.5;
+/** 안쪽 삼각형을 몸통 안으로 겹쳐 올리는 높이. 몸통 위아래 여백(`sp[1]`)보다 작아 글자를 덮지 않는다 */
+const TAIL_OVERLAP = BUBBLE_LINE * 2;
+/** 비스듬한 변을 테두리 두께만큼 안으로 밀 때의 가로 거리 */
+const SLANT_INSET = BUBBLE_LINE * Math.sqrt(1 + TAIL_SPREAD * TAIL_SPREAD);
+
+/**
+ * 안쪽 삼각형의 높이. 바깥 삼각형과 변이 나란하고 테두리 두께만큼 안쪽에 있도록 꼭짓점을 올린 뒤,
+ * 몸통 안으로 겹친 만큼 더한다. 옆을 가리키는 꼬리는 세운 변도 테두리 두께만큼 안으로 들어온다
+ */
+function innerSize(side: BubbleSide) {
+  const inset = side === 'center' ? SLANT_INSET : SLANT_INSET + BUBBLE_LINE;
+  return TAIL - inset / TAIL_SPREAD + TAIL_OVERLAP;
+}
+
+function innerPlace(side: BubbleSide) {
+  const top = -TAIL_OVERLAP;
+  if (side === 'left') return { top, left: BUBBLE_LINE };
+  if (side === 'right') return { top, right: BUBBLE_LINE };
+  return { top, left: TAIL_SPREAD * (TAIL - innerSize(side)) };
+}
 
 const s = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
@@ -143,14 +159,5 @@ const s = StyleSheet.create({
   tailLeft: { marginLeft: sp[4] },
   tailRight: { marginRight: sp[4] },
   tri: { width: 0, height: 0, borderLeftColor: 'transparent', borderRightColor: 'transparent' },
-  triInner: { position: 'absolute', top: 0 },
-  caption: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: sp[2],
-    paddingVertical: sp[1],
-    backgroundColor: c.scrim,
-  },
+  triInner: { position: 'absolute' },
 });

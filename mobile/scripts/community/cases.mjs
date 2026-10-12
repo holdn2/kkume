@@ -206,6 +206,26 @@ check('H1', '다음 쪽을 붙일 때 이미 있는 id 는 버린다(공감순 �
 }
 
 {
+  // 085(2026-10-12 기기): 기록 탭이 방금 동기화를 돌렸으면 `syncIfSignedIn()` 은 30초 동안 아무것도 안 한다.
+  // 그 사이 남긴 꿈을 공유하면 서버에 없어 dream_not_found — 공유 직전 동기화는 그 제한을 건너뛰어야 한다
+  const server = new Set();
+  let lastRunAt = Date.now();
+  const throttledSync = async (opts = {}) => {
+    if (!opts.force && Date.now() - lastRunAt < 30_000) return null;
+    lastRunAt = Date.now();
+    server.add('d-new');
+  };
+  const api = {
+    createPost: async (p) => {
+      if (!server.has(p.dreamId)) throw { code: 'dream_not_found', status: 404, message: '' };
+      return { id: 'p-new' };
+    },
+  };
+  const r = await shareDream(api, throttledSync, { ...newPost(), dreamId: 'd-new' }).then((p) => p.id, (e) => e?.code);
+  check('H3b', '방금 동기화가 돈 직후에도 공유 직전 동기화는 실제로 올린다(30초 제한을 건너뜀)', r === 'p-new', r);
+}
+
+{
   const store = new Map([['blocked_users', JSON.stringify([{ id: 'u-owl', nickname: 'a' }, { id: 'u-cloud', nickname: 'b' }])]]);
   const settings = { get: async (k) => store.get(k) ?? null, set: async (k, v) => void store.set(k, v) };
   const failing = { block: async (id) => { if (id === 'u-cloud') throw { code: 'network', status: 0 }; } };

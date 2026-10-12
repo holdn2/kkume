@@ -32,19 +32,23 @@ export function nicknameProblem(raw: string): string | null {
 /**
  * 꿈을 공유한다. **먼저 동기화한다** — 서버는 글쓰기 때 그 꿈이 내 것인지 `dreams`에서 확인해서,
  * 방금 남긴 꿈은 아직 서버에 없을 수 있다(056 "동작 규칙"). 그래도 `404 dream_not_found`면
- * 한 번 더 동기화하고 다시 보낸다. 두 번째도 실패하면 그 오류를 그대로 던진다
+ * 한 번 더 동기화하고 다시 보낸다. 두 번째도 실패하면 그 오류를 그대로 던진다.
+ *
+ * **동기화는 `force`로 부른다.** 화면이 부르는 동기화는 30초 안에 다시 돌지 않는데, 기록 탭에 들르면
+ * 한 번 돌아서 그 뒤 30초 안에 공유하면 아무것도 올리지 않고 넘어갔다 — 두 번째 시도도 같은 제한에 걸려
+ * "서버에 없는 꿈"으로 끝났다(085, 2026-10-12 기기)
  */
 export async function shareDream(
   api: Pick<CommunityApi, 'createPost'>,
-  sync: () => Promise<unknown>,
+  sync: (opts: { force: true }) => Promise<unknown>,
   input: NewPost,
 ): Promise<PostSummary> {
-  await sync().catch(() => {});
+  await sync({ force: true }).catch(() => {});
   try {
     return await api.createPost(input);
   } catch (e) {
     if ((e as { code?: string })?.code !== 'dream_not_found') throw e;
-    await sync().catch(() => {});
+    await sync({ force: true }).catch(() => {});
     return api.createPost(input);
   }
 }

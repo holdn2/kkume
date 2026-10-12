@@ -95,3 +95,13 @@ export const 진행중: Story = {
     </View>
   ),
 };
+
+/** 상태가 아닌데 눈에 띄어야 하는 분류(이슈 #115). 피드 카드에서 「만화」가 붙은 글을 한눈에 가른다 */
+export const 반전분류: Story = {
+  render: () => (
+    <Row gap={sp[2]}>
+      <Badge label="만화" tone="inverse" />
+      <Badge label="다른 사람에게 안 보임" tone="warning" />
+    </Row>
+  ),
+};
