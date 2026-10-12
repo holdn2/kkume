@@ -13,6 +13,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param userDailyLimit 1인 하루(KST 자정) 몫. 거절 · 실패는 세지 않는다
  * @param userDailyAttempts 1인 하루 시도 수. 거절 · 실패까지 센다 — 거절을 되풀이해 서비스 몫을 혼자 쓰지 못하게
  * @param serviceDailyLimit 서비스 전체 하루(UTC 자정 — Cloudflare 무료 한도가 다시 채워지는 때) 몫. 실패도 센다
+ * @param budgetBlock Cloudflare 가 무료 한도 초과로 거절한 뒤 새 요청을 막는 시간. 하루(UTC)를 통째로 막지 않는다 —
+ *     한도는 UTC 자정에 곧바로 풀리지 않아(10-12 00:00:40Z 에도 4006) 자정 직후 실패 하나가 하루를 막았다
  * @param workerEnabled 끄면 만화를 받아 두기만 하고 그리지 않는다(테스트)
  * @param poll 줄을 들여다보는 간격
  * @param lease scripting · drawing 에 이보다 오래 머물면 잡은 서버가 죽은 것으로 보고 실패로 끝낸다
@@ -20,7 +22,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "kkume.comic")
 public record ComicProperties(String bucket, String region, Duration imageTtl, int userDailyLimit,
-		int userDailyAttempts, int serviceDailyLimit, boolean workerEnabled, Duration poll, Duration lease, Cloudflare cloudflare) {
+		int userDailyAttempts, int serviceDailyLimit, Duration budgetBlock, boolean workerEnabled, Duration poll, Duration lease, Cloudflare cloudflare) {
 
 	/**
 	 * @param accountId Cloudflare 계정 ID

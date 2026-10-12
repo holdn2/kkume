@@ -455,6 +455,19 @@ class ComicApiTest {
 	}
 
 	@Test
+	void 무료_한도_초과로_막는_것은_30분뿐이다() throws Exception {
+		this.ai.nextImage(() -> {
+			throw FakeComicAi.failure(ComicAiException.Kind.BUDGET, "cf_4006");
+		});
+		String id = createId(this.me, dreamId());
+		drain();
+		create(login(), dreamId(), "꿈", "soft").andExpect(status().isServiceUnavailable());
+		// 자정 직후 거절 하나가 하루를 막지 않게 — 30분이 지나면 다시 받는다
+		this.jdbc.update("update comics set finished_at = now() - interval '31 minutes' where id = ?::uuid", id);
+		create(login(), dreamId(), "꿈", "soft").andExpect(status().isAccepted());
+	}
+
+	@Test
 	void 대본이_계약에_맞지_않으면_한_번_다시_부른다() throws Exception {
 		// 장면에 한글이 섞였다(082 꿈 2에서 실제로 본 것)
 		this.ai.nextScript(() -> FakeComicAi.GOOD_SCRIPT.replace("A long school hallway stretches endlessly.", "끝없는 복도"));

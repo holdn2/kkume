@@ -100,7 +100,7 @@ class ComicStore {
 				new MapSqlParameterSource("since", time(since)), Long.class);
 	}
 
-	/** 오늘(UTC) Cloudflare 가 무료 한도 초과로 거절한 적이 있는가 */
+	/** 그때 이후 Cloudflare 가 무료 한도 초과로 거절한 적이 있는가 */
 	boolean budgetExhaustedSince(Instant since) {
 		return Boolean.TRUE.equals(this.jdbc.queryForObject("""
 				select exists (select 1 from comics where fail_code = 'budget' and finished_at >= :since)
