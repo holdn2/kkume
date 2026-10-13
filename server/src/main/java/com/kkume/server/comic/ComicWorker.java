@@ -158,7 +158,7 @@ public class ComicWorker {
 		String user = ComicScript.userMessage(c.title(), c.dreamText());
 		ComicScript spoken = null;
 		for (int attempt = 1; attempt <= SCRIPT_ATTEMPTS; attempt++) {
-			ComicAi.Reply<String> reply = this.ai.script(ComicScript.SYSTEM, user);
+			ComicAi.Reply<String> reply = this.ai.script(ComicScript.system(c.gender()), user);
 			Optional<ComicScript> parsed = ComicScript.parse(this.json, reply.value());
 			if (parsed.isEmpty()) {
 				cost(c.id(), reply.usage(), false, "invalid_script");

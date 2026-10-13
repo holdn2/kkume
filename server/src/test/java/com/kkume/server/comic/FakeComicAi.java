@@ -34,6 +34,8 @@ public class FakeComicAi implements ComicAi {
 
 	volatile String lastUserMessage;
 
+	volatile String lastSystem;
+
 	void nextScript(Supplier<String> answer) {
 		this.scripts.add(answer);
 	}
@@ -53,6 +55,7 @@ public class FakeComicAi implements ComicAi {
 	public Reply<String> script(String system, String user) {
 		this.scriptCalls.incrementAndGet();
 		this.lastUserMessage = user;
+		this.lastSystem = system;
 		Supplier<String> next = this.scripts.poll();
 		String content = next == null ? GOOD_SCRIPT : next.get();
 		return new Reply<>(content, new Usage("script", "@cf/openai/gpt-oss-120b", 600, 900, 0,

@@ -373,6 +373,61 @@ class ComicApiTest {
 			.andExpect(jsonPath("$.code").value("comic_daily_limit"));
 	}
 
+	// ---------------------------------------------------------------- 주인공 성별 (088)
+
+	private ResultActions createWithGender(Who who, String genderJson) throws Exception {
+		return call(who, post("/api/comics").contentType(MediaType.APPLICATION_JSON).content("""
+				{"dreamId":"%s","title":"복도 꿈","dreamText":"학교 복도가 끝없이 길어졌다.","style":"soft"%s}"""
+			.formatted(dreamId(), genderJson)));
+	}
+
+	private String gender(String id) {
+		return this.jdbc.queryForObject("select gender from comics where id = ?::uuid", String.class, id);
+	}
+
+	@Test
+	void 성별을_보내면_대본_프롬프트_끝에_한_줄이_붙고_대본이_끝나면_비운다() throws Exception {
+		String id = JsonPath.read(json(createWithGender(this.me, ",\"gender\":\"female\"").andExpect(status().isAccepted())), "$.id");
+		assertThat(gender(id)).isEqualTo("female");
+		drain();
+		assertThat(this.ai.lastSystem).startsWith(ComicScript.SYSTEM).endsWith(
+				"\nThe dreamer is a woman: \"character\" must describe a woman, and the main character is a woman in every scene.");
+		assertThat((String) JsonPath.read(read(this.me, id), "$.status")).isEqualTo("done");
+		assertThat(gender(id)).isNull();
+
+		String man = JsonPath.read(json(createWithGender(login(), ",\"gender\":\"male\"").andExpect(status().isAccepted())), "$.id");
+		drain();
+		assertThat(this.ai.lastSystem).endsWith(
+				"\nThe dreamer is a man: \"character\" must describe a man, and the main character is a man in every scene.");
+		assertThat(gender(man)).isNull();
+	}
+
+	@Test
+	void 성별이_없거나_모르는_값이면_지금처럼_만든다() throws Exception {
+		for (String g : new String[] { "", ",\"gender\":null", ",\"gender\":\"other\"", ",\"gender\":\"FEMALE\"", ",\"gender\":3" }) {
+			Who who = login();
+			String id = JsonPath.read(json(createWithGender(who, g).andExpect(status().isAccepted())), "$.id");
+			assertThat(gender(id)).isNull();
+			drain();
+			assertThat(this.ai.lastSystem).isEqualTo(ComicScript.SYSTEM);
+		}
+	}
+
+	@Test
+	void 대본이_실패하거나_만들기_전에_지워도_성별을_비운다() throws Exception {
+		this.ai.nextScript(() -> "not json");
+		this.ai.nextScript(() -> "not json");
+		String failed = JsonPath.read(json(createWithGender(this.me, ",\"gender\":\"male\"")), "$.id");
+		drain();
+		assertThat((String) JsonPath.read(read(this.me, failed), "$.status")).isEqualTo("failed");
+		assertThat(gender(failed)).isNull();
+
+		Who other = login();
+		String queued = JsonPath.read(json(createWithGender(other, ",\"gender\":\"female\"")), "$.id");
+		call(other, delete("/api/comics/" + queued)).andExpect(status().isNoContent());
+		assertThat(gender(queued)).isNull();
+	}
+
 	// ---------------------------------------------------------------- 실패 · 거절 (06장)
 
 	@Test

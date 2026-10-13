@@ -24,7 +24,7 @@ class ComicStore {
 	}
 
 	/** 일꾼이 꺼낸 만화. 꿈 내용은 대본을 쓰는 동안만 들고 있다 */
-	record Claimed(UUID id, UUID userId, String style, String title, String dreamText) {
+	record Claimed(UUID id, UUID userId, String style, String title, String dreamText, String gender) {
 	}
 
 	/** 꿈 나눔에 붙일 수 있는 만화 */
@@ -48,12 +48,14 @@ class ComicStore {
 
 	// ------------------------------------------------------------------ 앱 요청
 
-	void insert(UUID id, UUID userId, String dreamId, String style, String title, String dreamText, Instant now) {
+	void insert(UUID id, UUID userId, String dreamId, String style, String title, String dreamText, String gender,
+			Instant now) {
 		this.jdbc.update("""
-				insert into comics (id, user_id, dream_id, style, status, title, dream_text, created_at, updated_at)
-				values (:id, :user, :dream, :style, 'queued', :title, :text, :now, :now)
+				insert into comics (id, user_id, dream_id, style, status, title, dream_text, gender, created_at, updated_at)
+				values (:id, :user, :dream, :style, 'queued', :title, :text, :gender, :now, :now)
 				""", new MapSqlParameterSource("id", id).addValue("user", userId).addValue("dream", dreamId)
-			.addValue("style", style).addValue("title", title).addValue("text", dreamText).addValue("now", time(now)));
+			.addValue("style", style).addValue("title", title).addValue("text", dreamText).addValue("gender", gender)
+			.addValue("now", time(now)));
 	}
 
 	Optional<ComicRow> findOwned(UUID id, UUID userId) {
@@ -115,7 +117,7 @@ class ComicStore {
 	Optional<Deleted> softDelete(UUID id, UUID userId, Instant now) {
 		return this.jdbc.query("""
 				update comics c set deleted_at = :now, updated_at = :now,
-				  title = null, dream_text = null, scenes = null, panels = null, image_key = null
+				  title = null, dream_text = null, gender = null, scenes = null, panels = null, image_key = null
 				from (select id, image_key from comics where id = :id and user_id = :user and deleted_at is null for update) old
 				where c.id = old.id
 				returning old.image_key
@@ -144,18 +146,18 @@ class ComicStore {
 				from (select id from comics where status = 'queued' and deleted_at is null
 				      order by created_at limit 1 for update skip locked) next
 				where c.id = next.id
-				returning c.id, c.user_id, c.style, c.title, c.dream_text
+				returning c.id, c.user_id, c.style, c.title, c.dream_text, c.gender
 				""", new MapSqlParameterSource("now", time(now)),
 				(rs, n) -> new Claimed(rs.getObject("id", UUID.class), rs.getObject("user_id", UUID.class),
-						rs.getString("style"), rs.getString("title"), rs.getString("dream_text")))
+						rs.getString("style"), rs.getString("title"), rs.getString("dream_text"), rs.getString("gender")))
 			.stream().findFirst();
 	}
 
-	/** 대본을 적고 drawing 으로. 꿈 내용은 여기서 비운다. 그 사이 지웠으면 0 */
+	/** 대본을 적고 drawing 으로. 꿈 내용 · 성별은 여기서 비운다. 그 사이 지웠으면 0 */
 	int saveScript(UUID id, String panels, String scenes, Instant now) {
 		return this.jdbc.update("""
-				update comics set status = 'drawing', panels = :panels, scenes = :scenes, title = null, dream_text = null,
-				  locked_at = :now, updated_at = :now
+				update comics set status = 'drawing', panels = :panels, scenes = :scenes,
+				  title = null, dream_text = null, gender = null, locked_at = :now, updated_at = :now
 				where id = :id and status = 'scripting' and deleted_at is null
 				""", new MapSqlParameterSource("id", id).addValue("panels", panels).addValue("scenes", scenes)
 			.addValue("now", time(now)));
@@ -174,7 +176,7 @@ class ComicStore {
 	/** failed · refused 로 끝낸다. 남은 꿈 내용 · 장면도 비운다 */
 	int finishFailure(UUID id, String status, String failCode, Instant now) {
 		return this.jdbc.update("""
-				update comics set status = :status, fail_code = :code, title = null, dream_text = null, scenes = null,
+				update comics set status = :status, fail_code = :code, title = null, dream_text = null, gender = null, scenes = null,
 				  locked_at = null, finished_at = :now, updated_at = :now
 				where id = :id and status in ('scripting', 'drawing')
 				""", new MapSqlParameterSource("id", id).addValue("status", status).addValue("code", failCode)
@@ -184,7 +186,7 @@ class ComicStore {
 	/** 잡은 서버가 죽어 멈춘 만화를 실패로 끝낸다. 다시 그리지 않는다 — 실패는 하루 몫에서 빠지니 앱이 다시 만들면 된다 */
 	int failStale(Instant lockedBefore, Instant now) {
 		return this.jdbc.update("""
-				update comics set status = 'failed', fail_code = 'interrupted', title = null, dream_text = null, scenes = null,
+				update comics set status = 'failed', fail_code = 'interrupted', title = null, dream_text = null, gender = null, scenes = null,
 				  locked_at = null, finished_at = :now, updated_at = :now
 				where status in ('scripting', 'drawing') and locked_at < :before
 				""", new MapSqlParameterSource("before", time(lockedBefore)).addValue("now", time(now)));
