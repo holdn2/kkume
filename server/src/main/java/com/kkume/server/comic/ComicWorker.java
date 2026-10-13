@@ -159,10 +159,12 @@ public class ComicWorker {
 		ComicScript spoken = null;
 		for (int attempt = 1; attempt <= SCRIPT_ATTEMPTS; attempt++) {
 			ComicAi.Reply<String> reply = this.ai.script(ComicScript.system(c.gender()), user);
-			Optional<ComicScript> parsed = ComicScript.parse(this.json, reply.value());
+			ComicScript.Checked checked = ComicScript.check(this.json, reply.value());
+			Optional<ComicScript> parsed = Optional.ofNullable(checked.script());
 			if (parsed.isEmpty()) {
-				cost(c.id(), reply.usage(), false, "invalid_script");
-				log.info("대본이 계약에 맞지 않음 comic={} attempt={}", c.id(), attempt);
+				// 걸린 검사 이름만 남긴다. 대본 원문은 꿈 내용이 들어 있어 남기지 않는다
+				cost(c.id(), reply.usage(), false, "invalid_script:" + checked.problem());
+				log.info("대본이 계약에 맞지 않음 comic={} attempt={} problem={}", c.id(), attempt, checked.problem());
 				continue;
 			}
 			if (parsed.get().spokenCaption() && attempt < SCRIPT_ATTEMPTS) {

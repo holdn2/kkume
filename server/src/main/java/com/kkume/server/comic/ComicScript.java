@@ -125,36 +125,66 @@ public record ComicScript(String character, List<Scene> scenes) {
 	 * @return 계약에 맞지 않으면 비어 있다 — 부른 쪽이 한 번 다시 부른다
 	 */
 	static Optional<ComicScript> parse(JsonMapper json, String content) {
-		if (content == null) {
-			return Optional.empty();
+		return Optional.ofNullable(check(json, content).script());
+	}
+
+	/**
+	 * 검사 결과. 어긋났으면 {@code problem}에 어느 검사에 걸렸는지만 담는다 — 원가 기록에 남기는 것은 이 이름뿐이고
+	 * 대본 원문은 남기지 않는다(꿈 내용이 들어 있다).
+	 *
+	 * @param problem {@code empty} · {@code no_json} · {@code bad_json} · {@code no_character} · {@code character_hangul}
+	 *     · {@code panel_count} · {@code no_scene} · {@code scene_hangul} · {@code no_caption}. 맞으면 null
+	 */
+	record Checked(ComicScript script, String problem) {
+
+		static Checked invalid(String problem) {
+			return new Checked(null, problem);
+		}
+	}
+
+	static Checked check(JsonMapper json, String content) {
+		if (content == null || content.isBlank()) {
+			return Checked.invalid("empty");
 		}
 		Matcher m = OBJECT.matcher(content);
 		if (!m.find()) {
-			return Optional.empty();
+			return Checked.invalid("no_json");
 		}
 		JsonNode root;
 		try {
 			root = json.readTree(m.group());
 		}
 		catch (RuntimeException ex) {
-			return Optional.empty();
+			return Checked.invalid("bad_json");
 		}
 		String character = text(root.path("character"));
+		if (character == null) {
+			return Checked.invalid("no_character");
+		}
+		if (!english(character)) {
+			return Checked.invalid("character_hangul");
+		}
 		JsonNode panels = root.path("panels");
-		if (character == null || !english(character) || !panels.isArray() || panels.size() != PANELS) {
-			return Optional.empty();
+		if (!panels.isArray() || panels.size() != PANELS) {
+			return Checked.invalid("panel_count");
 		}
 		List<Scene> scenes = new ArrayList<>();
 		for (JsonNode p : panels) {
 			String scene = text(p.path("scene"));
 			String caption = text(p.path("caption"));
-			if (scene == null || !english(scene) || caption == null) {
-				return Optional.empty();
+			if (scene == null) {
+				return Checked.invalid("no_scene");
+			}
+			if (!english(scene)) {
+				return Checked.invalid("scene_hangul");
+			}
+			if (caption == null) {
+				return Checked.invalid("no_caption");
 			}
 			String dialogue = text(p.path("dialogue"));
 			scenes.add(new Scene(scene, cut(caption, MAX_CAPTION), dialogue == null ? null : cut(dialogue, MAX_DIALOGUE)));
 		}
-		return Optional.of(new ComicScript(character, List.copyOf(scenes)));
+		return new Checked(new ComicScript(character, List.copyOf(scenes)), null);
 	}
 
 	/** 비었거나 문자열이 아니면 null. 모델이 "null" 이라는 글자를 쓰는 일이 있어 그것도 없음으로 본다 */

@@ -33,6 +33,24 @@ class ComicScriptTest {
 	}
 
 	@Test
+	void 어긋나면_걸린_검사_이름을_돌려준다() {
+		String good = FakeComicAi.GOOD_SCRIPT;
+		assertThat(ComicScript.check(this.json, good).problem()).isNull();
+		assertThat(ComicScript.check(this.json, null).problem()).isEqualTo("empty");
+		assertThat(ComicScript.check(this.json, " ").problem()).isEqualTo("empty");
+		assertThat(ComicScript.check(this.json, "만들 수 없습니다").problem()).isEqualTo("no_json");
+		assertThat(ComicScript.check(this.json, "{not json}").problem()).isEqualTo("bad_json");
+		assertThat(ComicScript.check(this.json, "{\"panels\":[]}").problem()).isEqualTo("no_character");
+		assertThat(ComicScript.check(this.json, good.replace("grey hoodie", "회색 후드")).problem()).isEqualTo("character_hangul");
+		assertThat(ComicScript.check(this.json, "{\"character\":\"x\",\"panels\":[]}").problem()).isEqualTo("panel_count");
+		assertThat(ComicScript.check(this.json, good.replace("\"A long school hallway stretches endlessly.\"", "null")).problem())
+			.isEqualTo("no_scene");
+		assertThat(ComicScript.check(this.json, good.replace("bright blue sea", "파란 바다")).problem()).isEqualTo("scene_hangul");
+		assertThat(ComicScript.check(this.json, good.replace("\"복도를 걸었는데 길이 끝없이 늘어났다\"", "\"\"")).problem())
+			.isEqualTo("no_caption");
+	}
+
+	@Test
 	void JSON_이_아니거나_비었으면_어긋난_것이다() {
 		assertThat(ComicScript.parse(this.json, "만들 수 없습니다")).isEmpty();
 		assertThat(ComicScript.parse(this.json, "{not json}")).isEmpty();
