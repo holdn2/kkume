@@ -589,6 +589,9 @@ class ComicApiTest {
 		assertThat((String) JsonPath.read(r, "$.status")).isEqualTo("failed");
 		assertThat(this.jdbc.queryForObject("select fail_code from comics where id = ?::uuid", String.class, id))
 			.isEqualTo("invalid_script");
+		// 원가 기록에는 걸린 검사 이름만 남고 대본 원문은 없다
+		assertThat(this.jdbc.queryForList("select error from comic_costs where comic_id = ?::uuid and step = 'script' order by id",
+				String.class, id)).containsExactly("invalid_script:no_json", "invalid_script:panel_count");
 		assertThat(this.jdbc.queryForMap("select title, dream_text, scenes from comics where id = ?::uuid", id).values())
 			.containsOnlyNulls();
 	}
