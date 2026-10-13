@@ -43,6 +43,8 @@ public class ComicService {
 
 	private static final Set<String> STYLES = Set.of("soft", "ink");
 
+	private static final Set<String> GENDERS = Set.of("female", "male");
+
 	private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
 	static final String REFUSED_MESSAGE = "이 꿈은 만화로 만들 수 없어요. 다른 꿈으로 만들어 보세요.";
@@ -84,7 +86,7 @@ public class ComicService {
 			List<String> imageUrls, List<Panel> panels, String failMessage, Instant createdAt, Instant finishedAt) {
 	}
 
-	public record NewComic(String dreamId, String title, String dreamText, String style) {
+	public record NewComic(String dreamId, String title, String dreamText, String style, String gender) {
 	}
 
 	/**
@@ -142,7 +144,9 @@ public class ComicService {
 		}
 
 		UUID id = UUID.randomUUID();
-		this.store.insert(id, userId, dreamId, input.style(), title, text, now);
+		// 성별은 모르는 값이면 없는 것으로 본다(400 없음, 문서 088). 대본이 끝나면 비운다
+		String gender = input.gender() != null && GENDERS.contains(input.gender()) ? input.gender() : null;
+		this.store.insert(id, userId, dreamId, input.style(), title, text, gender, now);
 		return view(this.store.findOwned(id, userId).orElseThrow());
 	}
 

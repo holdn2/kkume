@@ -47,6 +47,20 @@ public record ComicScript(String character, List<Scene> scenes) {
 			Only "caption" and "dialogue" are Korean.
 			Exactly 4 panels in story order.""";
 
+	/**
+	 * 대본 시스템 프롬프트. 앱이 주인공 성별을 보냈으면 끝에 한 줄을 붙인다(문서 088). 그림 프롬프트는 그대로 —
+	 * character 가 컷마다 들어가므로 그림도 따라온다.
+	 */
+	static String system(String gender) {
+		return switch (gender == null ? "" : gender) {
+			case "female" -> SYSTEM
+					+ "\nThe dreamer is a woman: \"character\" must describe a woman, and the main character is a woman in every scene.";
+			case "male" -> SYSTEM
+					+ "\nThe dreamer is a man: \"character\" must describe a man, and the main character is a man in every scene.";
+			default -> SYSTEM;
+		};
+	}
+
 	/** 해설 끝의 문장부호 · 공백 · 이모지 따위 */
 	private static final Pattern TRAILING = Pattern.compile("[^가-힣0-9A-Za-z]+$");
 

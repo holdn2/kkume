@@ -31,7 +31,8 @@ public class ComicController {
 	@ResponseStatus(HttpStatus.ACCEPTED)
 	public ComicView create(@AuthenticationPrincipal Jwt jwt, @RequestBody(required = false) NewComicRequest request) {
 		return this.comics.create(user(jwt), request == null ? null
-				: new ComicService.NewComic(request.dreamId(), request.title(), request.dreamText(), request.style()));
+				: new ComicService.NewComic(request.dreamId(), request.title(), request.dreamText(), request.style(),
+						request.gender()));
 	}
 
 	@GetMapping("/api/comics/{comicId}")
@@ -54,7 +55,10 @@ public class ComicController {
 		return UUID.fromString(jwt.getSubject());
 	}
 
-	public record NewComicRequest(String dreamId, String title, String dreamText, String style) {
+	/**
+	 * @param gender 만화 주인공 성별 "female" · "male"(앱 마이 탭에서 정한 경우만). 그 밖의 값은 없는 것으로 본다
+	 */
+	public record NewComicRequest(String dreamId, String title, String dreamText, String style, String gender) {
 	}
 
 	public record Items(List<ComicView> items) {
