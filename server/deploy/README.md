@@ -316,11 +316,13 @@ RDS 의 자동 백업이 없어졌으므로 `./db-backup.sh` 가 설치한 syste
 `s3://kkume-audio-341860778310/backup/` 에 올린다(AES256). **배포할 때마다 `ec2-run.sh` 도 직전에 한 번 뜬다**(`-pre-deploy`) —
 RDS 때의 "배포 전 수동 스냅숏"을 대신한다. 백업이 실패하면 배포하지 않는다.
 
-- **보관 1일** — 처리방침의 "자동 백업 1일"(070)이다. 지난 것은 백업 스크립트가 지운다. 늘리려면 처리방침부터 고친 뒤
+- **보관 1일** — 처리방침의 "자동 백업 1일"(070)이다. 지난 것은 **매시 정각** `kkume-db-backup-expire.timer` 가 지운다 —
+  어떤 덤프든 최대 1일 + 1시간. 예전에는 매일 백업 때만 지워 배포 전 덤프가 이틀 가까이 남았다(088). 늘리려면 처리방침부터 고친 뒤
   `.env` 에 `BACKUP_KEEP_DAYS` 를 넣고 `./db-backup.sh` 를 다시 돌린다
 - 덤프는 암호화 볼륨(`/var/lib/kkume-db`)에 잠깐 썼다가 올리고 지운다. 루트 디스크에는 남기지 않는다
 - 권한: EC2 역할 `kkume-ec2-ecr` 의 인라인 `kkume-db-backup` — `backup/*` 쓰기 · 읽기 · 지우기만
 - 손으로 한 번: `sudo systemctl start kkume-db-backup.service` → `sudo journalctl -u kkume-db-backup.service -n 5`
+- 지우기만: `sudo systemctl start kkume-db-backup-expire.service` → `sudo journalctl -u kkume-db-backup-expire.service -n 5`
 
 **복원**(2026-10-10 시험 통과 — 행 수 전부 일치):
 
@@ -452,7 +454,7 @@ cd server/deploy
 | 인스턴스 | `t3.micro`, Amazon Linux 2023, 루트 EBS 8GiB(암호화 안 됨) |
 | DB | 컨테이너 `kkume-db` — PostgreSQL 17.11, 메모리 상한 192m, 포트 없음(`kkume-net`), 데이터 `/var/lib/kkume-db/data` |
 | DB 볼륨 | EBS `kkume-db-data`(`vol-0d7b7acfdc57b4d78`) — gp3 2GiB, **암호화 켬**, `/var/lib/kkume-db`(fstab `nofail`) |
-| DB 백업 | systemd `kkume-db-backup.timer` 매일 04:30 KST + 배포 직전 → `s3://kkume-audio-341860778310/backup/`, 1일 보관 |
+| DB 백업 | systemd `kkume-db-backup.timer` 매일 04:30 KST + 배포 직전 → `s3://kkume-audio-341860778310/backup/`, 1일 보관(`kkume-db-backup-expire.timer` 가 매시 지움) |
 | EC2 역할의 백업 권한 | `kkume-ec2-ecr` 인라인 `kkume-db-backup` — `backup/*` 쓰기 · 읽기 · 지우기만 |
 | RDS(옛) | `kkume-db` db.t3.micro — **2026-10-10 부터 쓰지 않음, 사용자 확인 뒤 삭제 예정**. `.env` 의 `RDS_HOST` 가 그 주소 — 되돌리려면 `DB_HOST` 를 그 값으로 |
 
