@@ -1,11 +1,13 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { FileText, LayoutGrid, Pencil, Shield, UserMinus, UserX } from 'lucide-react-native';
+import { FileText, LayoutGrid, Pencil, Shield, Smile, UserMinus, UserX } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { Button, Card, Chip, ListRow, Row, Screen, Sheet, showToast, Stack, Title } from '@components';
+import { Button, Card, Chip, ListRow, Radio, Row, Screen, Sheet, showToast, Stack, Title } from '@components';
+import { COMIC_ENABLED, GENDER_OPTIONS, genderLabel, parseGender } from '@features/comic';
 import { NicknameSheet } from '@features/community/NicknameSheet';
 import { ConsentSheet } from '@features/consent/ConsentSheet';
 import { CONSENT_VERSION, consentAction, needsConsent, recordConsent } from '@features/consent/logic';
+import type { ComicGender } from '@shared/api/comic';
 import { appleAvailable, HAS_NATIVE_APPLE, useAuth, type Provider } from '@shared/auth';
 import { getDreamRepo, SETTINGS } from '@shared/db';
 import { STORYBOOK_ENABLED } from '@shared/storybook';
@@ -30,6 +32,28 @@ export default function MyScreen() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletedNotice, setDeletedNotice] = useState<string | null>(null);
+
+  /**
+   * 만화 주인공 성별(이슈 #117, 2026-10-13 사용자 요청 — "회원가입 또는 프로필 설정에서 본인의 성별을 지정할 수 있게 해줘.
+   * 꿈 만화에서 주인공의 성별을 위해서"). 가입 흐름에는 넣지 않는다 — 만화를 만들지 않는 사람에게 받을 이유가 없다.
+   * 폰에만 두고 만화를 만들 때만 보낸다. 로그아웃하면 지워지므로 포커스마다 다시 읽는다
+   */
+  const [gender, setGender] = useState<ComicGender | null>(null);
+  const [pickingGender, setPickingGender] = useState(false);
+  const readGender = useCallback(() => {
+    void getDreamRepo()
+      .then((repo) => repo.getSetting(SETTINGS.comicGender))
+      .then((v) => setGender(parseGender(v)))
+      .catch(() => {});
+  }, []);
+  useFocusEffect(readGender);
+  const pickGender = (value: ComicGender | '') => {
+    setPickingGender(false);
+    void getDreamRepo()
+      .then((repo) => repo.setSetting(SETTINGS.comicGender, value))
+      .then(() => setGender(parseGender(value)))
+      .catch(() => showToast('저장하지 못했습니다. 다시 골라 주세요.'));
+  };
 
   // 빠르게 두 번 누르면 `auth.busy`가 버튼을 끄기 전에 두 번 들어온다 — 다시 그리기를 기다리지 않는 ref 로 막는다(PR #68 리뷰)
   const deletingNow = useRef(false);
@@ -243,6 +267,10 @@ export default function MyScreen() {
         />
         {/* 차단은 서버에 있어 로그인해야 의미가 있다. 전에는 그 사람의 프로필까지 가야 풀 수 있었다 */}
         {!!auth.session && <ListRow icon={UserX} label="차단한 사용자" onPress={() => router.push('/blocks')} />}
+        {/* 만화는 로그인해야 만든다 — 로그인 전에는 정할 이유가 없다 */}
+        {!!auth.session && COMIC_ENABLED && (
+          <ListRow icon={Smile} label="만화 주인공" value={genderLabel(gender)} onPress={() => setPickingGender(true)} />
+        )}
       </Stack>
 
       {/* "기상 시각"과 "기상 알림"이 여기 있었다. 만들다 만 것이 아니라
@@ -284,6 +312,23 @@ export default function MyScreen() {
           </AppText>
         </Card>
       )}
+
+      <Sheet
+        visible={pickingGender}
+        onClose={() => setPickingGender(false)}
+        title="만화 주인공"
+        description="꿈 만화의 주인공을 이 성별로 그려요. 정하지 않으면 꿈 내용을 보고 정해요. 이 폰에만 저장되고, 만화를 만들 때만 함께 보내요.">
+        <Stack gap={sp[1]}>
+          {GENDER_OPTIONS.map((o) => (
+            <Radio
+              key={o.value || 'none'}
+              selected={(gender ?? '') === o.value}
+              onSelect={() => pickGender(o.value)}
+              label={o.label}
+            />
+          ))}
+        </Stack>
+      </Sheet>
 
       {/* 지워지는 것과 남는 것을 먼저 말한다(계약 064 06장). 낮 화면이라 확인 한 번은 절대 규칙 7에 걸리지 않는다 */}
       <Sheet visible={deleting} onClose={() => !auth.busy && setDeleting(false)} title="계정을 삭제할까요">

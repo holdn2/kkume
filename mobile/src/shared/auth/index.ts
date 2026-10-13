@@ -35,6 +35,8 @@ export const forgetAccount = onceAtATime(() =>
       async () => (await getDreamRepo()).clearUploadMarks(),
       // 동의는 계정의 것이다 — 다음에 로그인하는 계정이 다시 동의한다(이슈 #71)
       async () => (await getDreamRepo()).setSetting(SETTINGS.consent, ''),
+      // 만화 주인공 성별도 그 사람의 것이다(이슈 #117)
+      async () => (await getDreamRepo()).setSetting(SETTINGS.comicGender, ''),
     ],
     // 한 단계가 실패해도 화면 · 캐시에는 알린다 — 세션은 이미 지웠는데 화면만 로그인한 채로 남지 않게(PR #68 리뷰)
     () => goneListeners.forEach((fn) => fn()),
@@ -240,6 +242,10 @@ export function useAuth(): AuthState {
       // 앞 계정의 동의를 물려받는다(이슈 #71, PR #77 리뷰). 이것이 실패해도 로그아웃은 끝까지 간다(PR #73 리뷰)
       await getDreamRepo()
         .then((repo) => repo.setSetting(SETTINGS.consent, ''))
+        .catch(() => {});
+      // 만화 주인공 성별도 그 사람의 것이다(이슈 #117)
+      await getDreamRepo()
+        .then((repo) => repo.setSetting(SETTINGS.comicGender, ''))
         .catch(() => {});
       // 구글 쪽 로그아웃이 실패해도 우리 세션은 지운다 — 다음 로그인 때 계정 선택이 한 번 덜 뜰 뿐이다
       await signOutFromGoogle().catch(() => {});

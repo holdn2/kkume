@@ -26,6 +26,8 @@ export function createHttpComic(auth: { token: () => Promise<string | null> }): 
         title: input.title,
         dreamText: input.dreamText,
         style: input.style,
+        // 정했을 때만 싣는다. 서버가 반영하기 전에는 모르는 필드라 무시된다(이슈 #117)
+        ...(input.gender ? { gender: input.gender } : {}),
       }),
 
     // 만화가 없다는 404 만 null 이다. 경로가 없는 404(서버가 옛 버전 등)까지 삼키면 "지워졌을 수 있어요"로

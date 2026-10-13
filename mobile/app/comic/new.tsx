@@ -2,10 +2,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import { Button, Header, Radio, Screen, Stack } from '@components';
-import { explainCreateError, useComicActions } from '@features/comic';
+import { explainCreateError, genderLabel, parseGender, useComicActions } from '@features/comic';
 import { useMe } from '@features/community';
-import type { ComicStyle } from '@shared/api/comic';
-import { getDreamRepo, type Dream } from '@shared/db';
+import type { ComicGender, ComicStyle } from '@shared/api/comic';
+import { getDreamRepo, SETTINGS, type Dream } from '@shared/db';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 
@@ -30,6 +30,8 @@ export default function ComicNew() {
 
   const [dream, setDream] = useState<Dream | null | undefined>(undefined);
   const [style, setStyle] = useState<ComicStyle>('soft');
+  // 마이 탭에서 정한 주인공 성별(이슈 #117). 여기서는 고르지 않는다 — 한 번 정하면 만화마다 같은 사람이 되게
+  const [gender, setGender] = useState<ComicGender | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +45,16 @@ export default function ComicNew() {
       alive = false;
     };
   }, [dreamId]);
+  useEffect(() => {
+    let alive = true;
+    getDreamRepo()
+      .then((repo) => repo.getSetting(SETTINGS.comicGender))
+      .then((v) => alive && setGender(parseGender(v)))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const back = () => (router.canGoBack() ? router.back() : router.replace('/log'));
   const empty = !!dream && !(dream.text ?? '').trim();
@@ -51,7 +63,7 @@ export default function ComicNew() {
     if (!dream || busy) return;
     setBusy(true);
     setError(null);
-    create({ dreamId: dream.id, title: dream.title, dreamText: dream.text ?? '', style })
+    create({ dreamId: dream.id, title: dream.title, dreamText: dream.text ?? '', style, gender })
       .then((comic) => router.replace(`/comic/${comic.id}`))
       .catch((e) => {
         const f = explainCreateError(e);
@@ -102,11 +114,21 @@ export default function ComicNew() {
           ))}
         </Stack>
 
+        {!!me && (
+          <AppText size="caption" color={c.fgMuted}>
+            {gender
+              ? `주인공: ${genderLabel(gender)} · 마이 탭의 「만화 주인공」에서 바꿀 수 있어요.`
+              : '주인공은 꿈 내용을 보고 정해요. 마이 탭의 「만화 주인공」에서 성별을 정해 둘 수 있어요.'}
+          </AppText>
+        )}
+
         <AppText size="caption" color={error ? c.danger : c.fgFaint}>
           {error ??
             (me === null
               ? '만화는 로그인한 뒤 만들 수 있어요. 하루에 만들 수 있는 수가 정해져 있어요.'
-              : '하루에 만들 수 있는 수가 정해져 있어요. 꿈의 제목과 내용이 그림을 그리는 서비스로 전달돼요.')}
+              : gender
+                ? '하루에 만들 수 있는 수가 정해져 있어요. 꿈의 제목과 내용, 주인공 성별이 그림을 그리는 서비스로 전달돼요.'
+                : '하루에 만들 수 있는 수가 정해져 있어요. 꿈의 제목과 내용이 그림을 그리는 서비스로 전달돼요.')}
         </AppText>
       </Stack>
     </Screen>

@@ -5,7 +5,7 @@
 import { isComicRunning } from '@shared/api/comic';
 import { createHttpComic } from '@shared/api/comicHttp';
 import { createFakeComicApi, fakePanels } from '@features/comic/fake';
-import { bubbleSide, explainCreateError, gridCrop, stepStates } from '@features/comic/logic';
+import { bubbleSide, explainCreateError, genderLabel, gridCrop, parseGender, stepStates } from '@features/comic/logic';
 
 let failed = 0;
 let total = 0;
@@ -200,11 +200,28 @@ check('M28', '모르는 오류는 고정 문구', explainCreateError(new Error('
   await http.remove('c1');
   check('M36', '지우기는 DELETE /api/comics/{id}, 204 를 받는다', last().method === 'DELETE' && last().url.endsWith('/api/comics/c1'));
 
+  reply = { status: 202, body: { id: 'c2', status: 'queued' } };
+  await http.create(input(DREAM));
+  check('M42', '주인공 성별을 정하지 않으면 gender 를 싣지 않는다(이슈 #117)', !('gender' in last().body), JSON.stringify(last().body));
+  await http.create({ ...input(DREAM), gender: null });
+  check('M43', 'gender 가 null 이어도 싣지 않는다', !('gender' in last().body));
+  await http.create({ ...input(DREAM), gender: 'female' });
+  check('M44', '정했으면 gender 를 그대로 싣는다', last().body.gender === 'female');
+
   token = null;
   const before = calls.length;
   const anon = await code(http.get('c1'));
   check('M37', '로그인 전에는 보내지 않고 401', anon?.status === 401 && calls.length === before && explainCreateError(anon).kind === 'login');
 }
+
+// 주인공 성별 설정값(이슈 #117) — 모르는 값은 정하지 않음으로 본다
+check(
+  'M45',
+  '저장된 값 읽기: female · male 만 받고 빈 값 · 모르는 값은 null',
+  parseGender('female') === 'female' && parseGender('male') === 'male' && parseGender('') === null &&
+    parseGender(null) === null && parseGender('woman') === null,
+);
+check('M46', '표시 이름', genderLabel('female') === '여성' && genderLabel('male') === '남성' && genderLabel(null) === '정하지 않음');
 
 console.log(`\n${total}개 중 실패 ${failed}개`);
 if (failed) process.exitCode = 1;
