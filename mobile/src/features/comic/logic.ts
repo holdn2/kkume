@@ -1,5 +1,5 @@
 import { isApiError } from '@shared/api/client';
-import type { ComicStatus } from '@shared/api/comic';
+import type { ComicGender, ComicStatus } from '@shared/api/comic';
 
 /**
  * CM-2 체크리스트(계획서 003 — "막연한 스피너가 아니라 3단계 체크리스트").
@@ -44,6 +44,22 @@ export type BubbleSide = 'left' | 'right' | 'center';
 
 export function bubbleSide(speaker: unknown): BubbleSide {
   return speaker === 'left' || speaker === 'right' ? speaker : 'center';
+}
+
+/** 만화 주인공 고르기(이슈 #117). 빈 값은 정하지 않음 — 꿈에 맡긴다 */
+export const GENDER_OPTIONS: { value: ComicGender | ''; label: string }[] = [
+  { value: '', label: '정하지 않음' },
+  { value: 'female', label: '여성' },
+  { value: 'male', label: '남성' },
+];
+
+/** 설정에 저장된 값을 읽는다. 모르는 값 · 빈 값은 정하지 않음(null) */
+export function parseGender(stored: string | null | undefined): ComicGender | null {
+  return stored === 'female' || stored === 'male' ? stored : null;
+}
+
+export function genderLabel(gender: ComicGender | null): string {
+  return GENDER_OPTIONS.find((o) => o.value === (gender ?? ''))?.label ?? '정하지 않음';
 }
 
 /** 만들기 요청이 실패했을 때 화면이 할 일. 서버 문구는 이미 존댓말이라 그대로 쓴다 */

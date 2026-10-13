@@ -11,6 +11,12 @@
 /** 그림체. 이름은 중립적으로 — 특정 작가 · 작품을 떠올리게 하지 않는다(계획서 003 CM-1) */
 export type ComicStyle = 'soft' | 'ink';
 
+/**
+ * 주인공의 성별(이슈 #117). 사용자가 마이 탭에서 정했을 때만 보낸다 — 정하지 않으면 대본 모델이 꿈에서 정한다.
+ * 폰에만 두고(`SETTINGS.comicGender`), 서버는 대본을 쓸 때만 쓰고 저장하지 않는다
+ */
+export type ComicGender = 'female' | 'male';
+
 export type ComicStatus = 'queued' | 'scripting' | 'drawing' | 'done' | 'failed' | 'refused';
 
 /** `grid2x2` 는 네 컷이 한 장에 그려져 온다(`imageUrls` 1개). `panels4` 는 컷마다 한 장(4개) */
@@ -54,6 +60,8 @@ export type NewComic = {
   title: string | null;
   dreamText: string;
   style: ComicStyle;
+  /** 정하지 않았으면 비운다. 보내지 않은 것과 같다 */
+  gender?: ComicGender | null;
 };
 
 /**
