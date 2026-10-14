@@ -4,6 +4,7 @@ import { useFakePlayer, useFakeRecorder } from './fake';
 import type { Player, Recorder } from './types';
 
 export * from './types';
+export { whenActive } from './whenActive';
 
 /**
  * 네이티브 오디오 모듈이 **이 빌드에** 들어 있는가.
