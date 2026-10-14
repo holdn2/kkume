@@ -17,6 +17,7 @@ import {
 } from '@shared/dictation/compose';
 import { mergeTranscript, TRANSCRIPT_MARKER } from '@shared/stt/merge';
 
+import { activeCases } from './active-cases.mjs';
 import { sessionCases } from './session-cases.mjs';
 
 const M = TRANSCRIPT_MARKER;
@@ -170,7 +171,7 @@ const cases = [
 ];
 
 let failed = 0;
-for (const c of [...cases, ...sessionCases]) {
+for (const c of [...cases, ...sessionCases, ...activeCases]) {
   let got;
   let want;
   let error = null;
@@ -184,5 +185,5 @@ for (const c of [...cases, ...sessionCases]) {
   console.log(`${c.key}  ${pass ? '정상' : '실패'} ${c.title}`);
   if (!pass) console.log(`            ${error ? `예외 ${error.message}` : `받음 ${JSON.stringify(got)}\n            기대 ${JSON.stringify(want)}`}`);
 }
-console.log(`\n${cases.length + sessionCases.length}개 중 실패 ${failed}개`);
+console.log(`\n${cases.length + sessionCases.length + activeCases.length}개 중 실패 ${failed}개`);
 if (failed) process.exitCode = 1;

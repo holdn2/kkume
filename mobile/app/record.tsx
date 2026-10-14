@@ -14,7 +14,7 @@ import {
 import { Input, Row, Screen } from '@components';
 import { Waveform } from '@features/record/Waveform';
 import { MAX_TEXT_LENGTH } from '@shared/api/sync';
-import { mmss, useRecorder } from '@shared/audio';
+import { mmss, useRecorder, whenActive } from '@shared/audio';
 import { getDreamRepo, type DreamPatch } from '@shared/db';
 import { chooseEngine, useDictator, type DictationEnd, type DictationHandlers } from '@shared/dictation';
 import { savedFeedback, startFeedback } from '@shared/haptics';
@@ -332,31 +332,44 @@ export default function RecordModal() {
    *
    * 받아쓰기가 되는 폰이면 받아쓰기로, 아니면 지금의 녹음기로. 받아쓰기가 시작부터 실패하면
    * (파일을 못 만듦 · 모델 없음) 곧바로 녹음기로 넘어간다 — 원본 없는 기록을 만들지 않는다(052 T2)
+   *
+   * **앱이 완전히 앞에 나온 뒤에 켠다**(`whenActive`). 위젯으로 들어오면 앱이 아직 앞으로 나오는 중에
+   * 이 화면이 열리고, 그때 켠 받아쓰기는 라이브러리가 곧바로 끝내 꿈 로그로 튕겨 나갔다(이슈 #125).
+   * 탭에서 들어오면 이미 앞이라 지금처럼 곧바로 켜진다
    */
   const began = useRef(false);
+  /** 녹음을 실제로 켜기 시작했는가. 앞에 나오기를 기다리는 동안은 아니다 — 백그라운드 마무리가 이걸 본다 */
+  const armed = useRef(false);
+  /** 기다리기를 그만두는 함수. effect 가 렌더마다 다시 돌아도 기다림은 화면이 떠날 때만 끊는다 */
+  const stopWaiting = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopWaiting.current?.(), []);
   useEffect(() => {
     if (resolved !== 'voice' || began.current) return;
     began.current = true;
-    void (async () => {
-      const choice = await chooseEngine();
-      // 고르는 사이에 이미 정지 · 적기를 눌렀으면 아무것도 켜지 않는다
-      if (stopRequested.current) return;
-      if (choice.engine === 'dictation') {
-        engine.current = 'dictation';
-        setEngineOn('dictation');
-        try {
-          const uri = await dict.start(dictationHandlers());
-          // 멈추라는 요청이 있었어도 파일은 생겼다 — 경로는 못 박는다(절대 규칙 2). 시작 햅틱만 건너뛴다
-          if (!stopRequested.current) startFeedback();
-          void persist({ audioPath: uri });
-          return;
-        } catch {
-          // 아래에서 녹음기로 넘어간다. 그 사이 멈추라고 했으면 새로 켜지 않는다
-          if (stopRequested.current) return;
+    stopWaiting.current = whenActive(AppState, () => {
+      stopWaiting.current = null;
+      armed.current = true;
+      void (async () => {
+        const choice = await chooseEngine();
+        // 고르는 사이에(또는 앞에 나오기를 기다리는 사이에) 이미 정지 · 적기를 눌렀으면 아무것도 켜지 않는다
+        if (stopRequested.current) return;
+        if (choice.engine === 'dictation') {
+          engine.current = 'dictation';
+          setEngineOn('dictation');
+          try {
+            const uri = await dict.start(dictationHandlers());
+            // 멈추라는 요청이 있었어도 파일은 생겼다 — 경로는 못 박는다(절대 규칙 2). 시작 햅틱만 건너뛴다
+            if (!stopRequested.current) startFeedback();
+            void persist({ audioPath: uri });
+            return;
+          } catch {
+            // 아래에서 녹음기로 넘어간다. 그 사이 멈추라고 했으면 새로 켜지 않는다
+            if (stopRequested.current) return;
+          }
         }
-      }
-      await startAudio();
-    })().catch((e) => setError(String(e)));
+        await startAudio();
+      })().catch((e) => setError(String(e)));
+    });
   }, [resolved, dict, dictationHandlers, startAudio, persist]);
 
   /**
@@ -385,8 +398,10 @@ export default function RecordModal() {
     if (resolved !== 'voice') return;
     const sub = AppState.addEventListener('change', (next) => {
       // 녹음 중이 아니어도 아직 끝나지 않았으면 마무리한다 — 받아쓰기 파일이 열리기 전(시작 중)에
-      // 나가면, 그 뒤에 열린 녹음이 백그라운드에서 계속 돌 수 있다(UIBackgroundModes에 audio가 있다)
-      if (next === 'background' && !pendingAudio.current && !closed.current) {
+      // 나가면, 그 뒤에 열린 녹음이 백그라운드에서 계속 돌 수 있다(UIBackgroundModes에 audio가 있다).
+      // 단 **아직 켜기 전(앞에 나오기를 기다리는 중)이면 손대지 않는다** — 마무리할 녹음이 없고, 여기서 멈춤을
+      // 걸면 돌아와도 녹음이 안 켜진 채 꿈 로그로 보내진다. 돌아와 `active`가 되면 그때 켠다(이슈 #125)
+      if (next === 'background' && armed.current && !pendingAudio.current && !closed.current) {
         void (async () => {
           try {
             if (engine.current === 'dictation') saveDictated();
