@@ -9,6 +9,7 @@ import { useDreamPages } from '@features/log/useDreamPages';
 import { isApiError } from '@shared/api/client';
 import { MAX_POST_BODY, MAX_POST_DREAM_TEXT } from '@shared/api/community';
 import { MAX_TITLE_LENGTH } from '@shared/api/sync';
+import { day } from '@shared/date';
 import { getDreamRepo, type Dream } from '@shared/db';
 import { syncIfSignedIn } from '@shared/sync';
 import { AppText } from '@shared/ui';
@@ -181,7 +182,7 @@ export default function NewPostScreen() {
                   {dreamTitle(picked)}
                 </AppText>
                 <AppText size="caption" color={c.fgFaint}>
-                  {picked.recordedAt.slice(0, 10)}에 꾼 꿈
+                  {day(picked.recordedAt)}에 꾼 꿈
                 </AppText>
               </Stack>
             </Card>
@@ -289,7 +290,7 @@ export default function NewPostScreen() {
             <Radio
               key={d.id}
               label={dreamTitle(d)}
-              description={d.recordedAt.slice(0, 10)}
+              description={day(d.recordedAt)}
               selected={picked?.id === d.id}
               onSelect={() => {
                 pick(d);

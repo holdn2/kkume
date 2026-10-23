@@ -26,6 +26,7 @@ import {
   type ReportReason,
   type ReportTarget,
 } from '@shared/api/community';
+import { day } from '@shared/date';
 import { AppText } from '@shared/ui';
 import { c, hit, press, r, sp } from '@theme/token';
 
@@ -89,6 +90,19 @@ export default function PostScreen() {
   const [sending, setSending] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  /**
+   * 지우기는 한 번 묻는다 — 꿈 · 만화 · 계정 지우기와 같다(이슈 #127, 전에는 누르는 즉시 지워졌다).
+   * 글은 ⋯ 메뉴 시트 **안에서** 확인으로 넘어간다. 메뉴를 닫고 새 시트를 열면 두 `Modal`이 겹쳐
+   * iOS 가 뒤의 것을 띄우지 않을 수 있다
+   */
+  const [confirmPost, setConfirmPost] = useState(false);
+  const [confirmComment, setConfirmComment] = useState<Comment | null>(null);
+  // 확인 단계는 열 때 되돌린다 — 닫을 때 되돌리면 내려가는 동안 메뉴 내용이 다시 보인다
+  const openMenu = () => {
+    setConfirmPost(false);
+    setMenuOpen(true);
+  };
+  const closeMenu = () => setMenuOpen(false);
   const [reporting, setReporting] = useState<Reporting | null>(null);
   const [reason, setReason] = useState<ReportReason>('sexual');
   const [alsoBlock, setAlsoBlock] = useState(false);
@@ -139,6 +153,7 @@ export default function PostScreen() {
   };
 
   const removeComment = (cm: Comment) => {
+    setConfirmComment(null);
     getCommunityApi()
       .deleteComment(cm.id)
       .then(() => invalidate())
@@ -147,7 +162,7 @@ export default function PostScreen() {
 
   const removePost = () => {
     if (!post) return;
-    setMenuOpen(false);
+    closeMenu();
     getCommunityApi()
       .deletePost(post.id)
       .then(() => {
@@ -284,7 +299,7 @@ export default function PostScreen() {
           onBack={goBack}
           right={
             <Pressable
-              onPress={() => setMenuOpen(true)}
+              onPress={openMenu}
               hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel="더 보기"
@@ -330,7 +345,7 @@ export default function PostScreen() {
             {post.title?.trim() || '제목 없는 꿈'}
           </AppText>
           <AppText size="caption" color={c.fgFaint}>
-            {post.dreamRecordedAt.slice(0, 10)}에 꾼 꿈
+            {day(post.dreamRecordedAt)}에 꾼 꿈
           </AppText>
         </Stack>
 
@@ -401,7 +416,7 @@ export default function PostScreen() {
                 setReplyTo(comment);
               }}
               onReport={() => openReport({ type: 'comment', id: comment.id, author: comment.author })}
-              onDelete={() => removeComment(comment)}
+              onDelete={() => setConfirmComment(comment)}
               onAuthor={() => router.push(`/community/user/${comment.author.id}`)}
             />
           ))}
@@ -409,14 +424,38 @@ export default function PostScreen() {
 
       </Stack>
 
-      <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)}>
+      <Sheet
+        visible={menuOpen}
+        onClose={closeMenu}
+        title={confirmPost ? '이 글을 지울까요' : undefined}
+        description={
+          confirmPost ? '공감과 댓글도 함께 사라지고 되돌릴 수 없습니다. 꿈 기록은 그대로 남고, 같은 꿈을 다시 나눌 수 있습니다.' : undefined
+        }>
+        {confirmPost ? (
+          <Stack gap={sp[2]}>
+            <Button label="지우기" variant="danger" onPress={removePost} />
+            <Button label="그만두기" variant="ghost" onPress={closeMenu} />
+          </Stack>
+        ) : (
+          <Stack gap={sp[2]}>
+            {mine ? (
+              <Button label="이 글 지우기" variant="danger" onPress={() => setConfirmPost(true)} />
+            ) : (
+              <Button label={`${post.author.nickname}님 차단하기`} variant="danger" onPress={() => block(post.author)} />
+            )}
+            <Button label="닫기" variant="ghost" onPress={closeMenu} />
+          </Stack>
+        )}
+      </Sheet>
+
+      <Sheet
+        visible={confirmComment != null}
+        onClose={() => setConfirmComment(null)}
+        title="이 댓글을 지울까요"
+        description="지운 댓글은 되돌릴 수 없습니다.">
         <Stack gap={sp[2]}>
-          {mine ? (
-            <Button label="이 글 지우기" variant="danger" onPress={removePost} />
-          ) : (
-            <Button label={`${post.author.nickname}님 차단하기`} variant="danger" onPress={() => block(post.author)} />
-          )}
-          <Button label="닫기" variant="ghost" onPress={() => setMenuOpen(false)} />
+          <Button label="지우기" variant="danger" onPress={() => confirmComment && removeComment(confirmComment)} />
+          <Button label="그만두기" variant="ghost" onPress={() => setConfirmComment(null)} />
         </Stack>
       </Sheet>
 

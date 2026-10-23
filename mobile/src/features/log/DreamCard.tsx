@@ -1,5 +1,6 @@
 import { Card, Badge, Row, Stack } from '@components';
 import { mmss } from '@shared/audio';
+import { when } from '@shared/date';
 import type { Dream } from '@shared/db';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
@@ -49,22 +50,4 @@ function headline(d: Dream) {
   const first = d.text?.trim().split('\n')[0];
   if (first) return first;
   return d.audioPath ? '음성으로 남긴 기록' : '내용 없음';
-}
-
-/**
- * 새벽 기록이라 **날짜보다 "언제쯤"이 먼저 읽혀야 한다.**
- * 어젯밤 것인지 지난주 것인지가 목록에서 가장 먼저 필요한 정보다.
- */
-function when(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-
-  const midnight = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const days = Math.round((midnight(new Date()) - midnight(d)) / 86_400_000);
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-
-  if (days === 0) return `오늘 ${hm}`;
-  if (days === 1) return `어제 ${hm}`;
-  if (days < 7) return `${days}일 전 ${hm}`;
-  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${hm}`;
 }

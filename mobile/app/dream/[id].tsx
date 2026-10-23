@@ -8,6 +8,7 @@ import { COMIC_ENABLED, useComicsForDream } from '@features/comic';
 import { useMe, usePostForDream, useRefetchOnFocus } from '@features/community';
 import { PlayerBar } from '@features/log/PlayerBar';
 import { MAX_TEXT_LENGTH, MAX_TITLE_LENGTH } from '@shared/api/sync';
+import { dateTime } from '@shared/date';
 import { getDreamRepo, nowIso, type Dream } from '@shared/db';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
@@ -177,7 +178,7 @@ export default function DreamDetail() {
           right={
             <Row gap={sp[2]}>
               <AppText size="caption" color={c.fgFaint}>
-                {dream.recordedAt.slice(0, 16).replace('T', ' ')}
+                {dateTime(dream.recordedAt)}
               </AppText>
               {unread ? <Badge label="미확인" tone="running" /> : <Badge label="확인함" tone="neutral" />}
             </Row>
