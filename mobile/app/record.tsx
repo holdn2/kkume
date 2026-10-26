@@ -30,16 +30,17 @@ const IDLE_SAVE_MS = 1200;
 /** 받아쓰는 중인 구간은 이 간격까지만 저장한다. 확정 구간은 오는 즉시 저장한다 */
 const INTERIM_SAVE_MS = 1000;
 
-/** 적기 화면에서 입력칸 아래 안내 줄(「저장됨」)과 그 위아래 간격이 차지하는 높이 */
-const CAPTION_ROOM = sp[4] * 2 + 18;
+/** 적기 화면에서 입력칸 아래 「완료」 · 안내 줄(「저장됨」)과 그 사이 간격이 차지하는 높이 */
+const BELOW_INPUT = sp[4] * 3 + hit.base + 18;
 
 /**
- * 적기 입력칸의 높이 범위. 남은 자리(`room`)에서 안내 줄을 뺀 만큼까지만 자란다.
+ * 적기 입력칸의 높이 범위. 남은 자리(`room`)에서 「완료」 · 안내 줄을 뺀 만큼까지만 자란다 —
+ * 그래서 「완료」는 입력칸을 따라 내려가다 화면 아래에 닿으면 거기 멈춘다(097 A1 · C1).
  * **최소 높이(140)도 남은 자리 안으로 줄인다**(PR #130 리뷰) — 작은 폰에서 키보드가 뜨면 남은 자리가 140보다 작아,
- * 그대로 두면 입력칸이 넘쳐 「완료」를 덮었다. 오류 문구는 두 줄까지 자리를 더 잡는다. 한 줄(48)은 언제나 남긴다
+ * 그대로 두면 입력칸이 넘쳐 「완료」를 밀어냈다. 오류 문구는 두 줄까지 자리를 더 잡는다. 한 줄(48)은 언제나 남긴다
  */
 function inputBox(room: number, hasError: boolean) {
-  const max = Math.max(hit.min, room - CAPTION_ROOM - (hasError ? 18 * 2 : 0));
+  const max = Math.max(hit.min, room - BELOW_INPUT - (hasError ? 18 * 2 : 0));
   return { maxHeight: max, minHeight: Math.min(140, max) };
 }
 
@@ -583,7 +584,7 @@ export default function RecordModal() {
               )}
             </Row>
 
-            {/* 입력칸은 남은 높이까지만 자란다 — 글이 길어져도 아래 「완료」를 밀어내지 않고 칸 안에서 스크롤된다 */}
+            {/* 입력칸은 남은 높이까지만 자란다 — 글이 길어져도 아래 「완료」를 화면 밖으로 밀어내지 않고 칸 안에서 스크롤된다 */}
             <View style={{ flex: 1, gap: sp[4] }} onLayout={(e) => setRoom(e.nativeEvent.layout.height)}>
               {/* 상한은 걸되 글자수는 **보여주지 않는다.** 새벽 화면에 숫자가 하나 더 붙으면
                   그것도 읽을 것이 되고, 5,000자에 닿는 일은 새벽에 일어나지 않는다(절대 규칙 7) */}
@@ -597,19 +598,19 @@ export default function RecordModal() {
                 style={room > 0 ? inputBox(room, !!error) : undefined}
               />
 
-              <AppText size="caption" color={error ? c.danger : c.fgFaint}>
+              {/* 나갈 길(이슈 #129, 2026-10-26 사용자 결정). 전에는 오른쪽 위 × 였는데 ×는 보통 「버리고 닫기」로
+                  읽혀 누르기 전에 망설이게 했다. 적은 것은 멈출 때마다 이미 저장되므로 「저장하기」가 아니라 「완료」다 —
+                  「저장」이라 쓰면 누르지 않으면 사라지는 것처럼 읽힌다. 고를 것이 아니라 하나뿐인 길이라 절대 규칙 7에
+                  걸리지 않는다. 화면 맨 아래는 엄지에서 멀어 **입력칸 바로 아래**에 둔다(이슈 #137, 097 A1 · C1) */}
+              <Button label="완료" onPress={finishText} />
+
+              <AppText size="caption" color={error ? c.danger : c.fgFaint} style={{ textAlign: 'center' }}>
                 {error ?? (saved ? '저장됨' : '나가면 저장돼요')}
               </AppText>
 
               {/* 빈 자리를 누르면 키보드가 내려간다. 여러 줄 입력이라 엔터로는 못 내린다 */}
               <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss} accessible={false} />
             </View>
-
-            {/* 나갈 길(이슈 #129, 2026-10-26 사용자 결정). 전에는 오른쪽 위 × 였는데 ×는 보통 「버리고 닫기」로
-                읽혀 누르기 전에 망설이게 했다. 적은 것은 멈출 때마다 이미 저장되므로 「저장하기」가 아니라 「완료」다 —
-                「저장」이라 쓰면 누르지 않으면 사라지는 것처럼 읽힌다. 고를 것이 아니라 하나뿐인 길이라 절대 규칙 7에
-                걸리지 않는다. 키보드가 오르면 그 바로 위에 붙는다 */}
-            <Button label="완료" onPress={finishText} />
           </View>
         </KeyboardAvoidingView>
       </Screen>
