@@ -8,6 +8,8 @@ import {
   Card,
   EmptyCard,
   ErrorCard,
+  Fab,
+  FAB_ROOM,
   ListSkeleton,
   MoreLoading,
   Radio,
@@ -23,7 +25,7 @@ import { useFeed, useMe, usePullRefresh, useRefetchOnFocus, useUserPosts } from 
 import { PostCard } from '@features/community/PostCard';
 import type { FeedSort } from '@shared/api/community';
 import { AppText } from '@shared/ui';
-import { c, hit, press, r, sp } from '@theme/token';
+import { c, hit, press, sp } from '@theme/token';
 
 type Scope = 'all' | 'mine';
 const SCOPES = [
@@ -118,7 +120,7 @@ export default function CommunityScreen() {
         renderItem={({ item }) => <PostCard post={item} onPress={() => router.push(`/community/${item.id}`)} />}
         ItemSeparatorComponent={() => <View style={{ height: sp[3] }} />}
         // 떠 있는 공유 버튼에 마지막 글이 가리지 않게 아래를 비운다 — 버튼 높이 · 버튼 아래 띄움 · 여유
-        contentContainerStyle={{ paddingBottom: hit.base + sp[5] + SCROLL_TAIL }}
+        contentContainerStyle={{ paddingBottom: FAB_ROOM + SCROLL_TAIL }}
         showsVerticalScrollIndicator={false}
         onEndReached={list.more}
         onEndReachedThreshold={0.4}
@@ -139,13 +141,7 @@ export default function CommunityScreen() {
       />
 
       {/* 탭바 위에 뜬다(계획서 003 COM-1). 여기서 시작하면 꿈을 먼저 고른다(문서 055) */}
-      <Pressable
-        onPress={() => guard(() => router.push('/community/new'))}
-        accessibilityRole="button"
-        accessibilityLabel="꿈 공유하기"
-        style={({ pressed }) => [s.fab, pressed && { opacity: press }]}>
-        <Plus size={24} strokeWidth={2} color={c.actionFg} />
-      </Pressable>
+      <Fab icon={Plus} label="꿈 공유하기" onPress={() => guard(() => router.push('/community/new'))} />
 
       <Sheet visible={sorting} onClose={() => setSorting(false)} title="정렬">
         <Stack gap={sp[1]}>
@@ -168,15 +164,4 @@ export default function CommunityScreen() {
 
 const s = StyleSheet.create({
   sort: { flexDirection: 'row', alignItems: 'center', gap: sp[1], minHeight: hit.min, paddingHorizontal: sp[1] },
-  fab: {
-    position: 'absolute',
-    right: sp[5],
-    bottom: sp[5],
-    width: hit.base,
-    height: hit.base,
-    borderRadius: r.chip,
-    backgroundColor: c.action,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });
