@@ -1,14 +1,31 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator } from 'react-native';
+import { FlatList } from 'react-native';
 
-import { Button, Card, Header, Input, Radio, Row, Screen, Sheet, showToast, Stack, Switch } from '@components';
+import {
+  Button,
+  Card,
+  EmptyCard,
+  Header,
+  Input,
+  ListSkeleton,
+  MoreLoading,
+  Row,
+  Screen,
+  SCROLL_TAIL,
+  Sheet,
+  showToast,
+  Stack,
+  Switch,
+} from '@components';
 import { COMIC_ATTACH_ENABLED, useComicsForDream } from '@features/comic';
 import { getCommunityApi, shareDream, useInvalidateCommunity, useMe } from '@features/community';
+import { DreamPickEmpty, DreamPickItem, DreamSearch, dreamTitle } from '@features/community/DreamPicker';
 import { useDreamPages } from '@features/log/useDreamPages';
 import { isApiError } from '@shared/api/client';
 import { MAX_POST_BODY, MAX_POST_DREAM_TEXT } from '@shared/api/community';
 import { MAX_TITLE_LENGTH } from '@shared/api/sync';
+import { useBack } from '@shared/back';
 import { day } from '@shared/date';
 import { getDreamRepo, type Dream } from '@shared/db';
 import { syncIfSignedIn } from '@shared/sync';
@@ -28,11 +45,14 @@ import { c, sp } from '@theme/token';
  *
  * 닉네임을 게시 바로 앞에 보이는 이유는 실명 노출 사고 방지다(계획서 003).
  *
- * 꿈 상세(LOG-2)에서 들어오면 `?dreamId=`로 그 꿈이 골라져 있다. 피드에서 들어오면 **꿈을 먼저 고른다.**
+ * 꿈 상세(LOG-2)에서 들어오면 `?dreamId=`로 그 꿈이 골라져 있다. 피드에서 들어오면 **꿈을 먼저 고른다** —
+ * 고르기 전에는 꿈 목록을 화면에 바로 펼친다(이슈 #129, 2026-10-26 사용자 — 「꿈 고르기」 버튼 하나만 있는 화면이
+ * 너무 비어 보였다). 고른 뒤의 흐름은 같고, 다시 고를 때는 시트로 연다. 검색칸은 둘 다 목록 바깥에 고정한다.
  */
 export default function NewPostScreen() {
   const { dreamId, comicId } = useLocalSearchParams<{ dreamId?: string; comicId?: string }>();
   const router = useRouter();
+  const back = useBack('/community');
   const me = useMe();
   const invalidate = useInvalidateCommunity();
   // 고른 꿈의 다 만든 만화. 만화 뷰어에서 들어왔으면(`?comicId=`) 그것, 아니면 그 꿈의 가장 최근 것(이슈 #92)
@@ -40,6 +60,11 @@ export default function NewPostScreen() {
 
   /** 지운 것을 뺀 꿈 개수. 0이면 "아직 남긴 꿈이 없습니다" */
   const [total, setTotal] = useState<number | null>(null);
+  /**
+   * 처음 읽기를 마쳤는가. 꿈 상세에서 들어왔으면(`?dreamId=`) 그 꿈을 읽기 전까지 목록을 펼치지 않는다 —
+   * 펼쳤다가 곧바로 고른 꿈 화면으로 바뀌면 화면이 한 번 튄다
+   */
+  const [ready, setReady] = useState(false);
   /** 꿈 고르기 시트 — 30건씩 이어 읽고 제목 · 내용으로 찾는다(`useDreamPages`). 전에는 30건만 보였다 */
   const [pickQuery, setPickQuery] = useState('');
   const pages = useDreamPages(pickQuery);
@@ -78,8 +103,13 @@ export default function NewPostScreen() {
         if (!alive) return;
         setTotal(n.total);
         if (from && !from.deletedAt) pick(from);
+        setReady(true);
       })
-      .catch((e) => alive && setError(String(e)));
+      .catch((e) => {
+        if (!alive) return;
+        setError(String(e));
+        setReady(true);
+      });
     return () => {
       alive = false;
     };
@@ -126,7 +156,7 @@ export default function NewPostScreen() {
   };
 
   // 위에 고정된다 — 긴 꿈 내용을 고치다가도 바로 나갈 수 있게(2026-10-03)
-  const header = <Header title="꿈 공유하기" onBack={() => router.back()} />;
+  const header = <Header title="꿈 공유하기" onBack={back} />;
 
   if (me === null) {
     return (
@@ -137,6 +167,43 @@ export default function NewPostScreen() {
           </AppText>
           <Button label="마이 탭으로" size="sm" variant="secondary" onPress={() => router.replace('/my')} />
         </Card>
+      </Screen>
+    );
+  }
+
+  if (!ready) {
+    return (
+      <Screen header={header}>
+        <ListSkeleton />
+      </Screen>
+    );
+  }
+
+  // 아직 고르지 않았으면 고르는 것이 이 화면의 일이다 — 목록을 바로 펼친다. 검색칸은 위에 고정, 목록만 스크롤
+  // 꿈이 하나도 없다고 **확실히 알 때만** 접는다. 개수를 못 읽었으면(null) 목록을 펼친다 — 목록은 따로 읽어
+  // 비었거나 못 읽었다고 스스로 말한다(PR #130 리뷰: 전에는 개수 읽기가 실패하면 고를 길이 없었다)
+  if (!picked && total !== 0) {
+    return (
+      <Screen header={header}>
+        <AppText size="label" weight="semibold">
+          어떤 꿈을 나눌까요?
+        </AppText>
+        <DreamSearch value={pickQuery} onChangeText={setPickQuery} />
+        <FlatList
+          data={pages.rows ?? []}
+          keyExtractor={(d) => d.id}
+          renderItem={({ item }) => <DreamPickItem dream={item} selected={false} onPick={pick} />}
+          contentContainerStyle={{ paddingBottom: SCROLL_TAIL }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onEndReached={pages.more}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={pages.hasMore ? <MoreLoading /> : null}
+          ListEmptyComponent={
+            <DreamPickEmpty rows={pages.rows} query={pickQuery} error={pages.error} onRetry={() => pages.reload(false)} />
+          }
+        />
       </Screen>
     );
   }
@@ -159,7 +226,7 @@ export default function NewPostScreen() {
                 (으)로 올라갑니다
               </AppText>
             </Row>
-            <Button label={posting ? '올리는 중' : '공유하기'} disabled={!canPost} onPress={post} />
+            <Button label="공유하기" loading={posting} disabled={!canPost} onPress={post} />
           </Stack>
         ) : undefined
       }>
@@ -170,11 +237,7 @@ export default function NewPostScreen() {
             어떤 꿈을 나눌까요?
           </AppText>
           {total === 0 ? (
-            <Card>
-              <AppText size="body" color={c.fgMuted}>
-                아직 남긴 꿈이 없습니다. 꿈을 먼저 기록한 뒤 나눌 수 있습니다.
-              </AppText>
-            </Card>
+            <EmptyCard title="아직 남긴 꿈이 없습니다." hint="꿈을 먼저 기록한 뒤 나눌 수 있습니다." />
           ) : picked ? (
             <Card>
               <Stack gap={sp[1]}>
@@ -187,14 +250,7 @@ export default function NewPostScreen() {
               </Stack>
             </Card>
           ) : null}
-          {(total ?? 0) > 0 && (
-            <Button
-              label={picked ? '다른 꿈 고르기' : '꿈 고르기'}
-              size="sm"
-              variant={picked ? 'ghost' : 'secondary'}
-              onPress={() => setChoosing(true)}
-            />
-          )}
+          {picked && <Button label="다른 꿈 고르기" size="sm" variant="ghost" onPress={() => setChoosing(true)} />}
         </Stack>
 
         {picked && sharedPostId && (
@@ -268,46 +324,29 @@ export default function NewPostScreen() {
 
       </Stack>
 
-      <Sheet visible={choosing} onClose={() => setChoosing(false)} title="꿈 고르기" onEndReached={pages.more}>
-        <Stack gap={sp[2]}>
-          <Input
-            value={pickQuery}
-            onChangeText={setPickQuery}
-            placeholder="꿈 검색 — 제목이나 내용으로"
-            returnKeyType="search"
-            accessibilityLabel="꿈 검색"
-            clearable
-            bordered
-          />
-          {pages.rows !== null && pages.rows.length === 0 && (
-            <AppText size="caption" color={c.fgFaint}>
-              {pickQuery.trim() ? `「${pickQuery.trim()}」이(가) 든 꿈이 없습니다.` : '아직 남긴 꿈이 없습니다.'}
-            </AppText>
-          )}
-        </Stack>
+      {/* 다시 고를 때. 검색칸은 시트의 고정 줄(`top`)이라 목록을 내려도 위에 남는다 */}
+      <Sheet
+        visible={choosing}
+        onClose={() => setChoosing(false)}
+        title="꿈 고르기"
+        top={<DreamSearch value={pickQuery} onChangeText={setPickQuery} />}
+        onEndReached={pages.more}>
         <Stack gap={sp[1]}>
+          <DreamPickEmpty rows={pages.rows} query={pickQuery} error={pages.error} onRetry={() => pages.reload(false)} />
           {(pages.rows ?? []).map((d) => (
-            <Radio
+            <DreamPickItem
               key={d.id}
-              label={dreamTitle(d)}
-              description={day(d.recordedAt)}
+              dream={d}
               selected={picked?.id === d.id}
-              onSelect={() => {
-                pick(d);
+              onPick={(x) => {
+                pick(x);
                 setChoosing(false);
               }}
             />
           ))}
-          {pages.hasMore && <ActivityIndicator color={c.fgMuted} style={{ padding: sp[3] }} />}
+          {pages.hasMore && <MoreLoading />}
         </Stack>
       </Sheet>
     </Screen>
   );
-}
-
-function dreamTitle(d: Dream) {
-  if (d.title?.trim()) return d.title.trim();
-  const first = d.text?.trim().split('\n')[0];
-  if (first) return first;
-  return d.audioPath ? '음성으로 남긴 꿈' : '내용 없는 꿈';
 }

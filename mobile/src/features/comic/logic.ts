@@ -27,6 +27,15 @@ export function stepStates(status: ComicStatus): StepState[] {
 }
 
 /**
+ * 그림 주소에서 서명(`?X-Amz-…`)을 뺀 것 — **같은 그림이면 같다.** 서버는 응답할 때마다 새로 서명한 주소를 줘서
+ * 주소 문자열로는 같은 그림인지 알 수 없다(이슈 #129). 컷의 「받았다」 표시와 이미지 캐시 키로 쓴다
+ */
+export function imageKey(url: string): string {
+  const q = url.indexOf('?');
+  return q < 0 ? url : url.slice(0, q);
+}
+
+/**
  * 2×2 한 장에서 i번째 컷을 잘라 보이는 위치. 그림을 칸의 두 배 크기로 놓고 옮긴다 —
  * 컷 순서는 만화 읽는 순서(왼쪽 위 → 오른쪽 위 → 왼쪽 아래 → 오른쪽 아래)다
  */

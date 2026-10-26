@@ -2,7 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { FileText, LayoutGrid, Pencil, Shield, Smile, UserMinus, UserX } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { Button, Card, Chip, ListRow, Radio, Row, Screen, Sheet, showToast, Stack, Title } from '@components';
+import { Button, Card, Chip, ListRow, Radio, Row, Screen, Sheet, showToast, Skeleton, Stack, Title } from '@components';
 import { COMIC_ENABLED, GENDER_OPTIONS, genderLabel, parseGender } from '@features/comic';
 import { NicknameSheet } from '@features/community/NicknameSheet';
 import { ConsentSheet } from '@features/consent/ConsentSheet';
@@ -197,9 +197,10 @@ export default function MyScreen() {
           `user_id`가 빈 채로 로컬에 쌓인다. 로그인해야 동기화가 붙는다 */}
       <Card>
         {auth.loading ? (
-          <AppText size="caption" color={c.fgFaint}>
-            불러오는 중입니다
-          </AppText>
+          <Stack gap={sp[2]}>
+            <Skeleton width="50%" height={18} />
+            <Skeleton width="70%" height={12} />
+          </Stack>
         ) : auth.session ? (
           <Stack gap={sp[3]}>
             {/* 닉네임을 커뮤니티를 거치지 않고 여기서도 바꾼다(이슈 #63). 프로필과 같은 시트다 */}
@@ -347,8 +348,8 @@ export default function MyScreen() {
             )}
           </Stack>
           <Stack gap={sp[2]}>
-            <Button label={auth.busy ? '지우는 중' : '계정 삭제'} variant="danger" disabled={auth.busy} onPress={confirmDelete} />
-            <Button label="그만두기" variant="ghost" disabled={auth.busy} onPress={() => setDeleting(false)} />
+            <Button label="계정 삭제" variant="danger" loading={auth.busy} onPress={confirmDelete} />
+            <Button label="취소" variant="ghost" disabled={auth.busy} onPress={() => setDeleting(false)} />
           </Stack>
         </Stack>
       </Sheet>
@@ -359,7 +360,7 @@ export default function MyScreen() {
         // 이미 로그인한 사람은 바깥을 눌러도 닫히지 않는다 — 고르게 한다(실수로 로그아웃되지 않게)
         onClose={consent === 'existing' ? () => {} : declineConsent}
         onDismiss={declineConsent}
-        dismissLabel={consent === 'existing' ? '동의하지 않고 로그아웃' : '그만두기'}
+        dismissLabel={consent === 'existing' ? '동의하지 않고 로그아웃' : '취소'}
         busy={auth.busy}
         error={consentError}
       />

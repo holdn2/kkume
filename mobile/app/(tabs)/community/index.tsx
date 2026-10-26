@@ -1,9 +1,24 @@
 import { useRouter } from 'expo-router';
 import { ChevronDown, Plus } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
-import { Button, Card, Radio, Row, Screen, SCROLL_TAIL, Segmented, Sheet, Stack, Title } from '@components';
+import {
+  Button,
+  Card,
+  EmptyCard,
+  ErrorCard,
+  ListSkeleton,
+  MoreLoading,
+  Radio,
+  Row,
+  Screen,
+  SCROLL_TAIL,
+  Segmented,
+  Sheet,
+  Stack,
+  Title,
+} from '@components';
 import { useFeed, useMe, usePullRefresh, useRefetchOnFocus, useUserPosts } from '@features/community';
 import { PostCard } from '@features/community/PostCard';
 import type { FeedSort } from '@shared/api/community';
@@ -95,14 +110,7 @@ export default function CommunityScreen() {
         </Card>
       )}
 
-      {!!error && (
-        <Card>
-          <AppText size="caption" color={c.danger}>
-            {error}
-          </AppText>
-          <Button label="다시 불러오기" size="sm" variant="secondary" onPress={() => void list.refetch()} />
-        </Card>
-      )}
+      {!!error && <ErrorCard message={error} onRetry={() => void list.refetch()} />}
 
       <FlatList
         data={list.items}
@@ -117,19 +125,15 @@ export default function CommunityScreen() {
         refreshControl={
           <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} tintColor={c.fgMuted} />
         }
-        ListFooterComponent={list.isFetchingNextPage ? <ActivityIndicator color={c.fgMuted} style={{ padding: sp[4] }} /> : null}
+        ListFooterComponent={list.isFetchingNextPage ? <MoreLoading /> : null}
         ListEmptyComponent={
           loading ? (
-            <ActivityIndicator color={c.fgMuted} style={{ padding: sp[6] }} />
+            <ListSkeleton />
           ) : error ? null : (
-            <Card>
-              <AppText size="body" color={c.fgMuted}>
-                {mine ? '아직 나눈 꿈이 없습니다.' : '아직 올라온 꿈이 없습니다.'}
-              </AppText>
-              <AppText size="caption" color={c.fgFaint}>
-                아래 버튼이나 꿈 상세의 「꿈 공유하기」로 나눠 보세요.
-              </AppText>
-            </Card>
+            <EmptyCard
+              title={mine ? '아직 나눈 꿈이 없습니다.' : '아직 올라온 꿈이 없습니다.'}
+              hint="아래 버튼이나 꿈 상세의 「꿈 공유하기」로 나눠 보세요."
+            />
           )
         }
       />
@@ -148,7 +152,7 @@ export default function CommunityScreen() {
           {SORTS.map((v) => (
             <Radio
               key={v}
-              label={v === 'latest' ? '최신순' : '공감 많은 순'}
+              label={SORT_LABEL[v]}
               selected={sort === v}
               onSelect={() => {
                 setSort(v);

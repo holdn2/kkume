@@ -1,3 +1,4 @@
+import type { LucideIcon } from 'lucide-react-native';
 import { ActivityIndicator, Pressable, StyleSheet, type ViewStyle } from 'react-native';
 
 import { tapFeedback } from '@shared/haptics';
@@ -13,6 +14,8 @@ type Props = {
   size?: Size;
   disabled?: boolean;
   loading?: boolean;
+  /** 글자 앞의 아이콘. 없어도 된다 — 대부분의 버튼은 글자만 쓴다(꿈 로그 「지금 기록하기」의 마이크처럼 동작을 한눈에 알려야 할 때만) */
+  icon?: LucideIcon;
   /** 되돌리기 어려운 액션에만 준다. 남발하면 신호가 죽는다 */
   haptic?: boolean;
   onPress: () => void;
@@ -39,11 +42,13 @@ export function Button({
   size = 'base',
   disabled,
   loading,
+  icon: Icon,
   haptic,
   onPress,
   style,
 }: Props) {
   const off = disabled || loading;
+  const fg = off ? c.fgDisabled : FG[variant];
 
   const handle = () => {
     if (haptic) tapFeedback();
@@ -69,9 +74,12 @@ export function Button({
         // variant로 색을 고르면 primary일 때 어두운 스피너가 어두운 배경에 묻힌다.
         <ActivityIndicator color={c.fg} />
       ) : (
-        <AppText size="label" weight="semibold" color={off ? c.fgDisabled : FG[variant]}>
-          {label}
-        </AppText>
+        <>
+          {Icon && <Icon size={20} strokeWidth={1.75} color={fg} aria-hidden />}
+          <AppText size="label" weight="semibold" color={fg}>
+            {label}
+          </AppText>
+        </>
       )}
     </Pressable>
   );
@@ -81,8 +89,10 @@ const s = StyleSheet.create({
   base: {
     height: hit.base,
     borderRadius: r.control,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: sp[2],
     paddingHorizontal: sp[5],
   },
   sm: { height: hit.min, paddingHorizontal: sp[4] },

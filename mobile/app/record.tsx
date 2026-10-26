@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Mic, PenLine, X } from 'lucide-react-native';
+import { Mic, PenLine } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AppState,
@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 
-import { Input, Row, Screen } from '@components';
+import { Button, Input, Row, Screen } from '@components';
 import { Waveform } from '@features/record/Waveform';
 import { MAX_TEXT_LENGTH } from '@shared/api/sync';
 import { mmss, useRecorder, whenActive } from '@shared/audio';
@@ -20,7 +20,7 @@ import { chooseEngine, useDictator, type DictationEnd, type DictationHandlers } 
 import { savedFeedback, startFeedback } from '@shared/haptics';
 import { mergeTranscript } from '@shared/stt/merge';
 import { AppText } from '@shared/ui';
-import { c, hit, r, sp } from '@theme/token';
+import { c, hit, press, r, sp } from '@theme/token';
 
 type Mode = 'voice' | 'text';
 
@@ -29,6 +29,19 @@ const IDLE_SAVE_MS = 1200;
 
 /** 받아쓰는 중인 구간은 이 간격까지만 저장한다. 확정 구간은 오는 즉시 저장한다 */
 const INTERIM_SAVE_MS = 1000;
+
+/** 적기 화면에서 입력칸 아래 안내 줄(「저장됨」)과 그 위아래 간격이 차지하는 높이 */
+const CAPTION_ROOM = sp[4] * 2 + 18;
+
+/**
+ * 적기 입력칸의 높이 범위. 남은 자리(`room`)에서 안내 줄을 뺀 만큼까지만 자란다.
+ * **최소 높이(140)도 남은 자리 안으로 줄인다**(PR #130 리뷰) — 작은 폰에서 키보드가 뜨면 남은 자리가 140보다 작아,
+ * 그대로 두면 입력칸이 넘쳐 「완료」를 덮었다. 오류 문구는 두 줄까지 자리를 더 잡는다. 한 줄(48)은 언제나 남긴다
+ */
+function inputBox(room: number, hasError: boolean) {
+  const max = Math.max(hit.min, room - CAPTION_ROOM - (hasError ? 18 * 2 : 0));
+  return { maxHeight: max, minHeight: Math.min(140, max) };
+}
 
 /** 멈춘 녹음. 받아쓰기로 남겼으면 받아쓴 글이 함께 온다 */
 type Taken = { uri: string | null; durationMs: number; text?: string };
@@ -80,6 +93,8 @@ export default function RecordModal() {
   const [error, setError] = useState<string | null>(null);
 
   const [text, setText] = useState('');
+  /** 적기 화면에서 입력칸 · 안내 줄이 쓸 수 있는 높이. 입력칸이 이보다 커지면 「완료」가 화면 밖으로 밀린다 */
+  const [room, setRoom] = useState(0);
   // 콜백 안에서 최신값을 읽으려고 ref로도 들고 있다. 받아쓰기 이벤트는 렌더와 상관없이 온다
   const typed = useRef('');
   useEffect(() => {
@@ -559,41 +574,42 @@ export default function RecordModal() {
                 hitSlop={16}
                 accessibilityRole="button"
                 accessibilityLabel="말하기로 바꿉니다"
-                style={({ pressed }) => [s.swap, pressed && { opacity: 0.7 }]}>
+                style={({ pressed }) => [s.swap, pressed && { opacity: press }]}>
                 <Mic size={18} strokeWidth={1.75} color={c.fgMuted} />
                 <AppText size="caption" color={c.fgMuted}>
                   말하기
                 </AppText>
               </Pressable>
               )}
-              {/* 나갈 길이 하나는 있어야 한다. 전체화면 모달이라 쓸어내려 닫을 수도 없고,
-                  이건 "취소"가 아니라 "다 적었다"이므로 절대 규칙 7에 걸리지 않는다 */}
-              <Pressable
-                onPress={finishText}
-                hitSlop={16}
-                accessibilityRole="button"
-                accessibilityLabel="다 적었습니다">
-                <X size={26} strokeWidth={1.75} color={c.fgMuted} />
-              </Pressable>
             </Row>
 
-            {/* 상한은 걸되 글자수는 **보여주지 않는다.** 새벽 화면에 숫자가 하나 더 붙으면
-                그것도 읽을 것이 되고, 5,000자에 닿는 일은 새벽에 일어나지 않는다(절대 규칙 7) */}
-            <Input
-              multiline
-              autoFocus
-              value={text}
-              onChangeText={setText}
-              placeholder="기억나는 것부터"
-              maxLength={MAX_TEXT_LENGTH}
-            />
+            {/* 입력칸은 남은 높이까지만 자란다 — 글이 길어져도 아래 「완료」를 밀어내지 않고 칸 안에서 스크롤된다 */}
+            <View style={{ flex: 1, gap: sp[4] }} onLayout={(e) => setRoom(e.nativeEvent.layout.height)}>
+              {/* 상한은 걸되 글자수는 **보여주지 않는다.** 새벽 화면에 숫자가 하나 더 붙으면
+                  그것도 읽을 것이 되고, 5,000자에 닿는 일은 새벽에 일어나지 않는다(절대 규칙 7) */}
+              <Input
+                multiline
+                autoFocus
+                value={text}
+                onChangeText={setText}
+                placeholder="기억나는 것부터"
+                maxLength={MAX_TEXT_LENGTH}
+                style={room > 0 ? inputBox(room, !!error) : undefined}
+              />
 
-            <AppText size="caption" color={error ? c.danger : c.fgFaint}>
-              {error ?? (saved ? '저장됨' : '나가면 저장됩니다')}
-            </AppText>
+              <AppText size="caption" color={error ? c.danger : c.fgFaint}>
+                {error ?? (saved ? '저장됨' : '나가면 저장됩니다')}
+              </AppText>
 
-            {/* 빈 자리를 누르면 키보드가 내려간다. 여러 줄 입력이라 엔터로는 못 내린다 */}
-            <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss} accessible={false} />
+              {/* 빈 자리를 누르면 키보드가 내려간다. 여러 줄 입력이라 엔터로는 못 내린다 */}
+              <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss} accessible={false} />
+            </View>
+
+            {/* 나갈 길(이슈 #129, 2026-10-26 사용자 결정). 전에는 오른쪽 위 × 였는데 ×는 보통 「버리고 닫기」로
+                읽혀 누르기 전에 망설이게 했다. 적은 것은 멈출 때마다 이미 저장되므로 「저장하기」가 아니라 「완료」다 —
+                「저장」이라 쓰면 누르지 않으면 사라지는 것처럼 읽힌다. 고를 것이 아니라 하나뿐인 길이라 절대 규칙 7에
+                걸리지 않는다. 키보드가 오르면 그 바로 위에 붙는다 */}
+            <Button label="완료" onPress={finishText} />
           </View>
         </KeyboardAvoidingView>
       </Screen>
@@ -632,7 +648,7 @@ export default function RecordModal() {
           hitSlop={16}
           accessibilityRole="button"
           accessibilityLabel="적기로 바꿉니다"
-          style={({ pressed }) => [s.swap, s.swapAbove, pressed && { opacity: 0.7 }]}>
+          style={({ pressed }) => [s.swap, s.swapAbove, pressed && { opacity: press }]}>
           <PenLine size={18} strokeWidth={1.75} color={c.fgMuted} />
           <AppText size="caption" color={c.fgMuted}>
             적기
@@ -644,7 +660,7 @@ export default function RecordModal() {
           onPress={finish}
           accessibilityRole="button"
           accessibilityLabel="녹음 정지"
-          style={({ pressed }) => [s.stop, pressed && { opacity: 0.7 }]}>
+          style={({ pressed }) => [s.stop, pressed && { opacity: press }]}>
           <View style={s.square} />
         </Pressable>
       </View>

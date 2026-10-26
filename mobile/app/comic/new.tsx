@@ -1,10 +1,11 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-import { Button, Header, Radio, Screen, Stack } from '@components';
+import { Button, Header, Radio, Screen, Skeleton, Stack } from '@components';
 import { explainCreateError, genderLabel, parseGender, useComicActions } from '@features/comic';
 import { useMe } from '@features/community';
 import type { ComicGender, ComicStyle } from '@shared/api/comic';
+import { useBack } from '@shared/back';
 import { getDreamRepo, SETTINGS, type Dream } from '@shared/db';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
@@ -56,7 +57,7 @@ export default function ComicNew() {
     };
   }, []);
 
-  const back = () => (router.canGoBack() ? router.back() : router.replace('/log'));
+  const back = useBack('/log');
   const empty = !!dream && !(dream.text ?? '').trim();
 
   const submit = () => {
@@ -87,9 +88,14 @@ export default function ComicNew() {
       }>
       <Stack gap={sp[6]}>
         <Stack gap={sp[2]}>
-          <AppText size="heading" weight="bold" numberOfLines={2}>
-            {dream === undefined ? '불러오는 중입니다' : (dream?.title ?? '제목 없는 꿈')}
-          </AppText>
+          {/* 폰의 꿈을 꺼내는 한 박자 — 제목 자리를 그 모양으로 비워 둔다 */}
+          {dream === undefined ? (
+            <Skeleton width="60%" height={24} />
+          ) : (
+            <AppText size="heading" weight="bold" numberOfLines={2}>
+              {dream?.title ?? '제목 없는 꿈'}
+            </AppText>
+          )}
           <AppText size="caption" color={c.fgMuted}>
             {dream === null
               ? '꿈을 찾을 수 없습니다. 기록 목록에서 다시 골라 주세요.'

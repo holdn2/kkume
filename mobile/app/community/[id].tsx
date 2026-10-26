@@ -4,7 +4,22 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, Card, Header, Input, Radio, Row, Screen, Sheet, showToast, Stack, Switch } from '@components';
+import {
+  Button,
+  Card,
+  EmptyCard,
+  ErrorCard,
+  Header,
+  Input,
+  Loading,
+  Radio,
+  Row,
+  Screen,
+  Sheet,
+  showToast,
+  Stack,
+  Switch,
+} from '@components';
 import { ComicView } from '@features/comic';
 import {
   ago,
@@ -26,6 +41,7 @@ import {
   type ReportReason,
   type ReportTarget,
 } from '@shared/api/community';
+import { useBack } from '@shared/back';
 import { day } from '@shared/date';
 import { AppText } from '@shared/ui';
 import { c, hit, press, r, sp } from '@theme/token';
@@ -57,9 +73,10 @@ export default function PostScreen() {
   useEffect(() => {
     if (fromShare) navigation.setOptions({ gestureEnabled: false });
   }, [fromShare, navigation]);
+  const back = useBack('/community');
   const goBack = () => {
     if (fromShare) router.dismissTo('/community');
-    else router.back();
+    else back();
   };
   const me = useMe();
   const meId = me === undefined ? undefined : (me?.id ?? null);
@@ -178,7 +195,7 @@ export default function PostScreen() {
       .then(() => {
         void invalidate();
         // 글쓴이를 차단했으면 피드로 돌아간다 — 피드에서는 서버가 그 사람 글을 뺀다
-        if (post && user.id === post.author.id) router.back();
+        if (post && user.id === post.author.id) back();
         else {
           tell(`${user.nickname}님을 차단했습니다. 그 사람의 글과 댓글이 보이지 않습니다.`);
         }
@@ -211,7 +228,7 @@ export default function PostScreen() {
           await setBlocked(target.author, true);
           void invalidate();
           if (post && target.author.id === post.author.id) {
-            router.back();
+            back();
             return;
           }
         }
@@ -224,7 +241,7 @@ export default function PostScreen() {
   if (post === undefined) {
     return (
       <Screen header={<Header onBack={goBack} />}>
-        <AppText color={c.fgMuted}>{error ?? '불러오는 중입니다'}</AppText>
+        {error ? <ErrorCard message={error} onRetry={() => void query.refetch()} /> : <Loading />}
       </Screen>
     );
   }
@@ -232,7 +249,7 @@ export default function PostScreen() {
   if (post === null) {
     return (
       <Screen header={<Header onBack={goBack} />}>
-        <AppText color={c.fgMuted}>지워졌거나 가려진 글입니다.</AppText>
+        <EmptyCard title="지워졌거나 가려진 글입니다." />
       </Screen>
     );
   }
@@ -434,7 +451,7 @@ export default function PostScreen() {
         {confirmPost ? (
           <Stack gap={sp[2]}>
             <Button label="지우기" variant="danger" onPress={removePost} />
-            <Button label="그만두기" variant="ghost" onPress={closeMenu} />
+            <Button label="취소" variant="ghost" onPress={closeMenu} />
           </Stack>
         ) : (
           <Stack gap={sp[2]}>
@@ -443,7 +460,7 @@ export default function PostScreen() {
             ) : (
               <Button label={`${post.author.nickname}님 차단하기`} variant="danger" onPress={() => block(post.author)} />
             )}
-            <Button label="닫기" variant="ghost" onPress={closeMenu} />
+            <Button label="취소" variant="ghost" onPress={closeMenu} />
           </Stack>
         )}
       </Sheet>
@@ -455,7 +472,7 @@ export default function PostScreen() {
         description="지운 댓글은 되돌릴 수 없습니다.">
         <Stack gap={sp[2]}>
           <Button label="지우기" variant="danger" onPress={() => confirmComment && removeComment(confirmComment)} />
-          <Button label="그만두기" variant="ghost" onPress={() => setConfirmComment(null)} />
+          <Button label="취소" variant="ghost" onPress={() => setConfirmComment(null)} />
         </Stack>
       </Sheet>
 
@@ -481,7 +498,7 @@ export default function PostScreen() {
           )}
           <Stack gap={sp[2]}>
             <Button label="신고하기" variant="danger" onPress={submitReport} />
-            <Button label="그만두기" variant="ghost" onPress={() => setReporting(null)} />
+            <Button label="취소" variant="ghost" onPress={() => setReporting(null)} />
           </Stack>
         </Stack>
       </Sheet>

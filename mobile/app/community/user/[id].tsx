@@ -1,9 +1,24 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Pencil } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, View } from 'react-native';
+import { FlatList, RefreshControl, View } from 'react-native';
 
-import { Avatar, Button, Card, Chip, Header, Row, Screen, SCROLL_TAIL, Stack } from '@components';
+import {
+  Avatar,
+  Button,
+  Card,
+  Chip,
+  EmptyCard,
+  ErrorCard,
+  Header,
+  ListSkeleton,
+  Loading,
+  MoreLoading,
+  Row,
+  Screen,
+  SCROLL_TAIL,
+  Stack,
+} from '@components';
 import {
   setBlocked,
   useBlocked,
@@ -16,6 +31,7 @@ import {
 } from '@features/community';
 import { NicknameSheet } from '@features/community/NicknameSheet';
 import { PostCard } from '@features/community/PostCard';
+import { useBack } from '@shared/back';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 
@@ -31,6 +47,7 @@ import { c, sp } from '@theme/token';
 export default function ProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const back = useBack('/community');
   const me = useMe();
   const meId = me === undefined ? undefined : (me?.id ?? null);
   const blocked = useBlocked(meId);
@@ -60,9 +77,14 @@ export default function ProfileScreen() {
   const header = (
     <Stack gap={sp[4]}>
       {profile === undefined ? (
-        <AppText color={c.fgMuted}>불러오는 중입니다</AppText>
+        <Loading />
       ) : profile === null ? (
-        <AppText color={c.fgMuted}>찾을 수 없는 사람입니다.</AppText>
+        // 못 받은 것과 없는 사람을 가른다 — 못 받았으면 다시 받을 길을 둔다
+        profileQuery.error && !profileQuery.data ? (
+          <ErrorCard message="프로필을 불러오지 못했습니다." onRetry={() => void profileQuery.refetch()} />
+        ) : (
+          <EmptyCard title="찾을 수 없는 사람입니다." />
+        )
       ) : (
         <Stack gap={sp[4]}>
           <Row gap={sp[3]}>
@@ -102,7 +124,7 @@ export default function ProfileScreen() {
   );
 
   return (
-    <Screen header={<Header onBack={() => router.back()} />}>
+    <Screen header={<Header onBack={back} />}>
       <FlatList
         data={profile ? posts.items : []}
         keyExtractor={(p) => p.id}
@@ -117,15 +139,15 @@ export default function ProfileScreen() {
         refreshControl={
           <RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} tintColor={c.fgMuted} />
         }
-        ListFooterComponent={posts.isFetchingNextPage ? <ActivityIndicator color={c.fgMuted} style={{ padding: sp[4] }} /> : null}
+        ListFooterComponent={posts.isFetchingNextPage ? <MoreLoading /> : null}
         ListEmptyComponent={
-          profile && !posts.isPending ? (
-            <Card>
-              <AppText size="caption" color={c.fgFaint}>
-                아직 올린 글이 없습니다.
-              </AppText>
-            </Card>
-          ) : null
+          !profile ? null : posts.isPending ? (
+            <ListSkeleton count={2} />
+          ) : posts.error ? (
+            <ErrorCard message="글을 불러오지 못했습니다." onRetry={() => void posts.refetch()} />
+          ) : (
+            <EmptyCard title={mine ? '아직 나눈 꿈이 없습니다.' : '아직 올린 글이 없습니다.'} />
+          )
         }
       />
 

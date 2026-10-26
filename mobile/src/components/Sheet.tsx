@@ -39,6 +39,11 @@ type Props = {
   /** 문장으로 쓴다 — "삭제" 말고 "계정을 삭제할까요" */
   title?: string;
   description?: string;
+  /**
+   * 제목 아래, **스크롤 바깥에 고정**되는 줄 — 꿈 고르기의 검색칸(이슈 #129). 안쪽에 두면 목록을 내리는 순간
+   * 검색칸이 같이 올라가 사라져, 다시 찾으려면 맨 위까지 올려야 했다
+   */
+  top?: ReactNode;
   children?: ReactNode;
   /** 안쪽 스크롤이 끝에 가까워지면 부른다 — 긴 목록을 이어 읽을 때(꿈 고르기) */
   onEndReached?: () => void;
@@ -57,7 +62,7 @@ type Props = {
  * 붙을 뷰가 하나도 없는 상태에서 — 네이티브에 등록돼 버리고, 나중에 뷰가 생겨도
  * 그 값이 뷰를 움직이지 못한다.
  */
-export function Sheet({ visible, onClose, title, description, children, onEndReached }: Props) {
+export function Sheet({ visible, onClose, title, description, top, children, onEndReached }: Props) {
   const [showing, setShowing] = useState(visible);
   const [prevVisible, setPrevVisible] = useState(visible);
 
@@ -84,6 +89,7 @@ export function Sheet({ visible, onClose, title, description, children, onEndRea
           onClose={onClose}
           title={title}
           description={description}
+          top={top}
           onEndReached={onEndReached}>
           {children}
         </SheetBody>
@@ -96,7 +102,7 @@ export function Sheet({ visible, onClose, title, description, children, onEndRea
 
 type BodyProps = Omit<Props, 'visible'> & { closing: boolean; onExited: () => void };
 
-function SheetBody({ closing, onExited, onClose, title, description, children, onEndReached }: BodyProps) {
+function SheetBody({ closing, onExited, onClose, title, description, top, children, onEndReached }: BodyProps) {
   const insets = useSafeAreaInsets();
   const [y] = useState(() => new Animated.Value(HIDDEN));
   // 키보드가 떠 있으면 홈 인디케이터 여백이 필요 없다 — 두면 시트와 키보드 사이가 크게 벌어진다
@@ -166,7 +172,10 @@ function SheetBody({ closing, onExited, onClose, title, description, children, o
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={[s.avoid, { paddingTop: insets.top + sp[4] }]}
         pointerEvents="box-none">
+        {/* 내려가는 동안에는 안의 버튼을 받지 않는다 — 받으면 「지우기」를 빠르게 두 번 누를 때 요청이 두 번
+            나갔다(PR #128 리뷰). 닫기로 정한 시트는 그 순간부터 아무것도 하지 않는다 */}
         <Animated.View
+          pointerEvents={closing ? 'none' : 'auto'}
           style={[
             s.sheet,
             { paddingBottom: keyboardUp ? sp[4] : insets.bottom + sp[5], transform: [{ translateY: y }] },
@@ -187,6 +196,7 @@ function SheetBody({ closing, onExited, onClose, title, description, children, o
               {!!description && <AppText color={c.fgMuted}>{description}</AppText>}
             </View>
           )}
+          {top}
           {/* 항목이 많으면(꿈 고르기) 시트가 화면 위로 넘쳐 위쪽을 볼 수 없었다(2026-09-30).
               시트 높이는 화면까지로 막고 안쪽만 스크롤한다. 짧으면 내용 높이 그대로다 */}
           <ScrollView
