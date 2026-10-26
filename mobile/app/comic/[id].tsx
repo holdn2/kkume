@@ -1,12 +1,14 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { Button, DeleteLink, EmptyCard, ErrorCard, Header, Loading, Screen, Sheet, showToast, Stack } from '@components';
 import { ComicPanelView, ComicSteps, ComicView, useComic, useComicActions } from '@features/comic';
 import { useMe } from '@features/community';
+import { dreamTitle } from '@features/community/DreamPicker';
 import { isComicRunning } from '@shared/api/comic';
 import { useBack } from '@shared/back';
+import { getDreamRepo } from '@shared/db';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 
@@ -29,6 +31,22 @@ export default function ComicDetail() {
 
   const back = useBack('/log');
   const data = comic.data;
+
+  // 어느 꿈의 만화인지 네 컷 위에 한 줄(이슈 #137, 095 E3 · 097 C4). 제목은 서버에 없고 폰의 꿈에서 읽는다 —
+  // 폰에서 지운 꿈이면 줄을 그리지 않는다
+  const dreamId = data?.dreamId;
+  const [title, setTitle] = useState<string | null>(null);
+  useEffect(() => {
+    if (!dreamId) return;
+    let alive = true;
+    getDreamRepo()
+      .then((repo) => repo.get(dreamId))
+      .then((d) => alive && setTitle(d && !d.deletedAt ? dreamTitle(d) : null))
+      .catch(() => alive && setTitle(null));
+    return () => {
+      alive = false;
+    };
+  }, [dreamId]);
 
   // 지우기를 연달아 누르면 요청이 둘 나가고 뒤로 가기가 두 번 돈다(PR #93 리뷰).
   // state 는 다시 그린 뒤에야 바뀌어서 ref 로 그 자리에서 막고, state 는 버튼의 loading 표시에만 쓴다
@@ -68,6 +86,11 @@ export default function ComicDetail() {
   } else if (data.status === 'done') {
     body = (
       <Stack gap={sp[6]}>
+        {title && (
+          <AppText size="title" weight="bold" numberOfLines={2}>
+            {title}
+          </AppText>
+        )}
         <ComicView layout={data.layout} imageUrls={data.imageUrls} panels={data.panels} onPressPanel={setZoom} />
         <Stack gap={sp[2]}>
           {/* 공유 = 꿈 나눔 글쓰기로(계획서 003 CM-3). 갤러리 저장은 다음 빌드(expo-media-library) */}
