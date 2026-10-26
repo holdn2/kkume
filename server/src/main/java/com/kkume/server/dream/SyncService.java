@@ -162,7 +162,7 @@ public class SyncService {
 	public static class BatchTooLargeException extends RuntimeException {
 
 		public BatchTooLargeException(int size) {
-			super("한 번에 " + MAX_BATCH + "건까지 보낼 수 있습니다. 받은 것: " + size);
+			super("한 번에 " + MAX_BATCH + "건까지 보낼 수 있어요. 받은 것: " + size);
 		}
 	}
 }

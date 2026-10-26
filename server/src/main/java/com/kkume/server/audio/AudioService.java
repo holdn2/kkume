@@ -62,7 +62,7 @@ public class AudioService {
 	/** ② 업로드 자리를 준다. {@code format}이 비어 있으면 m4a 다(형식을 보내지 않던 앱) */
 	public UploadTicket prepareUpload(UUID userId, String dreamId, String format) {
 		AudioFormat audioFormat = AudioFormat.of(format)
-			.orElseThrow(() -> new AudioApiException(HttpStatus.BAD_REQUEST, "unsupported_format", "받지 않는 녹음 형식입니다"));
+			.orElseThrow(() -> new AudioApiException(HttpStatus.BAD_REQUEST, "unsupported_format", "받지 않는 녹음 형식이에요"));
 		Dream dream = this.transactions.execute(status -> {
 			// 삭제가 시작된 뒤에는 새 URL 을 내주지 않는다(문서 066)
 			this.accounts.lockActive(userId);
@@ -71,10 +71,10 @@ public class AudioService {
 		notDeleted(dream);
 		if (dream.getDurationMs() == null) {
 			// audio_path 는 있는데 duration_ms 가 없으면 stop() 전에 죽은 녹음이다. 변환도 실패한다
-			throw new AudioApiException(HttpStatus.CONFLICT, "recording_unfinished", "끝나지 않은 녹음입니다");
+			throw new AudioApiException(HttpStatus.CONFLICT, "recording_unfinished", "끝나지 않은 녹음이에요");
 		}
 		if (dream.getAudioUrl() != null) {
-			throw new AudioApiException(HttpStatus.CONFLICT, "audio_exists", "이미 올라간 오디오가 있습니다");
+			throw new AudioApiException(HttpStatus.CONFLICT, "audio_exists", "이미 올라간 오디오가 있어요");
 		}
 		// 요청마다 새 키를 만든다. 오래된 URL 이 늦게 도착해도 나중 업로드를 덮지 못한다
 		String key = prefix(userId, dreamId) + UUID.randomUUID() + audioFormat.extension();
@@ -90,7 +90,7 @@ public class AudioService {
 		String prefix = prefix(userId, dreamId);
 		if (key == null || !key.startsWith(prefix) || !RANDOM_PART.matcher(key.substring(prefix.length())).matches()) {
 			// S3 확인보다 먼저 한다. 남의 경로를 넣어 그 파일이 있는지 떠보는 데 쓰이지 않게 한다
-			throw new AudioApiException(HttpStatus.BAD_REQUEST, "key_mismatch", "이 기록의 업로드 경로가 아닙니다");
+			throw new AudioApiException(HttpStatus.BAD_REQUEST, "key_mismatch", "이 기록의 업로드 경로가 아니에요");
 		}
 
 		// 이미 끝난 요청이면 S3 를 다시 두드리지 않는다(응답 유실 뒤 재전송)
@@ -102,11 +102,11 @@ public class AudioService {
 		// S3 확인은 트랜잭션 밖에서 한다. 외부 호출 동안 행 잠금을 쥐고 있지 않는다
 		OptionalLong size = this.storage.sizeOf(key);
 		if (size.isEmpty()) {
-			throw new AudioApiException(HttpStatus.UNPROCESSABLE_CONTENT, "upload_missing", "올라간 파일이 없습니다");
+			throw new AudioApiException(HttpStatus.UNPROCESSABLE_CONTENT, "upload_missing", "올라간 파일이 없어요");
 		}
 		if (size.getAsLong() > this.properties.maxBytes()) {
 			this.storage.delete(key);
-			throw new AudioApiException(HttpStatus.CONTENT_TOO_LARGE, "audio_too_large", "파일이 너무 큽니다");
+			throw new AudioApiException(HttpStatus.CONTENT_TOO_LARGE, "audio_too_large", "파일이 너무 커요");
 		}
 
 		return this.transactions.execute(status -> {
@@ -117,7 +117,7 @@ public class AudioService {
 			}
 			notDeleted(dream);
 			if (dream.getAudioUrl() != null) {
-				throw new AudioApiException(HttpStatus.CONFLICT, "audio_exists", "이미 올라간 오디오가 있습니다");
+				throw new AudioApiException(HttpStatus.CONFLICT, "audio_exists", "이미 올라간 오디오가 있어요");
 			}
 			Instant now = Instant.now();
 			// 둘 다 updated_at 을 올린다 — 받기에 다시 내려가 앱이 audioUrl 이 채워진 것을 안다
@@ -155,7 +155,7 @@ public class AudioService {
 			notDeleted(dream);
 			SttStatus stt = dream.getSttStatus();
 			if (stt == SttStatus.DONE) {
-				throw new AudioApiException(HttpStatus.CONFLICT, "already_done", "이미 변환이 끝났습니다");
+				throw new AudioApiException(HttpStatus.CONFLICT, "already_done", "이미 변환이 끝났어요");
 			}
 			if (stt == SttStatus.PENDING) {
 				return stt.code();
@@ -175,14 +175,14 @@ public class AudioService {
 	 */
 	private static Dream owned(UUID userId, Dream dream) {
 		if (dream == null || !dream.getUserId().equals(userId)) {
-			throw new AudioApiException(HttpStatus.NOT_FOUND, "dream_not_found", "기록을 찾지 못했습니다");
+			throw new AudioApiException(HttpStatus.NOT_FOUND, "dream_not_found", "기록을 찾지 못했어요");
 		}
 		return dream;
 	}
 
 	private static Dream withAudio(Dream dream) {
 		if (dream.getAudioUrl() == null) {
-			throw new AudioApiException(HttpStatus.NOT_FOUND, "no_audio", "올라간 오디오가 없습니다");
+			throw new AudioApiException(HttpStatus.NOT_FOUND, "no_audio", "올라간 오디오가 없어요");
 		}
 		return dream;
 	}
@@ -193,7 +193,7 @@ public class AudioService {
 	 */
 	private static void notDeleted(Dream dream) {
 		if (dream.isDeleted()) {
-			throw new AudioApiException(HttpStatus.CONFLICT, "dream_deleted", "지운 기록입니다");
+			throw new AudioApiException(HttpStatus.CONFLICT, "dream_deleted", "지운 기록이에요");
 		}
 	}
 

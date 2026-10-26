@@ -300,7 +300,7 @@ class ConsentAndModerationTest {
 			.formatted(dreamId)).andExpect(status().isForbidden());
 		assertThat(code(r)).isEqualTo("account_suspended");
 		assertThat(JsonPath.<String>read(r.andReturn().getResponse().getContentAsString(), "$.message"))
-			.isEqualTo("이용이 제한된 계정입니다. 문의: yoocy01@gmail.com");
+			.isEqualTo("이용이 제한된 계정이에요. 문의: yoocy01@gmail.com");
 
 		assertThat(code(call(me, post("/api/community/posts/" + otherPost + "/comments"), "{\"body\":\"x\"}")
 			.andExpect(status().isForbidden()))).isEqualTo("account_suspended");

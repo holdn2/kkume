@@ -28,6 +28,6 @@ public enum FeedSort {
 				return sort;
 			}
 		}
-		throw CommunityApiException.badRequest("invalid_sort", "정렬은 latest · empathy 중 하나입니다");
+		throw CommunityApiException.badRequest("invalid_sort", "정렬은 latest · empathy 중 하나예요");
 	}
 }

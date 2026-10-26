@@ -131,7 +131,7 @@ public class UserService {
 	public static class InvalidNicknameException extends RuntimeException {
 
 		public InvalidNicknameException() {
-			super("닉네임은 2~16자이고 줄바꿈을 쓸 수 없습니다");
+			super("닉네임은 2~16자이고 줄바꿈을 쓸 수 없어요");
 		}
 	}
 

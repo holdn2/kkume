@@ -46,7 +46,7 @@ public class ComicApiException extends RuntimeException {
 	}
 
 	static ComicApiException notFound() {
-		return new ComicApiException(HttpStatus.NOT_FOUND, "comic_not_found", "만화를 찾을 수 없습니다");
+		return new ComicApiException(HttpStatus.NOT_FOUND, "comic_not_found", "만화를 찾을 수 없어요");
 	}
 
 	static ComicApiException unavailable() {

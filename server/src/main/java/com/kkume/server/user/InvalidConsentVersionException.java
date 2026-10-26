@@ -4,6 +4,6 @@ package com.kkume.server.user;
 public class InvalidConsentVersionException extends RuntimeException {
 
 	public InvalidConsentVersionException() {
-		super("동의 버전이 올바르지 않습니다");
+		super("동의 버전이 올바르지 않아요");
 	}
 }

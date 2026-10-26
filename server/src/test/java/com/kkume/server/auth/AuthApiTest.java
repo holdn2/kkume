@@ -68,7 +68,7 @@ class AuthApiTest {
 			.andExpect(status().isUnauthorized())
 			.andExpect(jsonPath("$.code").value("invalid_token"))
 			// 왜 실패했는지 흘리면 토큰을 맞춰 보는 쪽에 힌트가 된다
-			.andExpect(jsonPath("$.message").value("로그인에 실패했습니다"));
+			.andExpect(jsonPath("$.message").value("로그인에 실패했어요"));
 	}
 
 	@Test

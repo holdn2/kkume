@@ -46,15 +46,15 @@ public class CommunityApiException extends RuntimeException {
 	}
 
 	static CommunityApiException postNotFound() {
-		return new CommunityApiException(HttpStatus.NOT_FOUND, "post_not_found", "글을 찾을 수 없습니다");
+		return new CommunityApiException(HttpStatus.NOT_FOUND, "post_not_found", "글을 찾을 수 없어요");
 	}
 
 	static CommunityApiException commentNotFound() {
-		return new CommunityApiException(HttpStatus.NOT_FOUND, "comment_not_found", "댓글을 찾을 수 없습니다");
+		return new CommunityApiException(HttpStatus.NOT_FOUND, "comment_not_found", "댓글을 찾을 수 없어요");
 	}
 
 	static CommunityApiException userNotFound() {
-		return new CommunityApiException(HttpStatus.NOT_FOUND, "user_not_found", "사용자를 찾을 수 없습니다");
+		return new CommunityApiException(HttpStatus.NOT_FOUND, "user_not_found", "사용자를 찾을 수 없어요");
 	}
 
 	static CommunityApiException notOwner(String message) {

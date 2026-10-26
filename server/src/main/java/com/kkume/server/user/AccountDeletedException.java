@@ -8,6 +8,6 @@ package com.kkume.server.user;
 public class AccountDeletedException extends RuntimeException {
 
 	public AccountDeletedException() {
-		super("삭제된 계정입니다");
+		super("삭제된 계정이에요");
 	}
 }
