@@ -126,9 +126,9 @@ export default function QuickRecordScreen() {
 
   /** 「완료」를 연달아 누르면 두 번째가 새 판에서 같은 글로 기록을 하나 더 만든다 */
   const finishing = useRef(false);
-  /** 적던 것을 마저 저장하고 칸을 비운다. 다음에 적는 것은 새 기록이 된다 */
-  const finish = async () => {
-    if (finishing.current) return;
+  /** 적던 것을 마저 저장하고 칸을 비운다. 다음에 적는 것은 새 기록이 된다. 끝까지 마쳤으면 true */
+  const finish = async (): Promise<boolean> => {
+    if (finishing.current) return false;
     finishing.current = true;
     const t = text;
     const g = gen.current;
@@ -136,11 +136,13 @@ export default function QuickRecordScreen() {
       if (t.trim()) await persist(t, g);
     } catch {
       showToast('기록을 저장하지 못했어요. 다시 눌러 주세요.');
-      return;
+      return false;
     } finally {
       finishing.current = false;
     }
-    if (g !== gen.current) return;
+    // 저장을 기다리는 사이에 더 친 글자가 있으면 칸을 비우지 않는다 — 비우면 그 글자는 저장되지 않는다(PR #140 리뷰).
+    // 판은 그대로라 대기 저장이 늘어난 글을 같은 기록에 쓴다
+    if (g !== gen.current || latest.current.text !== t) return false;
     gen.current += 1;
     latest.current = { text: '', saved: false, g: gen.current };
     setText('');
@@ -151,12 +153,12 @@ export default function QuickRecordScreen() {
       showToast('꿈 로그에 남겼어요.', 'neutral');
       countUnread();
     }
+    return true;
   };
 
-  /** 말하기. 적던 것이 있으면 그 기록을 먼저 마무리한다 — 녹음은 새 기록이 된다 */
+  /** 말하기. 적던 것이 있으면 그 기록을 먼저 마무리한다 — 녹음은 새 기록이 된다. 마무리하지 못했으면 이 화면에 남는다 */
   const speak = async () => {
-    await finish();
-    router.push('/record?mode=voice');
+    if (await finish()) router.push('/record?mode=voice');
   };
 
   return (
