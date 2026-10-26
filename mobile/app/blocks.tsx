@@ -1,10 +1,21 @@
-import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
+import { FlatList, StyleSheet, View } from 'react-native';
 
-import { Avatar, Button, Card, Header, Row, Screen, SCROLL_TAIL, showToast } from '@components';
+import {
+  Avatar,
+  Button,
+  EmptyCard,
+  ErrorCard,
+  Header,
+  ListSkeleton,
+  Row,
+  Screen,
+  SCROLL_TAIL,
+  showToast,
+} from '@components';
 import { setBlocked, useBlocked, useInvalidateCommunity, useMe, useRefetchOnFocus } from '@features/community';
 import type { Author } from '@shared/api/community';
+import { useBack } from '@shared/back';
 import { AppText } from '@shared/ui';
 import { c, hit, sp } from '@theme/token';
 
@@ -15,7 +26,7 @@ import { c, hit, sp } from '@theme/token';
  * `useBlocked`가 커뮤니티 캐시로 들고 있어서, 풀면 캐시를 무효로 해 피드 · 댓글에 그 사람이 다시 보인다.
  */
 export default function BlocksScreen() {
-  const router = useRouter();
+  const back = useBack('/my');
   const me = useMe();
   const meId = me === undefined ? undefined : (me?.id ?? null);
   const blocked = useBlocked(meId);
@@ -39,7 +50,7 @@ export default function BlocksScreen() {
   };
 
   return (
-    <Screen header={<Header title="차단한 사용자" onBack={() => router.back()} />}>
+    <Screen header={<Header title="차단한 사용자" onBack={back} />}>
       <AppText size="caption" color={c.fgFaint}>
         차단하면 그 사람의 글과 댓글이 꿈 나눔에서 보이지 않습니다. 상대에게는 알리지 않습니다.
       </AppText>
@@ -51,11 +62,7 @@ export default function BlocksScreen() {
       )}
 
       {me === null ? (
-        <Card>
-          <AppText size="body" color={c.fgMuted}>
-            로그인하면 차단 목록을 볼 수 있습니다.
-          </AppText>
-        </Card>
+        <EmptyCard title="로그인하면 차단 목록을 볼 수 있습니다." hint="마이 탭에서 로그인해 주세요." />
       ) : (
         <FlatList
           data={blocked.list}
@@ -67,9 +74,10 @@ export default function BlocksScreen() {
                 {item.nickname}
               </AppText>
               <Button
-                label={busy === item.id ? '푸는 중' : '차단 풀기'}
+                label="차단 풀기"
                 size="sm"
                 variant="secondary"
+                loading={busy === item.id}
                 disabled={busy !== null}
                 onPress={() => unblock(item)}
               />
@@ -79,20 +87,11 @@ export default function BlocksScreen() {
           contentContainerStyle={{ paddingBottom: SCROLL_TAIL }}
           ListEmptyComponent={
             me === undefined || blocked.loading ? (
-              <ActivityIndicator color={c.fgMuted} style={{ padding: sp[6] }} />
+              <ListSkeleton count={2} />
             ) : blocked.failed ? (
-              <Card>
-                <AppText size="body" color={c.danger}>
-                  차단 목록을 불러오지 못했습니다.
-                </AppText>
-                <Button label="다시 불러오기" size="sm" variant="secondary" onPress={() => void blocked.reload()} />
-              </Card>
+              <ErrorCard message="차단 목록을 불러오지 못했습니다." onRetry={() => void blocked.reload()} />
             ) : (
-              <Card>
-                <AppText size="body" color={c.fgMuted}>
-                  차단한 사용자가 없습니다.
-                </AppText>
-              </Card>
+              <EmptyCard title="차단한 사용자가 없습니다." hint="글 상세의 ⋯ 나 프로필에서 차단할 수 있습니다." />
             )
           }
         />

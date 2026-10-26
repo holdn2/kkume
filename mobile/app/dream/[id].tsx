@@ -1,13 +1,12 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Trash2 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
 
-import { Badge, Button, Header, Input, Row, Screen, Sheet, showToast, Stack } from '@components';
+import { Badge, Button, DeleteLink, EmptyCard, ErrorCard, Header, Input, Loading, Row, Screen, Sheet, showToast, Stack } from '@components';
 import { COMIC_ENABLED, useComicsForDream } from '@features/comic';
 import { useMe, usePostForDream, useRefetchOnFocus } from '@features/community';
 import { PlayerBar } from '@features/log/PlayerBar';
 import { MAX_TEXT_LENGTH, MAX_TITLE_LENGTH } from '@shared/api/sync';
+import { useBack } from '@shared/back';
 import { dateTime } from '@shared/date';
 import { getDreamRepo, nowIso, type Dream } from '@shared/db';
 import { AppText } from '@shared/ui';
@@ -29,8 +28,11 @@ const IDLE_SAVE_MS = 1200;
 export default function DreamDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const back = useBack('/log');
 
   const [dream, setDream] = useState<Dream | null>(null);
+  /** 읽기를 마쳤는가 — 마쳤는데 `dream`이 null 이면 없는 기록이다. 따로 두지 않으면 그때도 계속 불러오는 중으로 보인다 */
+  const [loaded, setLoaded] = useState(false);
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [saved, setSaved] = useState<{ title: string; text: string } | null>(null);
@@ -70,6 +72,7 @@ export default function DreamDetail() {
       .then((d) => {
         if (!alive) return;
         setDream(d);
+        setLoaded(true);
         setTitle(d?.title ?? '');
         setText(d?.text ?? '');
         setSaved({ title: d?.title ?? '', text: d?.text ?? '' });
@@ -154,15 +157,21 @@ export default function DreamDetail() {
   // 고친 것을 먼저 저장하고 나간다. 저장이 실패하면 나가지 않고 이유를 보인다
   const goBack = () => {
     flush()
-      .then(() => (router.canGoBack() ? router.back() : router.replace('/log')))
+      .then(back)
       .catch(fail);
   };
 
   if (dream === null) {
     return (
       <Screen header={<Header onBack={goBack} />}>
-        <AppText color={c.fgMuted}>{error ?? '불러오는 중입니다'}</AppText>
-        <Button label="목록으로" variant="ghost" onPress={() => router.replace('/log')} />
+        {error ? (
+          <ErrorCard message={`기록을 읽지 못했습니다. ${error}`} />
+        ) : loaded ? (
+          <EmptyCard title="찾을 수 없는 기록입니다." hint="지워졌을 수 있습니다." />
+        ) : (
+          <Loading />
+        )}
+        {(!!error || loaded) && <Button label="목록으로" variant="ghost" onPress={() => router.replace('/log')} />}
       </Screen>
     );
   }
@@ -250,42 +259,24 @@ export default function DreamDetail() {
                 onPress={() => router.push(`/comic/new?dreamId=${dream.id}`)}
               />
             ))}
-          <Pressable
-            onPress={() => setAskDelete(true)}
-            accessibilityRole="button"
-            style={({ pressed }) => [s.delete, pressed && { opacity: 0.7 }]}>
-            <Trash2 size={16} strokeWidth={1.75} color={c.fgFaint} />
-            <AppText size="caption" color={c.fgFaint}>
-              이 기록 지우기
-            </AppText>
-          </Pressable>
+          <DeleteLink label="이 기록 지우기" onPress={() => setAskDelete(true)} />
         </Stack>
       </Stack>
 
       {/* 지우는 것은 되돌리기 어렵다. 기록 유실이 이 앱에서 유일하게 용납되지 않는 실패라
           여기만 확인을 한 번 받는다 — 새벽 화면이 아니라 낮 화면이므로 규칙 7에 걸리지 않는다 */}
-      <Sheet visible={askDelete} onClose={() => setAskDelete(false)}>
-        {/* 묻는 말과 그 설명은 붙이고, 답하는 버튼은 떼어 놓는다.
-            같은 간격으로 늘어놓으면 설명을 읽기 전에 손이 먼저 간다 */}
-        <Stack gap={sp[6]}>
-          <Stack gap={sp[2]}>
-            <AppText size="heading" weight="bold">
-              이 기록을 지울까요
-            </AppText>
-            <AppText size="caption" color={c.fgMuted}>
-              목록에서만 사라지고 서버에는 남습니다. 나중에 되살릴 수 있습니다.
-            </AppText>
-          </Stack>
-          <Stack gap={sp[2]}>
-            <Button label="지우기" variant="danger" onPress={remove} />
-            <Button label="그만두기" variant="ghost" onPress={() => setAskDelete(false)} />
-          </Stack>
+      {/* 머리는 시트의 title · description — 확인 시트는 모두 같은 모양이다(이슈 #129).
+          묻는 말과 그 설명은 붙이고, 답하는 버튼은 떼어 놓는다 */}
+      <Sheet
+        visible={askDelete}
+        onClose={() => setAskDelete(false)}
+        title="이 기록을 지울까요"
+        description="목록에서만 사라지고 서버에는 남습니다. 나중에 되살릴 수 있습니다.">
+        <Stack gap={sp[2]} style={{ paddingTop: sp[4] }}>
+          <Button label="지우기" variant="danger" onPress={remove} />
+          <Button label="취소" variant="ghost" onPress={() => setAskDelete(false)} />
         </Stack>
       </Sheet>
     </Screen>
   );
 }
-
-const s = StyleSheet.create({
-  delete: { flexDirection: 'row', alignItems: 'center', gap: sp[2], alignSelf: 'center', paddingVertical: sp[3] },
-});

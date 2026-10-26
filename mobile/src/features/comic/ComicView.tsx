@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
+import { Skeleton } from '@components';
 import type { ComicLayout, ComicPanel } from '@shared/api/comic';
 import { AppText } from '@shared/ui';
 import { avatarBg, c, press, r, sp } from '@theme/token';
@@ -62,13 +63,37 @@ type PanelProps = {
 /** 컷 하나. 뷰어의 칸과 크게 보기가 함께 쓴다 */
 export function ComicPanelView({ index, size, layout, imageUrls, panel, full }: PanelProps) {
   const source = layout === 'grid2x2' ? imageUrls[0] : layout === 'panels4' ? imageUrls[index] : undefined;
+  /**
+   * 그림을 받는 동안은 스켈레톤을 깐다(이슈 #129, 2026-10-26 사용자 — 꿈 나눔 글에서 검은 칸만 보였다).
+   * 그림은 서버에서 받아 오므로 몇 초 걸릴 수 있다. 못 받아도(onError) 걷어 낸다 — 계속 깜빡이면 아직 오는 중으로 읽힌다.
+   * 말풍선은 그림이 온 뒤에 얹는다. 빈 칸 위에 말풍선만 떠 있으면 컷이 아니라 글 상자로 읽힌다
+   */
+  const [loaded, setLoaded] = useState(false);
+  const waiting = !!source && !loaded;
   return (
     <View style={[s.panel, { width: size, height: size }]}>
+      {waiting && (
+        <View style={StyleSheet.absoluteFill}>
+          <Skeleton width={size} height={size} radius={0} />
+        </View>
+      )}
       {source ? (
         layout === 'grid2x2' ? (
-          <Image source={source} style={[s.abs, gridCrop(index, size)]} contentFit="cover" />
+          <Image
+            source={source}
+            style={[s.abs, gridCrop(index, size)]}
+            contentFit="cover"
+            onLoad={() => setLoaded(true)}
+            onError={() => setLoaded(true)}
+          />
         ) : (
-          <Image source={source} style={StyleSheet.absoluteFill} contentFit="cover" />
+          <Image
+            source={source}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            onLoad={() => setLoaded(true)}
+            onError={() => setLoaded(true)}
+          />
         )
       ) : (
         <View style={[StyleSheet.absoluteFill, s.placeholder, { backgroundColor: avatarBg[index % avatarBg.length] }]}>
@@ -77,7 +102,7 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full }: 
           </AppText>
         </View>
       )}
-      {!!panel?.dialogue && <SpeechBubble text={panel.dialogue} side={bubbleSide(panel.speaker)} full={full} />}
+      {!!panel?.dialogue && !waiting && <SpeechBubble text={panel.dialogue} side={bubbleSide(panel.speaker)} full={full} />}
     </View>
   );
 }

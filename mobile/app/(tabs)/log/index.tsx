@@ -1,16 +1,15 @@
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Mic } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { FlatList, View } from 'react-native';
 
-import { Card, Input, Screen, SCROLL_TAIL, Title } from '@components';
+import { Button, EmptyCard, ErrorCard, Input, ListSkeleton, MoreLoading, Screen, SCROLL_TAIL, Title } from '@components';
 import { DictationPrompt } from '@features/log/DictationPrompt';
 import { DreamCard } from '@features/log/DreamCard';
 import { useDreamPages } from '@features/log/useDreamPages';
 import { repairRecordingPaths } from '@shared/audio/paths';
 import { syncIfSignedIn } from '@shared/sync';
-import { AppText } from '@shared/ui';
-import { c, hit, press, r, sp } from '@theme/token';
+import { sp } from '@theme/token';
 
 /**
  * LOG-1. 앱의 홈이다.
@@ -63,16 +62,7 @@ export default function LogScreen() {
     <Screen>
       <Title sub={sub(counts, searching)}>꿈 로그</Title>
 
-      <Pressable
-        onPress={() => router.push('/record')}
-        accessibilityRole="button"
-        accessibilityLabel="지금 기록하기"
-        style={({ pressed }) => [s.record, pressed && { opacity: press }]}>
-        <Mic size={20} strokeWidth={1.75} color={c.actionFg} />
-        <AppText size="label" weight="semibold" color={c.actionFg}>
-          지금 기록하기
-        </AppText>
-      </Pressable>
+      <Button label="지금 기록하기" icon={Mic} onPress={() => router.push('/record')} />
 
       {/* 받아쓰기 권한을 낮에 한 번 묻는다. 새벽 녹음 화면은 권한을 조회만 한다(절대 규칙 7) */}
       {from !== 'record' && <DictationPrompt />}
@@ -90,13 +80,7 @@ export default function LogScreen() {
         />
       )}
 
-      {!!error && (
-        <Card>
-          <AppText size="caption" color={c.danger}>
-            {error}
-          </AppText>
-        </Card>
-      )}
+      {!!error && <ErrorCard message={`기록을 읽지 못했습니다. ${error}`} onRetry={() => reload()} />}
 
       <FlatList
         data={rows ?? []}
@@ -112,16 +96,17 @@ export default function LogScreen() {
         keyboardDismissMode="on-drag"
         onEndReached={more}
         onEndReachedThreshold={0.5}
-        ListFooterComponent={hasMore ? <ActivityIndicator color={c.fgMuted} style={{ padding: sp[4] }} /> : null}
+        ListFooterComponent={hasMore ? <MoreLoading /> : null}
         ListEmptyComponent={
-          rows === null ? null : searching ? (
-            <Card>
-              <AppText size="body" color={c.fgMuted}>
-                「{query.trim()}」이(가) 든 꿈이 없습니다.
-              </AppText>
-            </Card>
+          rows === null ? (
+            error ? null : <ListSkeleton />
+          ) : searching ? (
+            <EmptyCard title={`「${query.trim()}」이(가) 든 꿈이 없습니다.`} hint="다른 말로 찾아보세요." />
           ) : (
-            <Empty />
+            <EmptyCard
+              title="아직 남긴 꿈이 없습니다."
+              hint="위의 버튼으로 지금 남겨 보세요. 잠금화면 위젯을 올려 두면 새벽에 폰을 집자마자 바로 됩니다."
+            />
           )
         }
       />
@@ -135,32 +120,3 @@ function sub(counts: { total: number; unread: number } | null, searching: boolea
   if (counts.total === 0) return '아직 비어 있습니다';
   return counts.unread > 0 ? `${counts.total}건 · 미확인 ${counts.unread}건` : `${counts.total}건`;
 }
-
-/**
- * 빈 화면에서 할 일을 하나만 말한다.
- * 여기서 기능을 늘어놓으면 아직 한 번도 안 써 본 사람이 무엇부터 할지 고르게 된다.
- */
-function Empty() {
-  return (
-    <Card>
-      <AppText size="body" color={c.fgMuted}>
-        아직 남긴 꿈이 없습니다.
-      </AppText>
-      <AppText size="caption" color={c.fgFaint}>
-        위의 버튼으로 지금 남겨 보세요. 잠금화면 위젯을 올려 두면 새벽에 폰을 집자마자 바로 됩니다.
-      </AppText>
-    </Card>
-  );
-}
-
-const s = StyleSheet.create({
-  record: {
-    height: hit.base,
-    borderRadius: r.control,
-    backgroundColor: c.action,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: sp[2],
-  },
-});

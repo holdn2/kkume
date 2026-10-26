@@ -2,10 +2,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
-import { Button, Header, Screen, Sheet, showToast, Stack } from '@components';
+import { Button, DeleteLink, EmptyCard, ErrorCard, Header, Loading, Screen, Sheet, showToast, Stack } from '@components';
 import { ComicPanelView, ComicSteps, ComicView, useComic, useComicActions } from '@features/comic';
 import { useMe } from '@features/community';
 import { isComicRunning } from '@shared/api/comic';
+import { useBack } from '@shared/back';
 import { AppText } from '@shared/ui';
 import { c, sp } from '@theme/token';
 
@@ -26,7 +27,7 @@ export default function ComicDetail() {
   const [askDelete, setAskDelete] = useState(false);
   const { width } = useWindowDimensions();
 
-  const back = () => (router.canGoBack() ? router.back() : router.replace('/log'));
+  const back = useBack('/log');
   const data = comic.data;
 
   // 지우기를 연달아 누르면 요청이 둘 나가고 뒤로 가기가 두 번 돈다(PR #93 리뷰).
@@ -48,18 +49,13 @@ export default function ComicDetail() {
 
   let body;
   if (me === null) {
-    body = <AppText color={c.fgMuted}>로그인한 뒤 볼 수 있어요.</AppText>;
+    body = <EmptyCard title="로그인한 뒤 볼 수 있어요." hint="마이 탭에서 로그인해 주세요." />;
   } else if (comic.isPending) {
-    body = <AppText color={c.fgMuted}>불러오는 중입니다</AppText>;
+    body = <Loading />;
   } else if (comic.isError) {
-    body = (
-      <Stack gap={sp[3]}>
-        <AppText color={c.fgMuted}>만화를 불러오지 못했습니다.</AppText>
-        <Button label="다시 불러오기" variant="secondary" onPress={() => void comic.refetch()} />
-      </Stack>
-    );
+    body = <ErrorCard message="만화를 불러오지 못했습니다." onRetry={() => void comic.refetch()} />;
   } else if (!data) {
-    body = <AppText color={c.fgMuted}>만화를 찾을 수 없어요. 지워졌을 수 있어요.</AppText>;
+    body = <EmptyCard title="만화를 찾을 수 없어요." hint="지워졌을 수 있어요." />;
   } else if (isComicRunning(data.status)) {
     body = (
       <Stack gap={sp[6]}>
@@ -80,7 +76,7 @@ export default function ComicDetail() {
             variant="secondary"
             onPress={() => router.push(`/community/new?dreamId=${data.dreamId}&comicId=${data.id}`)}
           />
-          <Button label="이 만화 지우기" variant="ghost" onPress={() => setAskDelete(true)} />
+          <DeleteLink label="이 만화 지우기" onPress={() => setAskDelete(true)} />
         </Stack>
       </Stack>
     );
@@ -124,20 +120,14 @@ export default function ComicDetail() {
         </Pressable>
       </Modal>
 
-      <Sheet visible={askDelete} onClose={() => setAskDelete(false)}>
-        <Stack gap={sp[6]}>
-          <Stack gap={sp[2]}>
-            <AppText size="heading" weight="bold">
-              이 만화를 지울까요
-            </AppText>
-            <AppText size="caption" color={c.fgMuted}>
-              꿈 기록은 그대로 남아요. 꿈 나눔에 올린 글의 만화도 그대로예요. 지워도 오늘 만들 수 있는 수는 돌아오지 않아요.
-            </AppText>
-          </Stack>
-          <Stack gap={sp[2]}>
-            <Button label="지우기" variant="danger" onPress={del} loading={deleting} />
-            <Button label="그만두기" variant="ghost" onPress={() => setAskDelete(false)} />
-          </Stack>
+      <Sheet
+        visible={askDelete}
+        onClose={() => setAskDelete(false)}
+        title="이 만화를 지울까요"
+        description="꿈 기록은 그대로 남아요. 꿈 나눔에 올린 글의 만화도 그대로예요. 지워도 오늘 만들 수 있는 수는 돌아오지 않아요.">
+        <Stack gap={sp[2]} style={{ paddingTop: sp[4] }}>
+          <Button label="지우기" variant="danger" onPress={del} loading={deleting} />
+          <Button label="취소" variant="ghost" onPress={() => setAskDelete(false)} />
         </Stack>
       </Sheet>
     </Screen>

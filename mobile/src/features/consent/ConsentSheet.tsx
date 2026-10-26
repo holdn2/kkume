@@ -15,9 +15,9 @@ type Props = {
   onAgree: () => void;
   /** 바깥을 누르거나 끌어내릴 때. 이미 로그인한 사람에게는 아무 일도 안 하게 둔다 — 실수로 로그아웃되지 않게 */
   onClose: () => void;
-  /** 아래쪽 버튼(그만두기 · 동의하지 않고 로그아웃) */
+  /** 아래쪽 버튼(취소 · 동의하지 않고 로그아웃) */
   onDismiss: () => void;
-  /** 아래쪽 버튼 이름. 로그인 전이면 「그만두기」, 이미 로그인한 사람이면 「로그아웃」 */
+  /** 아래쪽 버튼 이름. 로그인 전이면 「취소」, 이미 로그인한 사람이면 「동의하지 않고 로그아웃」 */
   dismissLabel: string;
   busy?: boolean;
   /** 저장 실패 같은 이유. 있으면 버튼 위에 보인다 */
@@ -81,7 +81,7 @@ export function ConsentSheet({ visible, onAgree, onClose, onDismiss, dismissLabe
           </AppText>
         )}
         <Stack gap={sp[2]}>
-          <Button label={busy ? '진행 중' : '동의하고 계속'} disabled={!canAgree(checks) || busy} onPress={onAgree} />
+          <Button label="동의하고 계속" loading={busy} disabled={!canAgree(checks)} onPress={onAgree} />
           <Button label={dismissLabel} variant="ghost" disabled={busy} onPress={onDismiss} />
         </Stack>
       </Stack>

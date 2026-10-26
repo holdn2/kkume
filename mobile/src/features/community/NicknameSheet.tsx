@@ -85,7 +85,7 @@ export function NicknameSheet({ visible, onClose, current, onSaved }: Props) {
           error={error ?? (value.trim().length >= NICKNAME_MIN && problem ? problem : undefined)}
         />
         {/* "2~16자 · 지난 글 이름도 바뀜" 안내는 뺐다(2026-10-03 사용자 — 당연한 것). 길이는 글자수가 알린다 */}
-        <Button label={saving ? '바꾸는 중' : '바꾸기'} disabled={!!problem || unchanged || saving} onPress={save} />
+        <Button label="바꾸기" loading={saving} disabled={!!problem || unchanged} onPress={save} />
       </Stack>
     </Sheet>
   );
