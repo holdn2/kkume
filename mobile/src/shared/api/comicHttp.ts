@@ -14,7 +14,7 @@ import type { Comic, ComicApi, NewComic } from './comic';
 export function createHttpComic(auth: { token: () => Promise<string | null> }): ComicApi {
   const call = async <T>(path: string, method = 'GET', body?: unknown) => {
     const token = await auth.token();
-    if (!token) throw { code: 'unauthorized', message: '로그인이 필요합니다', status: 401 } as ApiError;
+    if (!token) throw { code: 'unauthorized', message: '로그인이 필요해요', status: 401 } as ApiError;
     return request<T>(path, { method, body, token });
   };
   const id = encodeURIComponent;

@@ -58,7 +58,7 @@ export function NicknameSheet({ visible, onClose, current, onSaved }: Props) {
       })
       .catch((e) => {
         // 이용 제한도 여기로 온다 — 칸 아래 글씨만으로는 놓치기 쉬워 토스트로도(2026-10-08)
-        const m = e?.message ?? '바꾸지 못했습니다';
+        const m = e?.message ?? '바꾸지 못했어요';
         setError(m);
         showToast(m);
       })

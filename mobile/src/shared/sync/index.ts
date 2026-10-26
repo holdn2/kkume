@@ -206,7 +206,7 @@ export async function syncOnce(token: string): Promise<SyncReport> {
       if (candidates.length === MAX_UPLOAD_CANDIDATES) report.morePending = true;
     }
   } catch (e) {
-    report.error = isApiError(e) ? e.message : '동기화에 실패했습니다';
+    report.error = isApiError(e) ? e.message : '동기화에 실패했어요';
   }
 
   return report;
@@ -391,9 +391,9 @@ const DIAG_MAX_PAGES = 20;
  */
 export async function diagnoseSync(): Promise<SyncDiagnosis> {
   const none = { report: null, local: null, server: null };
-  if (!HAS_API) return { ...none, note: '서버 주소가 없습니다' };
+  if (!HAS_API) return { ...none, note: '서버 주소가 없어요' };
   const s = await loadSession();
-  if (!s || isExpired(s)) return { ...none, note: '로그인이 필요합니다' };
+  if (!s || isExpired(s)) return { ...none, note: '로그인이 필요해요' };
 
   const report = await syncIfSignedIn({ force: true });
   const repo = await getDreamRepo();
@@ -428,7 +428,7 @@ export async function diagnoseSync(): Promise<SyncDiagnosis> {
       cursor = res.nextCursor;
     }
   } catch (e) {
-    return { note: isApiError(e) ? e.message : '서버 기록을 세지 못했습니다', report, local, server: null };
+    return { note: isApiError(e) ? e.message : '서버 기록을 세지 못했어요', report, local, server: null };
   }
 
   return {

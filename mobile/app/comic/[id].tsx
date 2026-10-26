@@ -40,7 +40,7 @@ export default function ComicDetail() {
     setDeleting(true);
     remove(data.id)
       .then(back)
-      .catch(() => showToast('만화를 지우지 못했습니다. 다시 시도해 주세요.'))
+      .catch(() => showToast('만화를 지우지 못했어요. 다시 시도해 주세요.'))
       .finally(() => {
         deletingRef.current = false;
         setDeleting(false);
@@ -53,7 +53,7 @@ export default function ComicDetail() {
   } else if (comic.isPending) {
     body = <Loading />;
   } else if (comic.isError) {
-    body = <ErrorCard message="만화를 불러오지 못했습니다." onRetry={() => void comic.refetch()} />;
+    body = <ErrorCard message="만화를 불러오지 못했어요." onRetry={() => void comic.refetch()} />;
   } else if (!data) {
     body = <EmptyCard title="만화를 찾을 수 없어요." hint="지워졌을 수 있어요." />;
   } else if (isComicRunning(data.status)) {
@@ -84,7 +84,7 @@ export default function ComicDetail() {
     // failed · refused — 서버 문구를 그대로. 둘 다 하루 몫에서 빠져 있다(081 02장)
     body = (
       <Stack gap={sp[4]}>
-        <AppText color={c.fgMuted}>{data.failMessage ?? '만화를 만들지 못했습니다.'}</AppText>
+        <AppText color={c.fgMuted}>{data.failMessage ?? '만화를 만들지 못했어요.'}</AppText>
         {data.status === 'failed' && (
           <Button label="다시 만들기" onPress={() => router.replace(`/comic/new?dreamId=${data.dreamId}`)} />
         )}

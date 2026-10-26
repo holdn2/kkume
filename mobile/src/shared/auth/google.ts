@@ -65,7 +65,7 @@ export async function signInWithGoogle(): Promise<GoogleResult> {
     return { ok: false, reason: 'unavailable' };
   }
   if (!AUTH_CONFIGURED) {
-    return { ok: false, reason: 'unavailable', detail: 'app.json의 클라이언트 ID가 자리표시자입니다' };
+    return { ok: false, reason: 'unavailable', detail: 'app.json의 클라이언트 ID가 자리표시자예요' };
   }
   try {
     ensureConfigured();
@@ -95,7 +95,7 @@ export async function signInWithGoogle(): Promise<GoogleResult> {
     if (!idToken) {
       // 로그인은 됐는데 토큰이 끝내 안 왔다. `webClientId`가 웹 유형 클라이언트가
       // 아니면 이렇게 된다 — 구글은 `aud`로 쓸 대상이 없으면 ID 토큰을 만들지 않는다
-      return { ok: false, reason: 'failed', detail: 'idToken이 비어 있습니다 (webClientId 확인)' };
+      return { ok: false, reason: 'failed', detail: 'idToken이 비어 있어요 (webClientId 확인)' };
     }
     return { ok: true, idToken };
   } catch (e) {

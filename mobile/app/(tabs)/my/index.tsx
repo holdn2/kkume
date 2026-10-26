@@ -52,7 +52,7 @@ export default function MyScreen() {
     void getDreamRepo()
       .then((repo) => repo.setSetting(SETTINGS.comicGender, value))
       .then(() => setGender(parseGender(value)))
-      .catch(() => showToast('저장하지 못했습니다. 다시 골라 주세요.'));
+      .catch(() => showToast('저장하지 못했어요. 다시 골라 주세요.'));
   };
 
   // 빠르게 두 번 누르면 `auth.busy`가 버튼을 끄기 전에 두 번 들어온다 — 다시 그리기를 기다리지 않는 ref 로 막는다(PR #68 리뷰)
@@ -69,7 +69,7 @@ export default function MyScreen() {
       .then((r) => {
       if (r.result === 'deleted') {
         setDeleting(false);
-        setDeletedNotice('계정을 삭제했습니다. 폰에 있는 기록은 그대로 남아 있습니다.');
+        setDeletedNotice('계정을 삭제했어요. 폰에 있는 기록은 그대로 남아 있어요.');
       } else {
         // 다시 로그인 · 실패 — 세션은 그대로라 시트를 열어 둔 채 이유만 보인다
         setDeleteError(r.message);
@@ -175,8 +175,8 @@ export default function MyScreen() {
         if (!ok) await setConsentRecord('').catch(() => {});
       })
       .catch((e) => {
-        setConsentError(`동의를 저장하지 못했습니다. 다시 눌러 주세요.\n${String(e)}`);
-        showToast('동의를 저장하지 못했습니다. 다시 눌러 주세요.');
+        setConsentError(`동의를 저장하지 못했어요. 다시 눌러 주세요.\n${String(e)}`);
+        showToast('동의를 저장하지 못했어요. 다시 눌러 주세요.');
       });
   };
   const declineConsent = () => {
@@ -212,7 +212,7 @@ export default function MyScreen() {
               <Chip label="닉네임 바꾸기" icon={Pencil} iconOnly onPress={() => setRenaming(true)} />
             </Row>
             <AppText size="caption" color={c.fgFaint}>
-              기록이 서버에 함께 보관됩니다
+              기록이 서버에 함께 보관돼요
             </AppText>
             <Button
               label="로그아웃"
@@ -225,10 +225,10 @@ export default function MyScreen() {
         ) : (
           <Stack gap={sp[3]}>
             <AppText size="label" weight="semibold">
-              로그인하지 않아도 기록은 됩니다
+              로그인하지 않아도 기록은 돼요
             </AppText>
             <AppText size="caption" color={c.fgFaint}>
-              로그인하면 기기를 바꿔도 기록이 따라옵니다.
+              로그인하면 기기를 바꿔도 기록이 따라와요.
             </AppText>
             {canApple && <AppleButton onPress={() => startSignIn('apple')} />}
             <Button
@@ -238,7 +238,7 @@ export default function MyScreen() {
             />
             {/* 동의는 누르면 뜨는 시트에서 받는다(이슈 #71). 여기서는 무엇이 있는지만 */}
             <AppText size="caption" color={c.fgFaint}>
-              만 14세 이상만 로그인할 수 있습니다.{' '}
+              만 14세 이상만 로그인할 수 있어요.{' '}
               <AppText size="caption" color={c.fgMuted} weight="semibold" onPress={() => void openWebPage(TERMS_URL)}>
                 이용약관
               </AppText>
@@ -337,9 +337,9 @@ export default function MyScreen() {
           <Stack gap={sp[2]}>
             <AppText color={c.fgMuted}>
               서버에 있는 꿈 기록 · 녹음 · 꿈 나눔 글 · 댓글 · 공감 · 차단 목록이{' '}
-              <AppText weight="semibold">바로 지워지고 되돌릴 수 없습니다.</AppText>
+              <AppText weight="semibold">바로 지워지고 되돌릴 수 없어요.</AppText>
             </AppText>
-            <AppText color={c.fgMuted}>폰에 있는 꿈 기록과 녹음은 그대로 남습니다.</AppText>
+            <AppText color={c.fgMuted}>폰에 있는 꿈 기록과 녹음은 그대로 남아요.</AppText>
             <Button label="개인정보처리방침에서 자세히" size="sm" variant="ghost" onPress={() => void openWebPage(PRIVACY_URL)} />
             {!!deleteError && (
               <AppText size="caption" color={c.danger}>

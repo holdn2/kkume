@@ -41,9 +41,9 @@ export function ConsentSheet({ visible, onAgree, onClose, onDismiss, dismissLabe
   const toggleAll = () => setChecks(all ? {} : Object.fromEntries(CONSENT_ITEMS.map((i) => [i.key, true])));
 
   return (
-    <Sheet visible={visible} onClose={onClose} title="꾸메를 쓰기 전에" description="로그인하면 기록이 서버에도 보관되고 꿈 나눔을 쓸 수 있습니다.">
+    <Sheet visible={visible} onClose={onClose} title="꾸메를 쓰기 전에" description="로그인하면 기록이 서버에도 보관되고 꿈 나눔을 쓸 수 있어요.">
       <Stack gap={sp[4]}>
-        <CheckRow label="모두 동의합니다" checked={all} onPress={toggleAll} strong />
+        <CheckRow label="모두 동의해요" checked={all} onPress={toggleAll} strong />
         <View style={s.line} />
         <Stack gap={sp[1]}>
           {CONSENT_ITEMS.map((item) => (
@@ -73,7 +73,7 @@ export function ConsentSheet({ visible, onAgree, onClose, onDismiss, dismissLabe
         </Stack>
         <AppText size="caption" color={c.fgFaint}>
           받는 것: 구글 계정 식별자 · 닉네임 · 서버에 보관하는 꿈 기록과 녹음 · 꿈 나눔 글. 이메일 · 이름 · 사진은 받지
-          않습니다. 계정은 마이 탭에서 언제든 삭제할 수 있습니다.
+          않아요. 계정은 마이 탭에서 언제든 삭제할 수 있어요.
         </AppText>
         {!!error && (
           <AppText size="caption" color={c.danger}>

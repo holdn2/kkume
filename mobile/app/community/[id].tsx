@@ -127,7 +127,7 @@ export default function PostScreen() {
   /** 쓰기는 로그인해야 한다. 안 했으면 이유를 말하고 멈춘다 */
   const needMe = (): Author | null => {
     if (me) return me;
-    tell('로그인하면 반응하고 댓글을 달 수 있습니다. 로그인은 마이 탭에서 합니다.');
+    tell('로그인하면 반응하고 댓글을 달 수 있어요. 로그인은 마이 탭에서 해요.');
     return null;
   };
 
@@ -149,7 +149,7 @@ export default function PostScreen() {
       .catch((e) => {
         patchPostEverywhere(qc, post.id, flip(!next));
         void invalidate();
-        fail('반영하지 못했습니다')(e);
+        fail('반영하지 못했어요')(e);
       })
       .finally(() => setLiking(false));
   };
@@ -165,7 +165,7 @@ export default function PostScreen() {
         setReplyTo(null);
         void invalidate();
       })
-      .catch(fail('댓글을 달지 못했습니다'))
+      .catch(fail('댓글을 달지 못했어요'))
       .finally(() => setSending(false));
   };
 
@@ -174,7 +174,7 @@ export default function PostScreen() {
     getCommunityApi()
       .deleteComment(cm.id)
       .then(() => invalidate())
-      .catch(fail('지우지 못했습니다'));
+      .catch(fail('지우지 못했어요'));
   };
 
   const removePost = () => {
@@ -186,7 +186,7 @@ export default function PostScreen() {
         void invalidate();
         goBack();
       })
-      .catch(fail('지우지 못했습니다'));
+      .catch(fail('지우지 못했어요'));
   };
 
   const block = (user: Author) => {
@@ -197,17 +197,17 @@ export default function PostScreen() {
         // 글쓴이를 차단했으면 피드로 돌아간다 — 피드에서는 서버가 그 사람 글을 뺀다
         if (post && user.id === post.author.id) back();
         else {
-          tell(`${user.nickname}님을 차단했습니다. 그 사람의 글과 댓글이 보이지 않습니다.`);
+          tell(`${user.nickname}님을 차단했어요. 그 사람의 글과 댓글이 보이지 않아요.`);
         }
       })
-      .catch(fail('차단하지 못했습니다'));
+      .catch(fail('차단하지 못했어요'));
   };
 
   const unblockAuthor = () => {
     if (!post) return;
     setBlocked(post.author, false)
       .then(() => invalidate())
-      .catch(fail('차단을 풀지 못했습니다'));
+      .catch(fail('차단을 풀지 못했어요'));
   };
 
   const openReport = (target: Reporting) => {
@@ -232,10 +232,10 @@ export default function PostScreen() {
             return;
           }
         }
-        tell('신고했습니다. 여러 사람이 신고하면 자동으로 가려집니다.');
+        tell('신고했어요. 여러 사람이 신고하면 자동으로 가려져요.');
         void invalidate();
       })
-      .catch(fail('신고하지 못했습니다'));
+      .catch(fail('신고하지 못했어요'));
   };
 
   if (post === undefined) {
@@ -249,7 +249,7 @@ export default function PostScreen() {
   if (post === null) {
     return (
       <Screen header={<Header onBack={goBack} />}>
-        <EmptyCard title="지워졌거나 가려진 글입니다." />
+        <EmptyCard title="지워졌거나 가려진 글이에요." />
       </Screen>
     );
   }
@@ -331,10 +331,10 @@ export default function PostScreen() {
         {post.hidden && (
           <Card>
             <AppText size="label" weight="semibold">
-              신고가 쌓여 다른 사람에게는 보이지 않습니다
+              신고가 쌓여 다른 사람에게는 보이지 않아요
             </AppText>
             <AppText size="caption" color={c.fgFaint}>
-              공감과 댓글을 더 받지 않습니다. 오른쪽 위 메뉴에서 지울 수 있고, 지우면 같은 꿈을 다시 나눌 수 있습니다.
+              공감과 댓글을 더 받지 않아요. 오른쪽 위 메뉴에서 지울 수 있고, 지우면 같은 꿈을 다시 나눌 수 있어요.
             </AppText>
           </Card>
         )}
@@ -342,7 +342,7 @@ export default function PostScreen() {
         {authorBlocked && (
           <Card>
             <AppText size="label" weight="semibold">
-              차단한 사용자의 글입니다
+              차단한 사용자의 글이에요
             </AppText>
             <Button label="차단 풀기" size="sm" variant="secondary" onPress={unblockAuthor} />
           </Card>
@@ -446,7 +446,7 @@ export default function PostScreen() {
         onClose={closeMenu}
         title={confirmPost ? '이 글을 지울까요' : undefined}
         description={
-          confirmPost ? '공감과 댓글도 함께 사라지고 되돌릴 수 없습니다. 꿈 기록은 그대로 남고, 같은 꿈을 다시 나눌 수 있습니다.' : undefined
+          confirmPost ? '공감과 댓글도 함께 사라지고 되돌릴 수 없어요. 꿈 기록은 그대로 남고, 같은 꿈을 다시 나눌 수 있어요.' : undefined
         }>
         {confirmPost ? (
           <Stack gap={sp[2]}>
@@ -469,7 +469,7 @@ export default function PostScreen() {
         visible={confirmComment != null}
         onClose={() => setConfirmComment(null)}
         title="이 댓글을 지울까요"
-        description="지운 댓글은 되돌릴 수 없습니다.">
+        description="지운 댓글은 되돌릴 수 없어요.">
         <Stack gap={sp[2]}>
           <Button label="지우기" variant="danger" onPress={() => confirmComment && removeComment(confirmComment)} />
           <Button label="취소" variant="ghost" onPress={() => setConfirmComment(null)} />
@@ -481,7 +481,7 @@ export default function PostScreen() {
         visible={reporting != null}
         onClose={() => setReporting(null)}
         title="신고하기"
-        description="신고 사유를 선택해 주세요. 여러 사람이 신고하면 자동으로 가려집니다.">
+        description="신고 사유를 선택해 주세요. 여러 사람이 신고하면 자동으로 가려져요.">
         <Stack gap={sp[4]}>
           <Stack gap={sp[1]}>
             {REPORT_REASONS.map((r) => (
@@ -493,7 +493,7 @@ export default function PostScreen() {
               value={alsoBlock}
               onChange={setAlsoBlock}
               label={`${reporting.author.nickname}님도 차단하기`}
-              description="차단하면 그 사람의 글과 댓글이 내 화면에서 사라집니다"
+              description="차단하면 그 사람의 글과 댓글이 내 화면에서 사라져요"
             />
           )}
           <Stack gap={sp[2]}>
@@ -515,7 +515,7 @@ function visibleThread(comments: Comment[]) {
   const tops = comments.filter((x) => x.parentId == null);
   for (const t of tops) {
     const replies = comments.filter((x) => x.parentId === t.id);
-    out.push({ comment: t, placeholder: t.deleted ? '삭제되었거나 볼 수 없는 댓글입니다' : null });
+    out.push({ comment: t, placeholder: t.deleted ? '삭제되었거나 볼 수 없는 댓글이에요' : null });
     for (const r of replies) out.push({ comment: r, placeholder: null });
   }
   return out;

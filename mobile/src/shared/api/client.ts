@@ -30,7 +30,7 @@ export const API_BASE_URL = BASE_URL;
  * 결과를 던지지 않고 문자열로 돌려준다 — 화면에 그대로 찍으려고.
  */
 export async function ping(): Promise<string> {
-  if (!HAS_API) return '서버 주소가 없습니다';
+  if (!HAS_API) return '서버 주소가 없어요';
   const started = Date.now();
   try {
     const res = await fetch(`${BASE_URL}/health`);
@@ -79,7 +79,7 @@ export async function request<T>(
   init: { method?: string; body?: unknown; token?: string | null } = {},
 ): Promise<T> {
   if (!HAS_API) {
-    throw { code: 'no_base_url', message: '서버 주소가 설정되지 않았습니다', status: 0 } as ApiError;
+    throw { code: 'no_base_url', message: '서버 주소가 설정되지 않았어요', status: 0 } as ApiError;
   }
 
   const controller = new AbortController();
@@ -109,7 +109,7 @@ export async function request<T>(
       if (body.code === 'account_deleted') accountDeletedHandler?.();
       throw {
         code: body.code ?? 'http_error',
-        message: body.message ?? '서버와 통신하지 못했습니다',
+        message: body.message ?? '서버와 통신하지 못했어요',
         status: res.status,
         data: body,
       } as ApiError;
@@ -125,7 +125,7 @@ export async function request<T>(
       // 응답이 JSON이 아닌 것이다. 원인이 정반대라 한 문구로 묶으면 안 된다
       throw {
         code: 'bad_response',
-        message: `서버 응답을 읽지 못했습니다\n${text.slice(0, 120)}`,
+        message: `서버 응답을 읽지 못했어요\n${text.slice(0, 120)}`,
         status: res.status,
       } as ApiError;
     }
@@ -138,7 +138,7 @@ export async function request<T>(
     const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
     throw {
       code: aborted ? 'timeout' : 'network',
-      message: `${aborted ? '서버 응답이 없습니다' : '네트워크에 연결할 수 없습니다'}\n${detail}`,
+      message: `${aborted ? '서버 응답이 없어요' : '네트워크에 연결할 수 없어요'}\n${detail}`,
       status: 0,
     } as ApiError;
   } finally {

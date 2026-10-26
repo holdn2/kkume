@@ -34,9 +34,9 @@ export async function deleteAccount(deps: DeletionDeps): Promise<DeletionResult>
       const code = isApiError(e) ? e.code : null;
       if (code !== 'account_deleted') {
         if (code === 'unauthorized') {
-          return { result: 'relogin', message: '로그인이 만료됐습니다. 다시 로그인한 뒤 삭제해 주세요.' };
+          return { result: 'relogin', message: '로그인이 만료됐어요. 다시 로그인한 뒤 삭제해 주세요.' };
         }
-        const message = isApiError(e) && e.message ? e.message : '계정을 삭제하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
+        const message = isApiError(e) && e.message ? e.message : '계정을 삭제하지 못했어요. 잠시 뒤 다시 시도해 주세요.';
         return { result: 'failed', message };
       }
     }

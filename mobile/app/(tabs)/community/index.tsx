@@ -101,10 +101,10 @@ export default function CommunityScreen() {
       {me === null && (
         <Card>
           <AppText size="label" weight="semibold">
-            로그인이 필요합니다
+            로그인이 필요해요
           </AppText>
           <AppText size="caption" color={c.fgFaint}>
-            꿈을 나누고 공감하려면 마이 탭에서 로그인해 주세요. 올라온 글은 로그인 없이도 볼 수 있습니다.
+            꿈을 나누고 공감하려면 마이 탭에서 로그인해 주세요. 올라온 글은 로그인 없이도 볼 수 있어요.
           </AppText>
           <Button label="마이 탭으로" size="sm" variant="secondary" onPress={() => router.push('/my')} />
         </Card>
@@ -131,7 +131,7 @@ export default function CommunityScreen() {
             <ListSkeleton />
           ) : error ? null : (
             <EmptyCard
-              title={mine ? '아직 나눈 꿈이 없습니다.' : '아직 올라온 꿈이 없습니다.'}
+              title={mine ? '아직 나눈 꿈이 없어요.' : '아직 올라온 꿈이 없어요.'}
               hint="아래 버튼이나 꿈 상세의 「꿈 공유하기」로 나눠 보세요."
             />
           )

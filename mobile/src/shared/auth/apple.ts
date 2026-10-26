@@ -38,7 +38,7 @@ export async function signInWithApple(): Promise<AppleResult> {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { signInAsync } = require('expo-apple-authentication');
     const cred = await signInAsync({ requestedScopes: [] });
-    if (!cred?.identityToken) return { ok: false, reason: 'failed', detail: 'identityToken이 비어 있습니다' };
+    if (!cred?.identityToken) return { ok: false, reason: 'failed', detail: 'identityToken이 비어 있어요' };
     return { ok: true, identityToken: cred.identityToken, authorizationCode: cred.authorizationCode ?? null };
   } catch (e) {
     const o = e as { code?: string; message?: string } | null;

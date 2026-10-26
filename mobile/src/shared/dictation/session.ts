@@ -157,7 +157,7 @@ export function createDictationSession(deps: SessionDeps, view: SessionView) {
         M.addListener('audiostart', (e: { uri: string | null }) => {
           // 파일을 못 만들면 라이브러리는 오류 없이 경로만 비운다(052 T2). 원본 없는 기록은 만들지 않는다
           if (!e.uri) {
-            fail(new Error('녹음 파일을 만들지 못했습니다'));
+            fail(new Error('녹음 파일을 만들지 못했어요'));
             M.abort();
             return;
           }
@@ -186,7 +186,7 @@ export function createDictationSession(deps: SessionDeps, view: SessionView) {
           view.onRecording(false);
           view.onLevel(0);
           // 파일도 오류도 없이 끝났으면 부르는 쪽이 녹음기로 넘어가도록 알린다
-          if (!opened) fail(new Error('받아쓰기가 시작되지 못했습니다'));
+          if (!opened) fail(new Error('받아쓰기가 시작되지 못했어요'));
           void wrapUp().then((end) => {
             const w = waiter;
             waiter = null;

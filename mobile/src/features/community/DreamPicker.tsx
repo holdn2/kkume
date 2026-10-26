@@ -45,15 +45,15 @@ export function DreamPickEmpty({
   onRetry?: () => void;
 }) {
   if (error && (rows === null || rows.length === 0)) {
-    return <ErrorCard message={`꿈 목록을 읽지 못했습니다. ${error}`} onRetry={onRetry} />;
+    return <ErrorCard message={`꿈 목록을 읽지 못했어요. ${error}`} onRetry={onRetry} />;
   }
   if (rows === null) return <ListSkeleton count={2} />;
   if (rows.length > 0) return null;
   const q = query.trim();
   return q ? (
-    <EmptyCard title={`「${q}」이(가) 든 꿈이 없습니다.`} hint="다른 말로 찾아보세요." />
+    <EmptyCard title={`「${q}」이(가) 든 꿈이 없어요.`} hint="다른 말로 찾아보세요." />
   ) : (
-    <EmptyCard title="아직 남긴 꿈이 없습니다." hint="꿈을 먼저 기록한 뒤 나눌 수 있습니다." />
+    <EmptyCard title="아직 남긴 꿈이 없어요." hint="꿈을 먼저 기록한 뒤 나눌 수 있어요." />
   );
 }
 

@@ -148,7 +148,7 @@ export default function NewPostScreen() {
           return;
         }
         // 안내 글씨는 화면 아래쪽(고정 버튼 위)이라 긴 꿈을 고치던 중이면 안 보인다 — 토스트로도(2026-10-08)
-        const m = e?.message ?? '올리지 못했습니다';
+        const m = e?.message ?? '올리지 못했어요';
         setError(m);
         showToast(m);
       })
@@ -163,7 +163,7 @@ export default function NewPostScreen() {
       <Screen header={header}>
         <Card>
           <AppText size="label" weight="semibold">
-            로그인하면 꿈을 나눌 수 있습니다
+            로그인하면 꿈을 나눌 수 있어요
           </AppText>
           <Button label="마이 탭으로" size="sm" variant="secondary" onPress={() => router.replace('/my')} />
         </Card>
@@ -212,7 +212,7 @@ export default function NewPostScreen() {
     <Screen
       scroll
       header={header}
-      // 「공유하기」와 "○○(으)로 올라갑니다"는 아래에 고정한다(2026-10-05 사용자 요청) — 긴 꿈 내용을 고친 뒤
+      // 「공유하기」와 "○○(으)로 올라가요"는 아래에 고정한다(2026-10-05 사용자 요청) — 긴 꿈 내용을 고친 뒤
       // 끝까지 내려가지 않아도 누구 이름으로 올라가는지 보고 바로 올린다
       footer={
         picked && sharedPostId === null ? (
@@ -223,7 +223,7 @@ export default function NewPostScreen() {
                 <AppText size="caption" weight="semibold">
                   {me?.nickname ?? '…'}
                 </AppText>
-                (으)로 올라갑니다
+                (으)로 올라가요
               </AppText>
             </Row>
             <Button label="공유하기" loading={posting} disabled={!canPost} onPress={post} />
@@ -237,7 +237,7 @@ export default function NewPostScreen() {
             어떤 꿈을 나눌까요?
           </AppText>
           {total === 0 ? (
-            <EmptyCard title="아직 남긴 꿈이 없습니다." hint="꿈을 먼저 기록한 뒤 나눌 수 있습니다." />
+            <EmptyCard title="아직 남긴 꿈이 없어요." hint="꿈을 먼저 기록한 뒤 나눌 수 있어요." />
           ) : picked ? (
             <Card>
               <Stack gap={sp[1]}>
@@ -256,10 +256,10 @@ export default function NewPostScreen() {
         {picked && sharedPostId && (
           <Card>
             <AppText size="label" weight="semibold">
-              이미 나눈 꿈입니다
+              이미 나눈 꿈이에요
             </AppText>
             <AppText size="caption" color={c.fgFaint}>
-              같은 꿈은 한 번만 나눌 수 있습니다. 올린 글을 지우면 다시 나눌 수 있습니다.
+              같은 꿈은 한 번만 나눌 수 있어요. 올린 글을 지우면 다시 나눌 수 있어요.
             </AppText>
             <Button
               label="공유한 글 보기"
@@ -277,7 +277,7 @@ export default function NewPostScreen() {
                 label="제목"
                 value={title}
                 onChangeText={setTitle}
-                placeholder="제목 없이도 나눌 수 있습니다"
+                placeholder="제목 없이도 나눌 수 있어요"
                 maxLength={MAX_TITLE_LENGTH}
               />
               <Input
@@ -289,7 +289,7 @@ export default function NewPostScreen() {
                 maxLength={Math.max(MAX_POST_DREAM_TEXT, openedTextLength)}
               />
               <AppText size="caption" color={c.fgFaint}>
-                올리기 전에 실명이나 사적인 부분은 빼도 됩니다. 원래 꿈 기록은 바뀌지 않고, 녹음은 올라가지 않습니다.
+                올리기 전에 실명이나 사적인 부분은 빼도 돼요. 원래 꿈 기록은 바뀌지 않고, 녹음은 올라가지 않아요.
               </AppText>
             </Stack>
 
