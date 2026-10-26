@@ -13,6 +13,7 @@ export { Badge } from './Badge';
 export { Button } from './Button';
 export { Card } from './Card';
 export { DeleteLink } from './DeleteLink';
+export { Fab, FAB_ROOM } from './Fab';
 export { Chip, Header } from './Header';
 export { Input } from './Input';
 export { ListRow } from './ListRow';

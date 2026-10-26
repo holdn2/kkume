@@ -3,7 +3,7 @@ import { Mic } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { FlatList, View } from 'react-native';
 
-import { Button, EmptyCard, ErrorCard, Input, ListSkeleton, MoreLoading, Screen, SCROLL_TAIL, Title } from '@components';
+import { EmptyCard, ErrorCard, Fab, FAB_ROOM, Input, ListSkeleton, MoreLoading, Screen, SCROLL_TAIL, Title } from '@components';
 import { DictationPrompt } from '@features/log/DictationPrompt';
 import { DreamCard } from '@features/log/DreamCard';
 import { useDreamPages } from '@features/log/useDreamPages';
@@ -14,8 +14,8 @@ import { sp } from '@theme/token';
 /**
  * LOG-1. 앱의 홈이다.
  *
- * **목록보다 기록 버튼이 위에 있다.** 앱을 여는 이유가 "읽기"보다 "남기기"인 날이 많고,
- * 잠금화면 위젯을 아직 안 깐 사용자에게는 여기가 유일한 진입점이다.
+ * **기록 버튼은 오른쪽 아래에 떠 있다**(이슈 #139, 098 D4 사용자 결정). 앱을 여는 이유가 "읽기"보다 "남기기"인 날이 많고
+ * 잠금화면 위젯을 아직 안 깐 사용자에게는 여기가 진입점이라, 목록 맨 위 버튼이었다가 엄지가 닿는 자리로 내렸다.
  *
  * `FlatList`를 쓴다. 계획서 기술 스택에 `@shopify/flash-list`가 있지만
  * **그건 네이티브라 빌드를 한 번 먹는다.** 목록이 실제로 느려지는 것을 본 뒤에 바꾼다.
@@ -62,8 +62,6 @@ export default function LogScreen() {
     <Screen>
       <Title sub={sub(counts, searching)}>꿈 로그</Title>
 
-      <Button label="지금 기록하기" icon={Mic} onPress={() => router.push('/record')} />
-
       {/* 받아쓰기 권한을 낮에 한 번 묻는다. 새벽 녹음 화면은 권한을 조회만 한다(절대 규칙 7) */}
       {from !== 'record' && <DictationPrompt />}
 
@@ -90,7 +88,7 @@ export default function LogScreen() {
         )}
         // 행 사이 간격이 곧 경계다. 구분선을 긋지 않는 것은 ListRow와 같은 이유다
         ItemSeparatorComponent={() => <View style={{ height: sp[3] }} />}
-        contentContainerStyle={{ paddingBottom: SCROLL_TAIL }}
+        contentContainerStyle={{ paddingBottom: FAB_ROOM + SCROLL_TAIL }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -105,11 +103,13 @@ export default function LogScreen() {
           ) : (
             <EmptyCard
               title="아직 남긴 꿈이 없어요."
-              hint="위의 버튼으로 지금 남겨 보세요. 잠금화면 위젯을 올려 두면 새벽에 폰을 집자마자 바로 돼요."
+              hint="아래 마이크 버튼으로 지금 남겨 보세요. 잠금화면 위젯을 올려 두면 새벽에 폰을 집자마자 바로 돼요."
             />
           )
         }
       />
+
+      <Fab icon={Mic} label="지금 기록하기" onPress={() => router.push('/record')} />
     </Screen>
   );
 }
