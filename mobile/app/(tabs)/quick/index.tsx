@@ -56,6 +56,17 @@ export default function QuickRecordScreen() {
     return run;
   }, []);
 
+  // 떠날 때는 기다리지 않고 바로 저장한다. 탭을 옮기는 순간 1.2초가 안 지났으면 마지막 몇 글자를 잃는다
+  const latest = useRef({ text, saved, g: 0 });
+  useEffect(() => {
+    latest.current = { text, saved, g: gen.current };
+  }, [text, saved]);
+
+  /** 저장이 끝났다고 표시한다. 「완료」로 판이 바뀐 뒤 늦게 끝난 앞 판의 저장은 새 칸의 「저장됨」을 건드리지 않는다 */
+  const markSaved = useCallback((t: string, g: number) => {
+    if (g === gen.current) setSavedText(t);
+  }, []);
+
   // 화면에 들어올 때마다 센다. 꿈 로그에서 확인하고 돌아오면 줄어 있어야 한다
   const countUnread = useCallback(() => {
     getDreamRepo()
@@ -71,6 +82,8 @@ export default function QuickRecordScreen() {
    */
   const reconcile = useCallback(() => {
     const g = gen.current;
+    // 확인하는 사이에 친 글자는 덮지 않는다 — 들어올 때의 글 그대로일 때만 받아온 글로 바꾼다
+    const before = latest.current.text;
     queue.current = queue.current.then(async () => {
       const id = ids.current.get(g);
       if (!id || g !== gen.current) return;
@@ -83,26 +96,21 @@ export default function QuickRecordScreen() {
       } else if ((d.text ?? '') !== written.current.get(g)) {
         const t = d.text ?? '';
         written.current.set(g, t);
-        setText(t);
+        setText((cur) => (cur === before ? t : cur));
         setSavedText(t);
       }
     }).catch(() => {});
   }, []);
 
-  // 떠날 때는 기다리지 않고 바로 저장한다. 탭을 옮기는 순간 1.2초가 안 지났으면 마지막 몇 글자를 잃는다
-  const latest = useRef({ text, saved, g: 0 });
-  useEffect(() => {
-    latest.current = { text, saved, g: gen.current };
-  }, [text, saved]);
   useFocusEffect(
     useCallback(() => {
       countUnread();
       reconcile();
       return () => {
         const { text: t, saved: done, g } = latest.current;
-        if (t.trim() && !done) void persist(t, g).then(() => setSavedText(t)).catch(() => {});
+        if (t.trim() && !done) void persist(t, g).then(() => markSaved(t, g)).catch(() => {});
       };
-    }, [countUnread, reconcile, persist]),
+    }, [countUnread, reconcile, persist, markSaved]),
   );
 
   useEffect(() => {
@@ -110,11 +118,11 @@ export default function QuickRecordScreen() {
     const g = gen.current;
     const t = setTimeout(() => {
       persist(text, g)
-        .then(() => setSavedText(text))
+        .then(() => markSaved(text, g))
         .catch(() => showToast('기록을 저장하지 못했어요. 잠시 뒤 다시 적어 주세요.'));
     }, IDLE_SAVE_MS);
     return () => clearTimeout(t);
-  }, [text, saved, persist]);
+  }, [text, saved, persist, markSaved]);
 
   /** 「완료」를 연달아 누르면 두 번째가 새 판에서 같은 글로 기록을 하나 더 만든다 */
   const finishing = useRef(false);
