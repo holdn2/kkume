@@ -33,21 +33,24 @@ export default function QuickRecordScreen() {
   const [typing, setTyping] = useState(false);
 
   // 적는 중인 기록. 첫 저장에서 만들고 그 뒤로는 같은 기록을 고친다.
-  // **state가 아니라 ref다** — 저장이 겹쳐 돌 때 둘 다 아직 null을 읽어 기록이 두 건으로 갈라지지 않게(`/record`와 같다)
-  const dreamId = useRef<string | null>(null);
+  // **state가 아니라 ref다** — 저장이 겹쳐 돌 때 둘 다 아직 null을 읽어 기록이 두 건으로 갈라지지 않게(`/record`와 같다).
+  // 「완료」로 칸을 비우면 다음 글은 새 기록이라 **판(`gen`)을 하나 올린다.** 저장은 부를 때의 판을 붙들고 가서
+  // 그 판의 기록에만 쓴다 — 「완료」와 겹친 대기 저장 · 탭 떠날 때 저장이 이미 끝낸 글로 새 기록을 만들지 않게(PR #140 리뷰)
+  const gen = useRef(0);
+  const ids = useRef(new Map<number, string>());
+  /** 판마다 마지막으로 쓴 글. 다른 화면(꿈 로그 · 상세)에서 그 기록을 고쳤는지 알아보는 데 쓴다 */
+  const written = useRef(new Map<number, string>());
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const [savedText, setSavedText] = useState<string | null>(null);
   const saved = savedText !== null && savedText === text;
 
-  const persist = useCallback((body: string) => {
+  const persist = useCallback((body: string, g: number) => {
     const run = queue.current.then(async () => {
       const repo = await getDreamRepo();
-      if (dreamId.current) {
-        await repo.update(dreamId.current, { text: body });
-        return;
-      }
-      const created = await repo.create({ text: body });
-      dreamId.current = created.id;
+      const id = ids.current.get(g);
+      if (id) await repo.update(id, { text: body });
+      else ids.current.set(g, (await repo.create({ text: body })).id);
+      written.current.set(g, body);
     });
     queue.current = run.catch(() => {});
     return run;
@@ -61,41 +64,77 @@ export default function QuickRecordScreen() {
       .catch(() => setUnread(0));
   }, []);
 
+  /**
+   * 탭이라 이 화면을 둔 채 꿈 로그에서 같은 기록을 지우거나 고칠 수 있다(PR #140 리뷰). 돌아오면 확인한다 —
+   * 지웠으면 칸을 비우고 새 판으로, 고쳤으면 고친 글을 칸에 받는다. 안 그러면 지운 기록에 계속 쓰면서 「저장됨」을 띄우거나,
+   * 고친 것을 이 칸의 글로 덮는다. 앞에 줄 선 저장이 끝난 뒤에 본다
+   */
+  const reconcile = useCallback(() => {
+    const g = gen.current;
+    queue.current = queue.current.then(async () => {
+      const id = ids.current.get(g);
+      if (!id || g !== gen.current) return;
+      const d = await (await getDreamRepo()).get(id);
+      if (g !== gen.current) return;
+      if (!d || d.deletedAt) {
+        gen.current += 1;
+        setText('');
+        setSavedText(null);
+      } else if ((d.text ?? '') !== written.current.get(g)) {
+        const t = d.text ?? '';
+        written.current.set(g, t);
+        setText(t);
+        setSavedText(t);
+      }
+    }).catch(() => {});
+  }, []);
+
   // 떠날 때는 기다리지 않고 바로 저장한다. 탭을 옮기는 순간 1.2초가 안 지났으면 마지막 몇 글자를 잃는다
-  const latest = useRef({ text, saved });
+  const latest = useRef({ text, saved, g: 0 });
   useEffect(() => {
-    latest.current = { text, saved };
+    latest.current = { text, saved, g: gen.current };
   }, [text, saved]);
   useFocusEffect(
     useCallback(() => {
       countUnread();
+      reconcile();
       return () => {
-        const { text: t, saved: done } = latest.current;
-        if (t.trim() && !done) void persist(t).then(() => setSavedText(t)).catch(() => {});
+        const { text: t, saved: done, g } = latest.current;
+        if (t.trim() && !done) void persist(t, g).then(() => setSavedText(t)).catch(() => {});
       };
-    }, [countUnread, persist]),
+    }, [countUnread, reconcile, persist]),
   );
 
   useEffect(() => {
     if (!text.trim() || saved) return;
+    const g = gen.current;
     const t = setTimeout(() => {
-      persist(text)
+      persist(text, g)
         .then(() => setSavedText(text))
         .catch(() => showToast('기록을 저장하지 못했어요. 잠시 뒤 다시 적어 주세요.'));
     }, IDLE_SAVE_MS);
     return () => clearTimeout(t);
   }, [text, saved, persist]);
 
+  /** 「완료」를 연달아 누르면 두 번째가 새 판에서 같은 글로 기록을 하나 더 만든다 */
+  const finishing = useRef(false);
   /** 적던 것을 마저 저장하고 칸을 비운다. 다음에 적는 것은 새 기록이 된다 */
   const finish = async () => {
+    if (finishing.current) return;
+    finishing.current = true;
     const t = text;
+    const g = gen.current;
     try {
-      if (t.trim()) await persist(t);
+      if (t.trim()) await persist(t, g);
     } catch {
       showToast('기록을 저장하지 못했어요. 다시 눌러 주세요.');
       return;
+    } finally {
+      finishing.current = false;
     }
-    dreamId.current = null;
+    if (g !== gen.current) return;
+    gen.current += 1;
+    latest.current = { text: '', saved: false, g: gen.current };
     setText('');
     setSavedText(null);
     Keyboard.dismiss();
