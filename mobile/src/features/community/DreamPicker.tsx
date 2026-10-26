@@ -1,4 +1,4 @@
-import { EmptyCard, Input, ListSkeleton, Radio } from '@components';
+import { EmptyCard, ErrorCard, Input, ListSkeleton, Radio } from '@components';
 import { day } from '@shared/date';
 import type { Dream } from '@shared/db';
 
@@ -28,8 +28,25 @@ export function DreamPickItem({ dream, selected, onPick }: { dream: Dream; selec
   );
 }
 
-/** 목록이 비었을 때. 아직 읽는 중이면 자리만 깐다 */
-export function DreamPickEmpty({ rows, query }: { rows: Dream[] | null; query: string }) {
+/**
+ * 목록이 비었을 때. 아직 읽는 중이면 자리만 깐다.
+ * **못 읽었으면 이유와 다시 읽기를 보인다**(PR #130 리뷰) — 첫 읽기가 실패하면 `rows`가 null 로 남아,
+ * 오류를 따로 보지 않으면 스켈레톤이 끝없이 돌았다
+ */
+export function DreamPickEmpty({
+  rows,
+  query,
+  error,
+  onRetry,
+}: {
+  rows: Dream[] | null;
+  query: string;
+  error?: string | null;
+  onRetry?: () => void;
+}) {
+  if (error && (rows === null || rows.length === 0)) {
+    return <ErrorCard message={`꿈 목록을 읽지 못했습니다. ${error}`} onRetry={onRetry} />;
+  }
   if (rows === null) return <ListSkeleton count={2} />;
   if (rows.length > 0) return null;
   const q = query.trim();

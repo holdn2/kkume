@@ -68,8 +68,10 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full }: 
    * 그림은 서버에서 받아 오므로 몇 초 걸릴 수 있다. 못 받아도(onError) 걷어 낸다 — 계속 깜빡이면 아직 오는 중으로 읽힌다.
    * 말풍선은 그림이 온 뒤에 얹는다. 빈 칸 위에 말풍선만 떠 있으면 컷이 아니라 글 상자로 읽힌다
    */
-  const [loaded, setLoaded] = useState(false);
-  const waiting = !!source && !loaded;
+  // 「받았다」는 주소에 붙인다 — 다시 받아 서명된 주소가 바뀌면 그 그림도 새로 기다린다(PR #130 리뷰)
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const waiting = !!source && loadedSrc !== source;
+  const onSettled = () => setLoadedSrc(source ?? null);
   return (
     <View style={[s.panel, { width: size, height: size }]}>
       {waiting && (
@@ -83,16 +85,18 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full }: 
             source={source}
             style={[s.abs, gridCrop(index, size)]}
             contentFit="cover"
-            onLoad={() => setLoaded(true)}
-            onError={() => setLoaded(true)}
+            recyclingKey={source}
+            onLoad={onSettled}
+            onError={onSettled}
           />
         ) : (
           <Image
             source={source}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
-            onLoad={() => setLoaded(true)}
-            onError={() => setLoaded(true)}
+            recyclingKey={source}
+            onLoad={onSettled}
+            onError={onSettled}
           />
         )
       ) : (

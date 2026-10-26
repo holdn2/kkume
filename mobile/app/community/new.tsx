@@ -180,7 +180,9 @@ export default function NewPostScreen() {
   }
 
   // 아직 고르지 않았으면 고르는 것이 이 화면의 일이다 — 목록을 바로 펼친다. 검색칸은 위에 고정, 목록만 스크롤
-  if (!picked && (total ?? 0) > 0) {
+  // 꿈이 하나도 없다고 **확실히 알 때만** 접는다. 개수를 못 읽었으면(null) 목록을 펼친다 — 목록은 따로 읽어
+  // 비었거나 못 읽었다고 스스로 말한다(PR #130 리뷰: 전에는 개수 읽기가 실패하면 고를 길이 없었다)
+  if (!picked && total !== 0) {
     return (
       <Screen header={header}>
         <AppText size="label" weight="semibold">
@@ -198,7 +200,9 @@ export default function NewPostScreen() {
           onEndReached={pages.more}
           onEndReachedThreshold={0.5}
           ListFooterComponent={pages.hasMore ? <MoreLoading /> : null}
-          ListEmptyComponent={<DreamPickEmpty rows={pages.rows} query={pickQuery} />}
+          ListEmptyComponent={
+            <DreamPickEmpty rows={pages.rows} query={pickQuery} error={pages.error} onRetry={() => pages.reload(false)} />
+          }
         />
       </Screen>
     );
@@ -328,7 +332,7 @@ export default function NewPostScreen() {
         top={<DreamSearch value={pickQuery} onChangeText={setPickQuery} />}
         onEndReached={pages.more}>
         <Stack gap={sp[1]}>
-          <DreamPickEmpty rows={pages.rows} query={pickQuery} />
+          <DreamPickEmpty rows={pages.rows} query={pickQuery} error={pages.error} onRetry={() => pages.reload(false)} />
           {(pages.rows ?? []).map((d) => (
             <DreamPickItem
               key={d.id}

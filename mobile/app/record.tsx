@@ -33,6 +33,16 @@ const INTERIM_SAVE_MS = 1000;
 /** 적기 화면에서 입력칸 아래 안내 줄(「저장됨」)과 그 위아래 간격이 차지하는 높이 */
 const CAPTION_ROOM = sp[4] * 2 + 18;
 
+/**
+ * 적기 입력칸의 높이 범위. 남은 자리(`room`)에서 안내 줄을 뺀 만큼까지만 자란다.
+ * **최소 높이(140)도 남은 자리 안으로 줄인다**(PR #130 리뷰) — 작은 폰에서 키보드가 뜨면 남은 자리가 140보다 작아,
+ * 그대로 두면 입력칸이 넘쳐 「완료」를 덮었다. 오류 문구는 두 줄까지 자리를 더 잡는다. 한 줄(48)은 언제나 남긴다
+ */
+function inputBox(room: number, hasError: boolean) {
+  const max = Math.max(hit.min, room - CAPTION_ROOM - (hasError ? 18 * 2 : 0));
+  return { maxHeight: max, minHeight: Math.min(140, max) };
+}
+
 /** 멈춘 녹음. 받아쓰기로 남겼으면 받아쓴 글이 함께 온다 */
 type Taken = { uri: string | null; durationMs: number; text?: string };
 
@@ -584,7 +594,7 @@ export default function RecordModal() {
                 onChangeText={setText}
                 placeholder="기억나는 것부터"
                 maxLength={MAX_TEXT_LENGTH}
-                style={room > 0 ? { maxHeight: Math.max(140, room - CAPTION_ROOM) } : undefined}
+                style={room > 0 ? inputBox(room, !!error) : undefined}
               />
 
               <AppText size="caption" color={error ? c.danger : c.fgFaint}>
