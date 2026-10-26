@@ -142,7 +142,7 @@ export async function pushDreams(_token, dreams) {
 export async function pullDreams(_token, opts = {}) {
   state.pullCalls += 1;
   if (state.failPullOnCall === state.pullCalls) {
-    throw { code: 'network', message: '네트워크에 연결할 수 없습니다', status: 0 };
+    throw { code: 'network', message: '네트워크에 연결할 수 없어요', status: 0 };
   }
   const since = opts.since ? parseInstant(opts.since) : 0n;
   const cursor = opts.cursor ?? null;

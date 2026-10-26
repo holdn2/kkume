@@ -263,7 +263,7 @@ check('H15', '비슷하지만 다른 이름은 된다', nicknameProblem('탈퇴�
 // 서버는 409 already_shared 에 postId 를 싣는다. code · message 만 남기면 화면이 그 글로 안내하지 못한다
 const realFetch = globalThis.fetch;
 globalThis.fetch = async () =>
-  new Response(JSON.stringify({ code: 'already_shared', message: '이미 공유한 꿈입니다', postId: 'p-42' }), {
+  new Response(JSON.stringify({ code: 'already_shared', message: '이미 공유한 꿈이에요', postId: 'p-42' }), {
     status: 409,
     headers: { 'Content-Type': 'application/json' },
   });
@@ -295,7 +295,7 @@ check(
   reply = () => json(200, { items: [], nextCursor: null });
   await http.feed('empathy', 'c/1');
   check('W1', '피드는 GET /api/community/posts?sort&cursor, 로그인 전엔 토큰 없음', last().url === '/api/community/posts?sort=empathy&cursor=c%2F1' && last().method === 'GET' && last().auth === null, JSON.stringify(last()));
-  reply = () => json(404, { code: 'post_not_found', message: '글을 찾을 수 없습니다' });
+  reply = () => json(404, { code: 'post_not_found', message: '글을 찾을 수 없어요' });
   check('W2', '없는 글은 null', (await http.post('p-x').catch((e) => e)) === null && last().url === '/api/community/posts/p-x');
   reply = () => json(404, { code: 'user_not_found', message: '' });
   check('W3', '없는 사람 프로필은 null', (await http.profile('u-x').catch((e) => e)) === null && last().url === '/api/users/u-x/profile');
@@ -311,7 +311,7 @@ check(
   const input = newPost();
   await http.createPost(input);
   check('W7', '글쓰기는 POST 에 NewPost 그대로(dreamRecordedAt 포함)', last().method === 'POST' && last().url === '/api/community/posts' && last().body.dreamRecordedAt === input.dreamRecordedAt && last().body.dreamId === 'd-1');
-  reply = () => json(409, { code: 'already_shared', message: '이미 공유한 꿈입니다', postId: 'p-9' });
+  reply = () => json(409, { code: 'already_shared', message: '이미 공유한 꿈이에요', postId: 'p-9' });
   const dup = await http.createPost(input).then(() => null, (e) => e);
   check('W8', '409 already_shared 의 postId 가 data 로 온다', dup?.code === 'already_shared' && dup?.data?.postId === 'p-9');
   reply = () => json(200, { postId: 'p-7' });
