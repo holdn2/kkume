@@ -143,7 +143,7 @@ export function useAuth(): AuthState {
     } catch (e) {
       if (isApiError(e) && e.code === 'consent_required') throw e;
       // 서버가 주는 문구는 이미 존댓말이라 그대로 보여준다
-      const base = isApiError(e) ? e.message : '로그인에 실패했습니다';
+      const base = isApiError(e) ? e.message : '로그인에 실패했어요';
       setError(aud ? `${base}\n토큰 대상: ${aud}` : base);
       return false;
     }
@@ -158,7 +158,7 @@ export function useAuth(): AuthState {
         const a = await signInWithApple();
         if (!a.ok) {
           if (a.reason === 'cancelled') return 'failed';
-          const base = a.reason === 'unavailable' ? '이 기기에서는 애플 로그인을 쓸 수 없습니다' : '애플 로그인에 실패했습니다';
+          const base = a.reason === 'unavailable' ? '이 기기에서는 애플 로그인을 쓸 수 없어요' : '애플 로그인에 실패했어요';
           setError(a.detail ? `${base}\n${a.detail}` : base);
           return 'failed';
         }
@@ -181,8 +181,8 @@ export function useAuth(): AuthState {
         // 마이 탭이지만, 로그인 실패는 사용자도 스크린샷을 찍어 알려야 하는 상황이다
         const base =
           g.reason === 'unavailable'
-            ? '이 빌드에는 구글 로그인이 들어 있지 않습니다'
-            : '구글 로그인에 실패했습니다';
+            ? '이 빌드에는 구글 로그인이 들어 있지 않아요'
+            : '구글 로그인에 실패했어요';
         setError(g.detail ? `${base}\n${g.detail}` : base);
         return 'failed';
       }
@@ -209,7 +209,7 @@ export function useAuth(): AuthState {
       const p = pending.current;
       pending.current = null;
       if (!p) {
-        setError('로그인이 끊겼습니다. 다시 로그인해 주세요.');
+        setError('로그인이 끊겼어요. 다시 로그인해 주세요.');
         return false;
       }
       setBusy(true);
@@ -218,7 +218,7 @@ export function useAuth(): AuthState {
         // 동의 버전을 실었으니 consent_required 는 오지 않는다. 토큰이 만료됐으면 401 — 다시 로그인하라는 문구로
         return await login(p.provider, p.idToken, p.aud, consentVersion);
       } catch {
-        setError('로그인하지 못했습니다. 다시 로그인해 주세요.');
+        setError('로그인하지 못했어요. 다시 로그인해 주세요.');
         return false;
       } finally {
         setBusy(false);
@@ -312,8 +312,8 @@ export function useAuth(): AuthState {
             const a = await signInWithApple();
             if (!a.ok || !a.authorizationCode) {
               const message = a.ok || a.reason !== 'cancelled'
-                ? '애플 인증을 받지 못해 삭제하지 않았습니다. 다시 시도해 주세요.'
-                : '애플 인증을 마치지 않아 삭제하지 않았습니다.';
+                ? '애플 인증을 받지 못해 삭제하지 않았어요. 다시 시도해 주세요.'
+                : '애플 인증을 마치지 않아 삭제하지 않았어요.';
               throw { code: 'apple_reauth_required', message, status: 400 };
             }
             appleCode = a.authorizationCode;

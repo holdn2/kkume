@@ -85,5 +85,5 @@ export function explainCreateError(e: unknown): CreateFailure {
     if (e.status === 401) return { kind: 'login', message: '마이 탭에서 로그인한 뒤 만들 수 있어요.' };
     if (e.message) return { kind: 'message', message: e.message };
   }
-  return { kind: 'message', message: '만화를 만들지 못했습니다. 잠시 뒤 다시 시도해 주세요.' };
+  return { kind: 'message', message: '만화를 만들지 못했어요. 잠시 뒤 다시 시도해 주세요.' };
 }

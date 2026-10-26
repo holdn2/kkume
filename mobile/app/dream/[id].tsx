@@ -41,7 +41,7 @@ export default function DreamDetail() {
   const fail = (e: unknown) => {
     setError(String(e));
     // 토스트에는 고정 문구 — 자동 저장이 계속 실패하면 멈출 때마다 같은 오류 원문이 다시 뜬다. 원문은 안내 줄에 남는다(PR #79 리뷰)
-    showToast('작업을 완료하지 못했습니다. 다시 시도해 주세요.');
+    showToast('작업을 완료하지 못했어요. 다시 시도해 주세요.');
   };
   const [askDelete, setAskDelete] = useState(false);
   /**
@@ -165,9 +165,9 @@ export default function DreamDetail() {
     return (
       <Screen header={<Header onBack={goBack} />}>
         {error ? (
-          <ErrorCard message={`기록을 읽지 못했습니다. ${error}`} />
+          <ErrorCard message={`기록을 읽지 못했어요. ${error}`} />
         ) : loaded ? (
-          <EmptyCard title="찾을 수 없는 기록입니다." hint="지워졌을 수 있습니다." />
+          <EmptyCard title="찾을 수 없는 기록이에요." hint="지워졌을 수 있어요." />
         ) : (
           <Loading />
         )}
@@ -222,7 +222,7 @@ export default function DreamDetail() {
             counter
           />
           <AppText size="caption" color={error ? c.danger : c.fgFaint}>
-            {error ?? (dirty ? '나가면 저장됩니다' : '저장됨')}
+            {error ?? (dirty ? '나가면 저장돼요' : '저장됨')}
           </AppText>
         </Stack>
 
@@ -271,7 +271,7 @@ export default function DreamDetail() {
         visible={askDelete}
         onClose={() => setAskDelete(false)}
         title="이 기록을 지울까요"
-        description="목록에서만 사라지고 서버에는 남습니다. 나중에 되살릴 수 있습니다.">
+        description="목록에서만 사라지고 서버에는 남아요. 나중에 되살릴 수 있어요.">
         <Stack gap={sp[2]} style={{ paddingTop: sp[4] }}>
           <Button label="지우기" variant="danger" onPress={remove} />
           <Button label="취소" variant="ghost" onPress={() => setAskDelete(false)} />

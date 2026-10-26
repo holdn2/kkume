@@ -50,7 +50,7 @@ export function DictationPrompt() {
             말한 꿈을 글로 옮겨 둘까요
           </AppText>
           <AppText size="caption" color={c.fgMuted}>
-            녹음하는 동안 폰 안에서 글로 받아써 둡니다. 받아쓰느라 소리를 다른 곳에 보내지 않습니다.
+            녹음하는 동안 폰 안에서 글로 받아써 둬요. 받아쓰느라 소리를 다른 곳에 보내지 않아요.
           </AppText>
         </View>
         <Pressable onPress={done} hitSlop={12} accessibilityRole="button" accessibilityLabel="닫기">

@@ -46,7 +46,7 @@ export function useNativeRecorder(): Recorder {
 
   const start = useCallback(async () => {
     const perm = await requestRecordingPermissionsAsync();
-    if (!perm.granted) throw new Error('마이크 권한이 없습니다');
+    if (!perm.granted) throw new Error('마이크 권한이 없어요');
 
     // iOS는 이걸 켜지 않으면 녹음 세션이 열리지 않는다.
     // 무음 스위치가 켜진 채 자는 사람이 많아 playsInSilentMode도 같이 준다

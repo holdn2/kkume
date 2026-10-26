@@ -573,7 +573,7 @@ export default function RecordModal() {
                 onPress={switchMode}
                 hitSlop={16}
                 accessibilityRole="button"
-                accessibilityLabel="말하기로 바꿉니다"
+                accessibilityLabel="말하기로 바꿔요"
                 style={({ pressed }) => [s.swap, pressed && { opacity: press }]}>
                 <Mic size={18} strokeWidth={1.75} color={c.fgMuted} />
                 <AppText size="caption" color={c.fgMuted}>
@@ -598,7 +598,7 @@ export default function RecordModal() {
               />
 
               <AppText size="caption" color={error ? c.danger : c.fgFaint}>
-                {error ?? (saved ? '저장됨' : '나가면 저장됩니다')}
+                {error ?? (saved ? '저장됨' : '나가면 저장돼요')}
               </AppText>
 
               {/* 빈 자리를 누르면 키보드가 내려간다. 여러 줄 입력이라 엔터로는 못 내린다 */}
@@ -647,7 +647,7 @@ export default function RecordModal() {
           onPress={switchMode}
           hitSlop={16}
           accessibilityRole="button"
-          accessibilityLabel="적기로 바꿉니다"
+          accessibilityLabel="적기로 바꿔요"
           style={({ pressed }) => [s.swap, s.swapAbove, pressed && { opacity: press }]}>
           <PenLine size={18} strokeWidth={1.75} color={c.fgMuted} />
           <AppText size="caption" color={c.fgMuted}>

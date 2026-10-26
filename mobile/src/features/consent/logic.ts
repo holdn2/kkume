@@ -14,9 +14,9 @@ export const CONSENT_VERSION = '2026-10-07';
 export type ConsentKey = 'age' | 'terms' | 'privacy';
 
 export const CONSENT_ITEMS: { key: ConsentKey; label: string; required: true; link?: 'terms' | 'privacy' }[] = [
-  { key: 'age', label: '만 14세 이상입니다', required: true },
-  { key: 'terms', label: '이용약관에 동의합니다', required: true, link: 'terms' },
-  { key: 'privacy', label: '개인정보 수집 · 이용에 동의합니다', required: true, link: 'privacy' },
+  { key: 'age', label: '만 14세 이상이에요', required: true },
+  { key: 'terms', label: '이용약관에 동의해요', required: true, link: 'terms' },
+  { key: 'privacy', label: '개인정보 수집 · 이용에 동의해요', required: true, link: 'privacy' },
 ];
 
 /** 이번 버전에 동의한 기록이 없으면 true. 깨진 값도 없는 것으로 본다 */

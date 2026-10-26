@@ -37,8 +37,8 @@ export function Value() {
         일어나자마자{'\n'}3초 만에
       </AppText>
       <AppText size="body" color={c.fgMuted}>
-        꿈은 깨고 나서 몇 분이면 사라집니다.{'\n'}
-        메모 앱을 여는 동안 이미 지워집니다.
+        꿈은 깨고 나서 몇 분이면 사라져요.{'\n'}
+        메모 앱을 여는 동안 이미 지워져요.
       </AppText>
 
       <Card>
@@ -66,8 +66,8 @@ export function Value() {
       {/* 짧아진 줄이 곧 주장이라 설명을 카드 안에 넣지 않는다.
           카드는 눈으로 길이를 재는 자리고, 이 줄은 그 차이가 무엇인지 말하는 자리다 */}
       <AppText size="caption" color={c.fgFaint}>
-        잠금화면에 올려 둔 위젯을 그대로 누릅니다.{'\n'}
-        앱을 찾지도, 열지도 않습니다.
+        잠금화면에 올려 둔 위젯을 그대로 눌러요.{'\n'}
+        앱을 찾지도, 열지도 않아요.
       </AppText>
     </Stack>
   );
@@ -129,8 +129,8 @@ export function Rehearsal({ onDone }: { onDone: () => void }) {
       </AppText>
       <AppText size="body" color={c.fgMuted}>
         {state === 'done'
-          ? '이게 전부입니다. 새벽에는 이 화면이 바로 열립니다.'
-          : '아무 말이나 좋습니다. "어젯밤에 바다에 있었어" 처럼요.'}
+          ? '이게 전부예요. 새벽에는 이 화면이 바로 열려요.'
+          : '아무 말이나 좋아요. "어젯밤에 바다에 있었어" 처럼요.'}
       </AppText>
 
       <View style={s.stage}>
@@ -143,7 +143,7 @@ export function Rehearsal({ onDone }: { onDone: () => void }) {
           </Stack>
         ) : (
           <AppText size="body" color={c.fgFaint} style={{ textAlign: 'center' }}>
-            {state === 'done' ? (heard > 3 ? '잘 들렸습니다' : '소리가 거의 안 들어왔습니다') : ' '}
+            {state === 'done' ? (heard > 3 ? '잘 들렸어요' : '소리가 거의 안 들어왔어요') : ' '}
           </AppText>
         )}
       </View>
@@ -154,7 +154,7 @@ export function Rehearsal({ onDone }: { onDone: () => void }) {
             {error}
           </AppText>
           <AppText size="caption" color={c.fgMuted}>
-            설정 → 꾸메 → 마이크를 켜 주세요. 지금 건너뛰어도 나중에 다시 할 수 있습니다.
+            설정 → 꾸메 → 마이크를 켜 주세요. 지금 건너뛰어도 나중에 다시 할 수 있어요.
           </AppText>
         </Card>
       )}
@@ -181,19 +181,19 @@ export function InstallWidget() {
         잠금화면에 올려 두세요
       </AppText>
       <AppText size="body" color={c.fgMuted}>
-        이걸 해 두지 않으면 새벽에 앱을 찾아 열어야 합니다.{'\n'}
-        한 번만 하면 됩니다.
+        이걸 해 두지 않으면 새벽에 앱을 찾아 열어야 해요.{'\n'}
+        한 번만 하면 돼요.
       </AppText>
 
       <Card>
         <Stack gap={sp[3]}>
           {[
-            '잠금화면을 길게 누릅니다',
-            '아래쪽 사용자 지정을 누릅니다',
-            '잠금 화면을 고릅니다',
-            '시계 아래 칸을 누릅니다',
-            '목록에서 꾸메를 찾습니다',
-            '꿈 기록을 넣고 완료를 누릅니다',
+            '잠금화면을 길게 눌러요',
+            '아래쪽 사용자 지정을 눌러요',
+            '잠금 화면을 골라요',
+            '시계 아래 칸을 눌러요',
+            '목록에서 꾸메를 찾아요',
+            '꿈 기록을 넣고 완료를 눌러요',
           ].map((line, i) => (
             <Row key={line} gap={sp[3]} style={s.compare}>
               <AppText size="caption" color={c.running} style={s.num}>
@@ -209,8 +209,8 @@ export function InstallWidget() {
 
       <Card>
         <AppText size="caption" color={c.fgMuted}>
-          위젯을 누르면 <AppText size="caption" weight="semibold">잠금 해제가 필요합니다.</AppText>{'\n'}
-          얼굴 인식이라 보통은 그냥 열리지만, 새벽에 눈이 덜 떠져 실패하면 암호를 묻습니다.
+          위젯을 누르면 <AppText size="caption" weight="semibold">잠금 해제가 필요해요.</AppText>{'\n'}
+          얼굴 인식이라 보통은 그냥 열리지만, 새벽에 눈이 덜 떠져 실패하면 암호를 물어요.
           그때는 당황하지 말고 그대로 누르세요.
         </AppText>
       </Card>

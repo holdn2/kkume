@@ -81,7 +81,7 @@ export default function Onboarding() {
         )}
 
         {STEPS[step] !== 'rehearsal' && (
-          <Button label={guideOnly ? '닫기' : last ? '위젯을 올렸습니다' : '다음'} onPress={next} />
+          <Button label={guideOnly ? '닫기' : last ? '위젯을 올렸어요' : '다음'} onPress={next} />
         )}
 
         {/* 건너뛰기는 온보딩의 마지막 장에만 둔다. 위젯을 지금 못 올리는 상황이 실제로 있고,

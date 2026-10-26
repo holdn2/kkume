@@ -46,7 +46,7 @@ export async function putFile(
   filePath: string,
   headers: Record<string, string>,
 ): Promise<PutResult> {
-  if (!HAS_FILE_SYSTEM) throw new Error('이 빌드에는 파일 업로드 모듈이 없습니다');
+  if (!HAS_FILE_SYSTEM) throw new Error('이 빌드에는 파일 업로드 모듈이 없어요');
   const fs = legacy();
   const res = await fs.uploadAsync(uploadUrl, filePath, {
     httpMethod: 'PUT',

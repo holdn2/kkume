@@ -15,7 +15,7 @@ export default function QuickRecordScreen() {
 
   return (
     <Screen>
-      <Title sub="말해도 되고 적어도 됩니다">무엇을 남길까요</Title>
+      <Title sub="말해도 되고 적어도 돼요">무엇을 남길까요</Title>
 
       <Stack gap={sp[3]}>
         <Button label="말하기" onPress={() => router.push('/record?mode=voice')} haptic />
@@ -23,7 +23,7 @@ export default function QuickRecordScreen() {
       </Stack>
 
       <AppText size="caption" color={c.fgFaint}>
-        새벽에는 잠금화면에서 바로 열립니다. 이 화면을 거치지 않습니다
+        새벽에는 잠금화면에서 바로 열려요. 이 화면을 거치지 않아요
       </AppText>
     </Screen>
   );

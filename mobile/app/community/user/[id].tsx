@@ -81,9 +81,9 @@ export default function ProfileScreen() {
       ) : profile === null ? (
         // 못 받은 것과 없는 사람을 가른다 — 못 받았으면 다시 받을 길을 둔다
         profileQuery.error && !profileQuery.data ? (
-          <ErrorCard message="프로필을 불러오지 못했습니다." onRetry={() => void profileQuery.refetch()} />
+          <ErrorCard message="프로필을 불러오지 못했어요." onRetry={() => void profileQuery.refetch()} />
         ) : (
-          <EmptyCard title="찾을 수 없는 사람입니다." />
+          <EmptyCard title="찾을 수 없는 사람이에요." />
         )
       ) : (
         <Stack gap={sp[4]}>
@@ -103,7 +103,7 @@ export default function ProfileScreen() {
           {isBlocked && (
             <Card>
               <AppText size="caption" color={c.fgMuted}>
-                차단한 사용자입니다. 피드와 댓글에서는 이 사람의 글이 보이지 않습니다.
+                차단한 사용자예요. 피드와 댓글에서는 이 사람의 글이 보이지 않아요.
               </AppText>
             </Card>
           )}
@@ -144,9 +144,9 @@ export default function ProfileScreen() {
           !profile ? null : posts.isPending ? (
             <ListSkeleton count={2} />
           ) : posts.error ? (
-            <ErrorCard message="글을 불러오지 못했습니다." onRetry={() => void posts.refetch()} />
+            <ErrorCard message="글을 불러오지 못했어요." onRetry={() => void posts.refetch()} />
           ) : (
-            <EmptyCard title={mine ? '아직 나눈 꿈이 없습니다.' : '아직 올린 글이 없습니다.'} />
+            <EmptyCard title={mine ? '아직 나눈 꿈이 없어요.' : '아직 올린 글이 없어요.'} />
           )
         }
       />

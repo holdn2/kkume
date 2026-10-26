@@ -22,10 +22,10 @@ const RESERVED_NICKNAME = '탈퇴한사용자';
 
 export function nicknameProblem(raw: string): string | null {
   const v = raw.trim();
-  if (/[\u0000-\u001f\u007f]/.test(v)) return '줄바꿈이나 특수 제어문자는 쓸 수 없습니다';
+  if (/[\u0000-\u001f\u007f]/.test(v)) return '줄바꿈이나 특수 제어문자는 쓸 수 없어요';
   if (v.length < NICKNAME_MIN || v.length > NICKNAME_MAX) return `${NICKNAME_MIN}~${NICKNAME_MAX}자로 적어 주세요`;
   // 지운 계정의 이름으로 예약돼 있다 — 서버도 공백을 모두 뺀 값으로 비교해 막는다(계약 066 02장)
-  if (v.replace(/\s/g, '') === RESERVED_NICKNAME) return '쓸 수 없는 닉네임입니다';
+  if (v.replace(/\s/g, '') === RESERVED_NICKNAME) return '쓸 수 없는 닉네임이에요';
   return null;
 }
 

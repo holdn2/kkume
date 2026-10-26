@@ -98,7 +98,7 @@ export default function ComicNew() {
           )}
           <AppText size="caption" color={c.fgMuted}>
             {dream === null
-              ? '꿈을 찾을 수 없습니다. 기록 목록에서 다시 골라 주세요.'
+              ? '꿈을 찾을 수 없어요. 기록 목록에서 다시 골라 주세요.'
               : empty
                 ? '꿈 내용이 비어 있어요. 내용을 적은 뒤 만들 수 있어요.'
                 : '이 꿈을 네 컷 만화로 그려요. 1분쯤 걸리고, 화면을 나가도 계속 만들어요.'}

@@ -80,7 +80,7 @@ export default function LogScreen() {
         />
       )}
 
-      {!!error && <ErrorCard message={`기록을 읽지 못했습니다. ${error}`} onRetry={() => reload()} />}
+      {!!error && <ErrorCard message={`기록을 읽지 못했어요. ${error}`} onRetry={() => reload()} />}
 
       <FlatList
         data={rows ?? []}
@@ -101,11 +101,11 @@ export default function LogScreen() {
           rows === null ? (
             error ? null : <ListSkeleton />
           ) : searching ? (
-            <EmptyCard title={`「${query.trim()}」이(가) 든 꿈이 없습니다.`} hint="다른 말로 찾아보세요." />
+            <EmptyCard title={`「${query.trim()}」이(가) 든 꿈이 없어요.`} hint="다른 말로 찾아보세요." />
           ) : (
             <EmptyCard
-              title="아직 남긴 꿈이 없습니다."
-              hint="위의 버튼으로 지금 남겨 보세요. 잠금화면 위젯을 올려 두면 새벽에 폰을 집자마자 바로 됩니다."
+              title="아직 남긴 꿈이 없어요."
+              hint="위의 버튼으로 지금 남겨 보세요. 잠금화면 위젯을 올려 두면 새벽에 폰을 집자마자 바로 돼요."
             />
           )
         }
@@ -117,6 +117,6 @@ export default function LogScreen() {
 function sub(counts: { total: number; unread: number } | null, searching: boolean) {
   if (counts === null) return undefined;
   if (searching) return `검색 결과 ${counts.total}건`;
-  if (counts.total === 0) return '아직 비어 있습니다';
+  if (counts.total === 0) return '아직 비어 있어요';
   return counts.unread > 0 ? `${counts.total}건 · 미확인 ${counts.unread}건` : `${counts.total}건`;
 }

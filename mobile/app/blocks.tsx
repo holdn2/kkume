@@ -42,7 +42,7 @@ export default function BlocksScreen() {
     setBlocked(user, false)
       .then(() => invalidate())
       .catch((e) => {
-        const m = e?.message ?? '차단을 풀지 못했습니다';
+        const m = e?.message ?? '차단을 풀지 못했어요';
         setError(m);
         showToast(m);
       })
@@ -52,7 +52,7 @@ export default function BlocksScreen() {
   return (
     <Screen header={<Header title="차단한 사용자" onBack={back} />}>
       <AppText size="caption" color={c.fgFaint}>
-        차단하면 그 사람의 글과 댓글이 꿈 나눔에서 보이지 않습니다. 상대에게는 알리지 않습니다.
+        차단하면 그 사람의 글과 댓글이 꿈 나눔에서 보이지 않아요. 상대에게는 알리지 않아요.
       </AppText>
 
       {!!error && (
@@ -62,7 +62,7 @@ export default function BlocksScreen() {
       )}
 
       {me === null ? (
-        <EmptyCard title="로그인하면 차단 목록을 볼 수 있습니다." hint="마이 탭에서 로그인해 주세요." />
+        <EmptyCard title="로그인하면 차단 목록을 볼 수 있어요." hint="마이 탭에서 로그인해 주세요." />
       ) : (
         <FlatList
           data={blocked.list}
@@ -89,9 +89,9 @@ export default function BlocksScreen() {
             me === undefined || blocked.loading ? (
               <ListSkeleton count={2} />
             ) : blocked.failed ? (
-              <ErrorCard message="차단 목록을 불러오지 못했습니다." onRetry={() => void blocked.reload()} />
+              <ErrorCard message="차단 목록을 불러오지 못했어요." onRetry={() => void blocked.reload()} />
             ) : (
-              <EmptyCard title="차단한 사용자가 없습니다." hint="글 상세의 ⋯ 나 프로필에서 차단할 수 있습니다." />
+              <EmptyCard title="차단한 사용자가 없어요." hint="글 상세의 ⋯ 나 프로필에서 차단할 수 있어요." />
             )
           }
         />
