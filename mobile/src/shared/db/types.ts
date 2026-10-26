@@ -221,6 +221,11 @@ export interface DreamRepo {
 
 /** 설정 키는 여기서만 만든다. 문자열을 화면에 흩뿌리면 오타가 조용히 새 키가 된다 */
 export const SETTINGS = {
+  /**
+   * 빠른기록 탭에서 「완료」 전에 쓰던 글(이슈 #143). **기록이 아니다** — 「완료」를 눌러야 기록이 되고 그때 비운다.
+   * 앱이 꺼져도 칸의 글을 되살리려고 둔다
+   */
+  quickDraft: 'quick_draft',
   /** 온보딩을 끝냈는가. 값이 있으면 끝낸 것이고, 담긴 것은 끝낸 시각이다 */
   onboardedAt: 'onboarded_at',
   /**

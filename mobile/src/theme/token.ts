@@ -86,9 +86,9 @@ export const r = {
 
 /**
  * 새벽에 손이 정확하지 않다. 그래서 48이 아니라 56이 기본이다.
- * `speak`는 빠른기록 탭의 마이크 — 화면의 주인공이라 새벽 정지 버튼(80)보다 크게 둔다(이슈 #141, 사용자 요청)
+ * `speak`는 빠른기록 탭의 마이크 — 화면의 주인공이라 새벽 정지 버튼(80)보다 크게 둔다(이슈 #141 · #143, 사용자 요청)
  */
-export const hit = { min: 48, base: 56, stop: 80, speak: 104 } as const;
+export const hit = { min: 48, base: 56, stop: 80, speak: 120 } as const;
 
 /** 눌림 표현은 하나뿐이다. 컴포넌트마다 다른 값을 쓰면 그게 티가 난다 */
 export const press = 0.6;

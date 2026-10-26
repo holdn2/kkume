@@ -609,8 +609,10 @@ export default function RecordModal() {
               <View style={{ gap: sp[4] }} onLayout={(e) => setBelow(e.nativeEvent.layout.height)}>
                 <Button label="완료" onPress={finishText} />
 
+                {/* 「저장됨」만 보인다. 「나가면 저장돼요」는 나갈 버튼이 따로 있는 것처럼 읽혀 뺐다(이슈 #143, 099 A1).
+                    저장 전에도 빈 줄로 자리를 잡아 둔다 — 줄이 생겼다 사라지면 입력칸 상한이 그때마다 바뀌어 칸이 움찔한다 */}
                 <AppText size="caption" color={error ? c.danger : c.fgFaint} style={{ textAlign: 'center' }}>
-                  {error ?? (saved ? '저장됨' : '나가면 저장돼요')}
+                  {error ?? (saved ? '저장됨' : ' ')}
                 </AppText>
               </View>
 
