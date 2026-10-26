@@ -18,8 +18,9 @@ const IDLE_SAVE_MS = 1200;
  *
  * - **적기는 이 화면에서 바로 한다.** 전에는 「적기」를 누르면 새벽 적기 화면으로 옮겨 갔는데, 낮에는 그 한 번의 이동이
  *   군더더기였다. 새벽 적기 화면처럼 멈추면 저장되고, 「완료」는 입력칸을 비워 다음 기록을 받는다.
- * - **말하기는 화면 아래 엄지 자리다.** 버튼이 제목 바로 아래 있어 손을 멀리 뻗어야 했다. 새벽 녹음 화면의 정지 버튼과
- *   같은 크기의 둥근 버튼이라, 낮에 누르는 자리와 새벽에 누르는 자리가 같다.
+ * - **말하기는 화면 아래 엄지 자리다.** 버튼이 제목 바로 아래 있어 손을 멀리 뻗어야 했다. 새벽 녹음 화면의 정지 버튼처럼
+ *   아래쪽의 둥근 버튼이라, 낮에 누르는 자리와 새벽에 누르는 자리가 같다. 크기는 정지 버튼보다 크다(이슈 #141).
+ * - 위젯 안내 줄(「새벽에는 잠금화면에서 바로 열려요」)은 뺐다(098 D3 사용자 결정).
  * - 확인 안 한 기록이 있으면 한 줄로 알려 주고 누르면 꿈 로그로 간다. 「마지막 기록」은 넣지 않았다(사용자 결정).
  *
  * 새벽에는 잠금화면 위젯이 `/record`를 바로 열어 이 화면을 거치지 않는다.
@@ -210,13 +211,10 @@ export default function QuickRecordScreen() {
             accessibilityRole="button"
             accessibilityLabel="말해서 남기기"
             style={({ pressed }) => [s.mic, pressed && { opacity: press }]}>
-            <Mic size={32} strokeWidth={2} color={c.actionFg} aria-hidden />
+            <Mic size={44} strokeWidth={2} color={c.actionFg} aria-hidden />
           </Pressable>
-          <AppText size="caption" color={c.fgMuted}>
+          <AppText size="body" weight="semibold" color={c.fgMuted}>
             눌러서 말하기
-          </AppText>
-          <AppText size="caption" color={c.fgFaint} style={{ textAlign: 'center' }}>
-            새벽에는 잠금화면에서 바로 열려요. 이 화면을 거치지 않아요
           </AppText>
         </View>
       )}
@@ -230,10 +228,11 @@ const s = StyleSheet.create({
   // 낮 화면이라 새벽 적기처럼 남은 자리를 다 쓰지 않는다. 키보드를 내리면 아래 마이크가 늘 보여야 하고,
   // 키보드를 올리면 그 위에 「완료」까지 들어가야 한다 — iPhone SE(667pt)에서 제목 · 「완료」를 빼고 남는 자리가 약 190이다
   input: { minHeight: 120, maxHeight: 160 },
-  speak: { alignItems: 'center', gap: sp[2], paddingBottom: sp[4] },
+  // 아래는 탭바와 한 뼘 띄운다 — 바짝 붙으면 마이크를 누르려다 탭을 누른다(이슈 #141)
+  speak: { alignItems: 'center', gap: sp[3], paddingBottom: sp[10] },
   mic: {
-    width: hit.stop,
-    height: hit.stop,
+    width: hit.speak,
+    height: hit.speak,
     borderRadius: r.chip,
     backgroundColor: c.action,
     alignItems: 'center',
