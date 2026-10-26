@@ -138,7 +138,7 @@ async function me(): Promise<UserRow | null> {
 
 async function requireMe(): Promise<UserRow> {
   const m = await me();
-  if (!m) throw err(401, 'unauthorized', '로그인이 필요합니다');
+  if (!m) throw err(401, 'unauthorized', '로그인이 필요해요');
   return m;
 }
 
@@ -257,9 +257,9 @@ export const fakeCommunity: CommunityApi = {
     await wait();
     const m = await requireMe();
     // 배포된 서버(9ce6fa8)와 같은 코드
-    if (!input.dreamRecordedAt) throw err(400, 'missing_dream_recorded_at', '꿈을 꾼 시각이 없습니다');
+    if (!input.dreamRecordedAt) throw err(400, 'missing_dream_recorded_at', '꿈을 꾼 시각이 없어요');
     const existing = mineFor(m.id, input.dreamId);
-    if (existing) throw err(409, 'already_shared', '이미 공유한 꿈입니다', { postId: existing.id });
+    if (existing) throw err(409, 'already_shared', '이미 공유한 꿈이에요', { postId: existing.id });
     const row: PostRow = {
       id: nextId('p'),
       authorId: m.id,
@@ -288,11 +288,11 @@ export const fakeCommunity: CommunityApi = {
     await wait();
     const m = await requireMe();
     const p = posts.get(id);
-    if (!p || p.deleted) throw err(404, 'post_not_found', '글을 찾을 수 없습니다');
+    if (!p || p.deleted) throw err(404, 'post_not_found', '글을 찾을 수 없어요');
     if (p.authorId !== m.id) {
       // 남에게 가려진 글은 "없는 글"이다 — 403 으로 있다는 것을 알리지 않는다(서버와 같음)
-      if (isHidden(p)) throw err(404, 'post_not_found', '글을 찾을 수 없습니다');
-      throw err(403, 'not_owner', '내 글만 지울 수 있습니다');
+      if (isHidden(p)) throw err(404, 'post_not_found', '글을 찾을 수 없어요');
+      throw err(403, 'not_owner', '내 글만 지울 수 있어요');
     }
     p.deleted = true;
   },
@@ -301,7 +301,7 @@ export const fakeCommunity: CommunityApi = {
     await wait();
     const m = await requireMe();
     const p = posts.get(postId);
-    if (!p || !visible(p)) throw err(404, 'post_not_found', '글을 찾을 수 없습니다');
+    if (!p || !visible(p)) throw err(404, 'post_not_found', '글을 찾을 수 없어요');
     if (liked) p.likes.add(m.id);
     else p.likes.delete(m.id);
     return { likeCount: p.likes.size, likedByMe: p.likes.has(m.id) };
@@ -313,13 +313,13 @@ export const fakeCommunity: CommunityApi = {
     // 서버는 앞뒤 공백을 잘라 저장하고, 자른 뒤 1~500자로 잰다
     const body = (rawBody ?? '').trim();
     if (!body) throw err(400, 'comment_empty', '댓글을 적어 주세요');
-    if (body.length > MAX_COMMENT) throw err(400, 'comment_too_long', '댓글은 500자까지입니다');
+    if (body.length > MAX_COMMENT) throw err(400, 'comment_too_long', '댓글은 500자까지예요');
     const p = posts.get(postId);
-    if (!p || !visible(p)) throw err(404, 'post_not_found', '글을 찾을 수 없습니다');
+    if (!p || !visible(p)) throw err(404, 'post_not_found', '글을 찾을 수 없어요');
     if (parentId) {
       const parent = comments.get(parentId);
-      if (!parent || parent.postId !== postId) throw err(404, 'comment_not_found', '댓글을 찾을 수 없습니다');
-      if (parent.parentId != null) throw err(400, 'reply_depth', '답글에는 답글을 달 수 없습니다');
+      if (!parent || parent.postId !== postId) throw err(404, 'comment_not_found', '댓글을 찾을 수 없어요');
+      if (parent.parentId != null) throw err(400, 'reply_depth', '답글에는 답글을 달 수 없어요');
     }
     const row: CommentRow = {
       id: nextId('c'),
@@ -339,8 +339,8 @@ export const fakeCommunity: CommunityApi = {
     await wait();
     const m = await requireMe();
     const c = comments.get(id);
-    if (!c) throw err(404, 'comment_not_found', '댓글을 찾을 수 없습니다');
-    if (c.authorId !== m.id) throw err(403, 'not_owner', '내 댓글만 지울 수 있습니다');
+    if (!c) throw err(404, 'comment_not_found', '댓글을 찾을 수 없어요');
+    if (c.authorId !== m.id) throw err(403, 'not_owner', '내 댓글만 지울 수 있어요');
     c.deleted = true;
   },
 
@@ -348,17 +348,17 @@ export const fakeCommunity: CommunityApi = {
     await wait();
     const m = await requireMe();
     // 서버와 같은 순서 — 사유를 먼저, 그다음 종류, 없는 대상은 종류대로 404
-    if (!REPORT_REASON_VALUES.has(reason)) throw err(400, 'invalid_report', '신고 사유가 올바르지 않습니다');
+    if (!REPORT_REASON_VALUES.has(reason)) throw err(400, 'invalid_report', '신고 사유가 올바르지 않아요');
     if (target.type !== 'post' && target.type !== 'comment') {
-      throw err(400, 'invalid_report', '신고 대상은 post · comment 중 하나입니다');
+      throw err(400, 'invalid_report', '신고 대상은 post · comment 중 하나예요');
     }
     const row = target.type === 'post' ? posts.get(target.id) : comments.get(target.id);
     if (!row || row.deleted) {
       throw target.type === 'post'
-        ? err(404, 'post_not_found', '글을 찾을 수 없습니다')
-        : err(404, 'comment_not_found', '댓글을 찾을 수 없습니다');
+        ? err(404, 'post_not_found', '글을 찾을 수 없어요')
+        : err(404, 'comment_not_found', '댓글을 찾을 수 없어요');
     }
-    if (row.authorId === m.id) throw err(400, 'self_report', '내 글은 신고할 수 없습니다');
+    if (row.authorId === m.id) throw err(400, 'self_report', '내 글은 신고할 수 없어요');
     row.reporters.add(m.id);
   },
 
@@ -395,8 +395,8 @@ export const fakeCommunity: CommunityApi = {
   async block(userId) {
     await wait();
     const m = await requireMe();
-    if (userId === m.id) throw err(400, 'self_block', '나를 차단할 수 없습니다');
-    if (!users.has(userId)) throw err(404, 'user_not_found', '사용자를 찾을 수 없습니다');
+    if (userId === m.id) throw err(400, 'self_block', '나를 차단할 수 없어요');
+    if (!users.has(userId)) throw err(404, 'user_not_found', '사용자를 찾을 수 없어요');
     const set = blocksBy.get(m.id) ?? new Set<string>();
     set.add(userId);
     blocksBy.set(m.id, set);

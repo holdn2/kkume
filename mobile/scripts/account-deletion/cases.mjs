@@ -83,28 +83,28 @@ function harness(callDelete) {
 }
 {
   const { log, deps } = harness(async () => {
-    throw apiError(401, 'account_deleted', '삭제된 계정입니다');
+    throw apiError(401, 'account_deleted', '삭제된 계정이에요');
   });
   const r = await deleteAccount(deps);
   check('D5', '401 account_deleted → 204와 똑같이(다시 누른 경우)', r.result === 'deleted' && log.includes('forget'), log.join());
 }
 {
   const { log, deps } = harness(async () => {
-    throw apiError(401, 'unauthorized', '로그인이 필요합니다');
+    throw apiError(401, 'unauthorized', '로그인이 필요해요');
   });
   const r = await deleteAccount(deps);
   check('D6', '401 unauthorized → 다시 로그인 안내 · 아무것도 지우지 않음', r.result === 'relogin' && !log.includes('forget') && log.includes('resume'), log.join());
 }
 {
   const { log, deps } = harness(async () => {
-    throw apiError(503, 'deletion_failed', '녹음 파일을 지우지 못했습니다');
+    throw apiError(503, 'deletion_failed', '녹음 파일을 지우지 못했어요');
   });
   const r = await deleteAccount(deps);
-  check('D7', '503 deletion_failed → 서버 문구 · 세션 유지 · 동기화 다시 켬', r.result === 'failed' && r.message === '녹음 파일을 지우지 못했습니다' && !log.includes('forget') && log.at(-1) === 'resume', log.join());
+  check('D7', '503 deletion_failed → 서버 문구 · 세션 유지 · 동기화 다시 켬', r.result === 'failed' && r.message === '녹음 파일을 지우지 못했어요' && !log.includes('forget') && log.at(-1) === 'resume', log.join());
 }
 {
   const { log, deps } = harness(async () => {
-    throw apiError(0, 'network', '네트워크에 연결할 수 없습니다');
+    throw apiError(0, 'network', '네트워크에 연결할 수 없어요');
   });
   const r = await deleteAccount(deps);
   check('D8', '연결 실패 → 실패로 · 세션 유지', r.result === 'failed' && !log.includes('forget'), log.join());
@@ -142,7 +142,7 @@ function harness(callDelete) {
   setAccountDeletedHandler(() => void forgetOnce());
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () =>
-    new Response(JSON.stringify({ code: 'account_deleted', message: '삭제된 계정입니다' }), {
+    new Response(JSON.stringify({ code: 'account_deleted', message: '삭제된 계정이에요' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
     });

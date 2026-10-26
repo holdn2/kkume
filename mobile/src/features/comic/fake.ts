@@ -96,7 +96,7 @@ export function createFakeComicApi(opts: FakeComicOptions = {}): ComicApi {
         status === 'refused'
           ? '이 꿈은 만화로 만들 수 없어요. 다른 꿈으로 만들어 보세요.'
           : status === 'failed'
-            ? '만화를 만들지 못했습니다. 잠시 뒤 다시 만들어 주세요.'
+            ? '만화를 만들지 못했어요. 잠시 뒤 다시 만들어 주세요.'
             : null,
       // 끝난 시각은 한 번 정해지면 그대로다 — 읽은 시각을 쓰면 읽을 때마다 바뀐다(PR #93 리뷰).
       // 거절은 시나리오 단계 끝에, 나머지는 그림 단계 끝에 끝난다
@@ -113,7 +113,7 @@ export function createFakeComicApi(opts: FakeComicOptions = {}): ComicApi {
 
   async function owner(): Promise<string> {
     const id = await me();
-    if (!id) throw err('unauthorized', 401, '로그인이 필요합니다');
+    if (!id) throw err('unauthorized', 401, '로그인이 필요해요');
     return id;
   }
 
