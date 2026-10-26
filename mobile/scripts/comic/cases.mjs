@@ -5,7 +5,7 @@
 import { isComicRunning } from '@shared/api/comic';
 import { createHttpComic } from '@shared/api/comicHttp';
 import { createFakeComicApi, fakePanels } from '@features/comic/fake';
-import { bubbleSide, explainCreateError, genderLabel, gridCrop, parseGender, stepStates } from '@features/comic/logic';
+import { bubbleSide, explainCreateError, genderLabel, gridCrop, imageKey, parseGender, stepStates } from '@features/comic/logic';
 
 let failed = 0;
 let total = 0;
@@ -122,6 +122,15 @@ check(
   '말풍선은 speaker 쪽, 없거나 모르는 값이면 가운데(이슈 #106)',
   [bubbleSide('left'), bubbleSide('right'), bubbleSide(null), bubbleSide(undefined), bubbleSide('middle')].join() === 'left,right,center,center,center',
 );
+{
+  // 서버는 다시 읽을 때마다 새로 서명한다 — 서명만 다른 두 주소는 같은 그림이어야 한다(이슈 #129, PR #130 독립 리뷰)
+  const a = 'https://b.s3.ap-southeast-2.amazonaws.com/comics/c1/grid.png?X-Amz-Date=20261026T070000Z&X-Amz-Signature=aaa';
+  const b = 'https://b.s3.ap-southeast-2.amazonaws.com/comics/c1/grid.png?X-Amz-Date=20261026T070500Z&X-Amz-Signature=bbb';
+  const other = 'https://b.s3.ap-southeast-2.amazonaws.com/comics/c2/grid.png?X-Amz-Signature=aaa';
+  check('M50', '서명만 바뀐 주소는 같은 그림(다시 읽어도 스켈레톤 · 다시 받기 없음)', imageKey(a) === imageKey(b));
+  check('M51', '(반대 방향) 다른 그림은 다른 키', imageKey(a) !== imageKey(other));
+  check('M52', '서명 없는 주소는 그대로', imageKey('https://x/y.png') === 'https://x/y.png');
+}
 check('M25', '문장이 넷보다 적어도 컷은 넷', fakePanels('한 문장뿐인 꿈.').length === 4);
 const inProgress = explainCreateError({ code: 'comic_in_progress', status: 409, message: '만들고 있는 만화가 있어요', data: { comicId: 'x' } });
 check('M26', '만드는 중 오류는 그 만화로 보낸다', inProgress.kind === 'inProgress' && inProgress.comicId === 'x');

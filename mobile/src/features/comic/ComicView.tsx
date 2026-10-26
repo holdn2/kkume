@@ -7,7 +7,7 @@ import type { ComicLayout, ComicPanel } from '@shared/api/comic';
 import { AppText } from '@shared/ui';
 import { avatarBg, c, press, r, sp } from '@theme/token';
 
-import { bubbleSide, gridCrop, type BubbleSide } from './logic';
+import { bubbleSide, gridCrop, imageKey, type BubbleSide } from './logic';
 
 type Props = {
   layout: ComicLayout | null;
@@ -68,10 +68,17 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full }: 
    * 그림은 서버에서 받아 오므로 몇 초 걸릴 수 있다. 못 받아도(onError) 걷어 낸다 — 계속 깜빡이면 아직 오는 중으로 읽힌다.
    * 말풍선은 그림이 온 뒤에 얹는다. 빈 칸 위에 말풍선만 떠 있으면 컷이 아니라 글 상자로 읽힌다
    */
-  // 「받았다」는 주소에 붙인다 — 다시 받아 서명된 주소가 바뀌면 그 그림도 새로 기다린다(PR #130 리뷰)
-  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
-  const waiting = !!source && loadedSrc !== source;
-  const onSettled = () => setLoadedSrc(source ?? null);
+  /**
+   * 「받았다」는 **그림 자체**에 붙인다 — 서명을 뺀 주소(`imageKey`)가 그 그림이다.
+   * 서버는 응답할 때마다 새로 서명한 주소를 준다(S3 presign). 주소 문자열을 그대로 쓰면 다시 읽을 때마다
+   * (댓글 하나만 달아도) 같은 그림이 지워지고 스켈레톤이 다시 돌았다(PR #130 독립 리뷰). 다른 그림으로 바뀔 때만 다시 기다린다.
+   * 같은 키를 `cacheKey`로 줘서 서명만 바뀐 그림은 다시 받지 않고 캐시에서 꺼낸다
+   */
+  const key = source ? imageKey(source) : null;
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const waiting = !!key && loadedKey !== key;
+  const onSettled = () => setLoadedKey(key);
+  const image = source && key ? { uri: source, cacheKey: key } : undefined;
   return (
     <View style={[s.panel, { width: size, height: size }]}>
       {waiting && (
@@ -82,19 +89,19 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full }: 
       {source ? (
         layout === 'grid2x2' ? (
           <Image
-            source={source}
+            source={image}
             style={[s.abs, gridCrop(index, size)]}
             contentFit="cover"
-            recyclingKey={source}
+            recyclingKey={key}
             onLoad={onSettled}
             onError={onSettled}
           />
         ) : (
           <Image
-            source={source}
+            source={image}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
-            recyclingKey={source}
+            recyclingKey={key}
             onLoad={onSettled}
             onError={onSettled}
           />
