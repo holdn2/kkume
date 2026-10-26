@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ChevronRight, Mic } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, View } from 'react-native';
+import { AppState, Keyboard, Pressable, StyleSheet, View } from 'react-native';
 
 import { Button, Input, Screen, showToast, Title } from '@components';
 import { MAX_TEXT_LENGTH } from '@shared/api/sync';
@@ -40,8 +40,9 @@ export default function QuickRecordScreen() {
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
 
-  // 쓰던 글을 되살린다. 처음 한 번만 — 그 뒤로는 칸이 원본이다
-  const restored = useRef(false);
+  // 쓰던 글을 되살린다. 처음 한 번만 — 그 뒤로는 칸이 원본이다.
+  // **state다**(PR #144 리뷰) — 되살리기가 끝나기 전에 친 글은 끝난 뒤에 적어 두기를 다시 예약해야 한다
+  const [restored, setRestored] = useState(false);
   useEffect(() => {
     getDreamRepo()
       .then((repo) => repo.getSetting(SETTINGS.quickDraft))
@@ -49,9 +50,7 @@ export default function QuickRecordScreen() {
         if (d) setText((cur) => cur || d);
       })
       .catch(() => {})
-      .finally(() => {
-        restored.current = true;
-      });
+      .finally(() => setRestored(true));
   }, []);
 
   /** 쓰던 글을 적어 둔다. 앞의 쓰기가 끝난 뒤에 쓴다 — 늦게 끝난 옛 글이 새 글을 덮지 않게 */
@@ -64,10 +63,17 @@ export default function QuickRecordScreen() {
   }, []);
 
   useEffect(() => {
-    if (!restored.current || busy) return;
+    if (!restored || busy) return;
     const t = setTimeout(() => void writeDraft(text), DRAFT_SAVE_MS);
-    return () => clearTimeout(t);
-  }, [text, busy, writeDraft]);
+    // 앱이 뒤로 가면 기다리지 않고 적어 둔다. 1.2초 안에 앱을 닫으면 마지막 글자를 잃는다(PR #144 리뷰)
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st !== 'active') void writeDraft(text);
+    });
+    return () => {
+      clearTimeout(t);
+      sub.remove();
+    };
+  }, [text, busy, restored, writeDraft]);
 
   // 화면에 들어올 때마다 센다. 꿈 로그에서 확인하고 돌아오면 줄어 있어야 한다
   const countUnread = useCallback(() => {
@@ -78,15 +84,15 @@ export default function QuickRecordScreen() {
   }, []);
 
   // 떠날 때는 기다리지 않고 쓰던 글을 적어 둔다. 탭을 옮기고 곧바로 앱을 닫아도 남게
-  const latest = useRef(text);
+  const latest = useRef({ text, restored });
   useEffect(() => {
-    latest.current = text;
-  }, [text]);
+    latest.current = { text, restored };
+  }, [text, restored]);
   useFocusEffect(
     useCallback(() => {
       countUnread();
       return () => {
-        if (restored.current && !busyRef.current) void writeDraft(latest.current);
+        if (latest.current.restored && !busyRef.current) void writeDraft(latest.current.text);
       };
     }, [countUnread, writeDraft]),
   );
@@ -101,7 +107,9 @@ export default function QuickRecordScreen() {
     try {
       const repo = await getDreamRepo();
       await repo.create({ text: t });
-      // 기록이 된 뒤에 쓰던 글을 지운다. 순서가 바뀌면 그 사이에 꺼질 때 글이 어디에도 없다
+      // 기록이 된 뒤에 쓰던 글을 지운다. 순서가 바뀌면 그 사이에 꺼질 때 글이 어디에도 없다.
+      // `writeDraft`는 실패를 삼킨다 — 지우기가 실패해도 기록은 이미 남았으니 「완료」를 실패로 돌리지 않는다.
+      // 칸이 비면 적어 두기가 빈 글을 한 번 더 쓰므로 그때 다시 지워진다
       await writeDraft('');
     } catch {
       showToast('기록을 남기지 못했어요. 다시 눌러 주세요.');
@@ -110,7 +118,7 @@ export default function QuickRecordScreen() {
       busyRef.current = false;
       setBusy(false);
     }
-    latest.current = '';
+    latest.current = { text: '', restored: true };
     setText('');
     Keyboard.dismiss();
     savedFeedback();
