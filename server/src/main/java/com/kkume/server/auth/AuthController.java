@@ -78,7 +78,7 @@ public class AuthController {
 	@ExceptionHandler(InvalidSocialTokenException.class)
 	ResponseEntity<ErrorResponse> onInvalidToken(InvalidSocialTokenException ex) {
 		return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-			.body(new ErrorResponse("invalid_token", "로그인에 실패했습니다"));
+			.body(new ErrorResponse("invalid_token", "로그인에 실패했어요"));
 	}
 
 	/**

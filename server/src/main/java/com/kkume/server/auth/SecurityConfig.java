@@ -102,7 +102,7 @@ public class SecurityConfig {
 	static class AccountDeletedAuthenticationException extends AuthenticationException {
 
 		AccountDeletedAuthenticationException() {
-			super("삭제된 계정입니다");
+			super("삭제된 계정이에요");
 		}
 	}
 
@@ -118,10 +118,10 @@ public class SecurityConfig {
 		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
 		// 앱은 이 둘을 다르게 마무리한다 — 지운 계정은 "삭제됐습니다", 나머지는 "다시 로그인"
 		if (ex instanceof AccountDeletedAuthenticationException) {
-			response.getWriter().write("{\"code\":\"account_deleted\",\"message\":\"삭제된 계정입니다\"}");
+			response.getWriter().write("{\"code\":\"account_deleted\",\"message\":\"삭제된 계정이에요\"}");
 			return;
 		}
-		response.getWriter().write("{\"code\":\"unauthorized\",\"message\":\"로그인이 필요합니다\"}");
+		response.getWriter().write("{\"code\":\"unauthorized\",\"message\":\"로그인이 필요해요\"}");
 	}
 
 	@Bean

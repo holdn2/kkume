@@ -43,6 +43,6 @@ record FeedCursor(FeedSort sort, int likeCount, Instant createdAt, UUID id) {
 	}
 
 	private static CommunityApiException invalid() {
-		return CommunityApiException.badRequest("invalid_cursor", "목록 위치가 올바르지 않습니다");
+		return CommunityApiException.badRequest("invalid_cursor", "목록 위치가 올바르지 않아요");
 	}
 }

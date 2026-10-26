@@ -266,7 +266,7 @@ public class AccountDeletionService {
 	public static class DeletionFailedException extends RuntimeException {
 
 		public DeletionFailedException() {
-			super("지금은 계정을 삭제하지 못했습니다. 잠시 뒤 다시 시도해 주세요");
+			super("지금은 계정을 삭제하지 못했어요. 잠시 뒤 다시 시도해 주세요");
 		}
 	}
 }

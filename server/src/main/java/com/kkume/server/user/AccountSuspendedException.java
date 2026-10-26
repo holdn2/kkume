@@ -8,6 +8,6 @@ package com.kkume.server.user;
 public class AccountSuspendedException extends RuntimeException {
 
 	public AccountSuspendedException(String contact) {
-		super("이용이 제한된 계정입니다. 문의: " + contact);
+		super("이용이 제한된 계정이에요. 문의: " + contact);
 	}
 }

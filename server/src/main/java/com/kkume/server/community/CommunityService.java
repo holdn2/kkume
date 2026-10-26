@@ -142,37 +142,37 @@ public class CommunityService {
 		}
 		String title = input.title() == null || input.title().isBlank() ? null : input.title();
 		if (title != null && title.length() > MAX_TITLE) {
-			throw CommunityApiException.badRequest("title_too_long", "제목은 255자까지입니다");
+			throw CommunityApiException.badRequest("title_too_long", "제목은 255자까지예요");
 		}
 		String dreamText = input.dreamText() == null ? "" : input.dreamText();
 		if (dreamText.isBlank()) {
 			throw CommunityApiException.badRequest("dream_text_empty", "꿈 내용을 적어 주세요");
 		}
 		if (dreamText.length() > MAX_DREAM_TEXT) {
-			throw CommunityApiException.badRequest("dream_text_too_long", "꿈 내용은 20,000자까지입니다");
+			throw CommunityApiException.badRequest("dream_text_too_long", "꿈 내용은 20,000자까지예요");
 		}
 		String body = input.body() == null ? "" : input.body();
 		if (body.length() > MAX_BODY) {
-			throw CommunityApiException.badRequest("body_too_long", "한마디는 2,000자까지입니다");
+			throw CommunityApiException.badRequest("body_too_long", "한마디는 2,000자까지예요");
 		}
 		if (input.dreamRecordedAt() == null) {
-			throw CommunityApiException.badRequest("missing_dream_recorded_at", "꿈을 꾼 시각이 없습니다");
+			throw CommunityApiException.badRequest("missing_dream_recorded_at", "꿈을 꾼 시각이 없어요");
 		}
 		String dreamId = input.dreamId() == null ? "" : input.dreamId();
 
 		// 소유 확인만 한다. 서버에 아직 없으면 앱이 동기화한 뒤 다시 보낸다
 		CommunityStore.DreamOwner owner = this.store.findDreamOwner(dreamId)
 			.filter(d -> d.userId().equals(viewer))
-			.orElseThrow(() -> new CommunityApiException(HttpStatus.NOT_FOUND, "dream_not_found", "서버에 없는 꿈입니다"));
+			.orElseThrow(() -> new CommunityApiException(HttpStatus.NOT_FOUND, "dream_not_found", "서버에 없는 꿈이에요"));
 		if (owner.deleted()) {
-			throw new CommunityApiException(HttpStatus.CONFLICT, "dream_deleted", "지운 꿈입니다");
+			throw new CommunityApiException(HttpStatus.CONFLICT, "dream_deleted", "지운 꿈이에요");
 		}
 
 		// 붙일 만화(문서 081 03장). 내 것 · 다 만든 것이어야 한다. 꿈이 같은지는 보지 않는다 — 앱이 고른 꿈의 만화만 보여 준다
 		ComicAttachments.Source comic = null;
 		if (input.comicId() != null && !input.comicId().isBlank()) {
 			comic = this.comics.find(viewer, input.comicId())
-				.orElseThrow(() -> CommunityApiException.badRequest("invalid_comic", "붙일 수 없는 만화입니다"));
+				.orElseThrow(() -> CommunityApiException.badRequest("invalid_comic", "붙일 수 없는 만화예요"));
 		}
 
 		UUID id = UUID.randomUUID();
@@ -199,7 +199,7 @@ public class CommunityService {
 	private CommunityApiException alreadyShared(UUID viewer, String dreamId) {
 		Map<String, Object> extra = new LinkedHashMap<>();
 		this.store.findActivePostId(viewer, dreamId).ifPresent(p -> extra.put("postId", p.toString()));
-		return new CommunityApiException(HttpStatus.CONFLICT, "already_shared", "이미 공유한 꿈입니다", extra);
+		return new CommunityApiException(HttpStatus.CONFLICT, "already_shared", "이미 공유한 꿈이에요", extra);
 	}
 
 	/** 작성자는 가려진 글도 지울 수 있다. 지우면 같은 꿈을 다시 공유할 수 있다 */
@@ -214,7 +214,7 @@ public class CommunityService {
 				// 남에게 가려진 글은 "없는 글"이다. 있다는 것을 403으로 알려 주지 않는다
 				throw CommunityApiException.postNotFound();
 			}
-			throw CommunityApiException.notOwner("내 글만 지울 수 있습니다");
+			throw CommunityApiException.notOwner("내 글만 지울 수 있어요");
 		}
 		this.store.deletePost(post.id(), now());
 		if (post.hasComic()) {
@@ -250,7 +250,7 @@ public class CommunityService {
 			throw CommunityApiException.badRequest("comment_empty", "댓글을 적어 주세요");
 		}
 		if (text.length() > MAX_COMMENT) {
-			throw CommunityApiException.badRequest("comment_too_long", "댓글은 500자까지입니다");
+			throw CommunityApiException.badRequest("comment_too_long", "댓글은 500자까지예요");
 		}
 		PostRow post = interactable(this.store.lockPost(parse(postId, CommunityApiException::postNotFound)).orElse(null));
 
@@ -260,7 +260,7 @@ public class CommunityService {
 				.filter(c -> c.postId().equals(post.id()) && !c.isGone())
 				.orElseThrow(CommunityApiException::commentNotFound);
 			if (p.parentId() != null) {
-				throw CommunityApiException.badRequest("reply_depth", "답글에는 답글을 달 수 없습니다");
+				throw CommunityApiException.badRequest("reply_depth", "답글에는 답글을 달 수 없어요");
 			}
 			parent = p.id();
 		}
@@ -281,7 +281,7 @@ public class CommunityService {
 			.filter(c -> c.deletedAt() == null)
 			.orElseThrow(CommunityApiException::commentNotFound);
 		if (!comment.authorId().equals(viewer)) {
-			throw CommunityApiException.notOwner("내 댓글만 지울 수 있습니다");
+			throw CommunityApiException.notOwner("내 댓글만 지울 수 있어요");
 		}
 		// 글을 먼저 잠근다. 댓글 쓰기 · 신고와 같은 순서라 서로 엇갈려 기다리지 않는다
 		this.store.lockPost(comment.postId());
@@ -299,7 +299,7 @@ public class CommunityService {
 	public void report(UUID viewer, String type, String targetId, String reason) {
 		this.accounts.lockActive(viewer);
 		if (reason == null || !REPORT_REASONS.contains(reason)) {
-			throw CommunityApiException.badRequest("invalid_report", "신고 사유가 올바르지 않습니다");
+			throw CommunityApiException.badRequest("invalid_report", "신고 사유가 올바르지 않아요");
 		}
 		Instant now = now();
 		if ("post".equals(type)) {
@@ -307,7 +307,7 @@ public class CommunityService {
 				.filter(p -> !p.isDeleted())
 				.orElseThrow(CommunityApiException::postNotFound);
 			if (post.authorId().equals(viewer)) {
-				throw CommunityApiException.badRequest("self_report", "내 글은 신고할 수 없습니다");
+				throw CommunityApiException.badRequest("self_report", "내 글은 신고할 수 없어요");
 			}
 			boolean fresh = this.store.report("post", post.id(), viewer, reason, now) > 0;
 			int reporters = this.store.countReporters("post", post.id());
@@ -323,7 +323,7 @@ public class CommunityService {
 				.filter(c -> c.deletedAt() == null)
 				.orElseThrow(CommunityApiException::commentNotFound);
 			if (comment.authorId().equals(viewer)) {
-				throw CommunityApiException.badRequest("self_report", "내 댓글은 신고할 수 없습니다");
+				throw CommunityApiException.badRequest("self_report", "내 댓글은 신고할 수 없어요");
 			}
 			this.store.lockPost(comment.postId());
 			boolean fresh = this.store.report("comment", comment.id(), viewer, reason, now) > 0;
@@ -336,7 +336,7 @@ public class CommunityService {
 			alert(fresh, "comment", comment.id(), reason, reporters, hidden, now);
 			return;
 		}
-		throw CommunityApiException.badRequest("invalid_report", "신고 대상은 post · comment 중 하나입니다");
+		throw CommunityApiException.badRequest("invalid_report", "신고 대상은 post · comment 중 하나예요");
 	}
 
 	/**
@@ -361,7 +361,7 @@ public class CommunityService {
 		this.accounts.lockActive(viewer);
 		UUID target = parse(userId, CommunityApiException::userNotFound);
 		if (target.equals(viewer)) {
-			throw CommunityApiException.badRequest("self_block", "나를 차단할 수 없습니다");
+			throw CommunityApiException.badRequest("self_block", "나를 차단할 수 없어요");
 		}
 		this.store.findActiveUser(target).orElseThrow(CommunityApiException::userNotFound);
 		this.store.block(viewer, target, now());

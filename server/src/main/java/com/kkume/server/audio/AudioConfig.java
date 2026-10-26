@@ -66,7 +66,7 @@ class AudioConfig {
 
 		private static AudioApiException unavailable() {
 			return new AudioApiException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "audio_unavailable",
-					"이 서버는 오디오를 받지 않습니다");
+					"이 서버는 오디오를 받지 않아요");
 		}
 	}
 }
