@@ -28,13 +28,15 @@ export async function saveComicImage(target: RefObject<View | null>): Promise<Sa
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { captureRef } = require('react-native-view-shot') as typeof import('react-native-view-shot');
   try {
-    // 사진만 — Android 13+에서 동영상 · 음악 권한까지 묻지 않게(`app.json`의 granularPermissions와 같게)
-    const perm = await Media.requestPermissionsAsync(true, ['photo']);
+    // 추가만 묻는다. Android 13+는 쓰기만이면 권한 창 없이 통과한다(MediaStore에 넣기만 함 — `app.json`에서 읽기 권한을 막음)
+    const perm = await Media.requestPermissionsAsync(true);
     if (!perm.granted) return 'denied';
-    const uri = await captureRef(target, { format: 'png', quality: 1, result: 'tmpfile' });
+    const uri = await captureRef(target, { format: 'png', result: 'tmpfile' });
     await Media.Asset.create(uri);
     return 'saved';
-  } catch {
+  } catch (e) {
+    // 기기에서만 나는 실패다 — 어느 단계였는지 로그로 남긴다(빌드가 귀해 원인을 못 보면 다시 재기 어렵다, 이슈 #151 리뷰)
+    console.warn('[comic save]', e);
     return 'failed';
   }
 }

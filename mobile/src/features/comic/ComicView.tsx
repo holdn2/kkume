@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
 import { Skeleton } from '@components';
@@ -15,6 +15,11 @@ type Props = {
   panels: ComicPanel[];
   /** 컷을 누르면 크게 본다. 없으면 누를 수 없다 */
   onPressPanel?: (index: number) => void;
+  /**
+   * 네 컷이 모두 그림을 받았거나(말풍선까지 얹힘) 받지 못해 걷어 냈을 때 한 번 부른다. 사진에 저장은 그 뒤에만 —
+   * 받는 중에 찍으면 스켈레톤만 담긴다(이슈 #151 리뷰)
+   */
+  onReady?: () => void;
 };
 
 const GAP = sp[1];
@@ -27,8 +32,14 @@ const GAP = sp[1];
  * 꿈 본문과 함께 보인다. 해설은 화면 읽기(접근성 이름)에만 쓴다.
  * 그림이 없으면(가짜 서버 · 받는 중) 그 자리에 자리 그림을 그린다 — 글자는 그대로 읽힌다.
  */
-export function ComicView({ layout, imageUrls, panels, onPressPanel }: Props) {
+export function ComicView({ layout, imageUrls, panels, onPressPanel, onReady }: Props) {
   const [width, setWidth] = useState(0);
+  const [settled, setSettled] = useState<number[]>([]);
+  const settle = (i: number) => setSettled((cur) => (cur.includes(i) ? cur : [...cur, i]));
+  const ready = settled.length === 4;
+  useEffect(() => {
+    if (ready) onReady?.();
+  }, [ready, onReady]);
   const cell = width > 0 ? (width - GAP) / 2 : 0;
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
@@ -43,7 +54,14 @@ export function ComicView({ layout, imageUrls, panels, onPressPanel }: Props) {
             accessibilityRole={onPressPanel ? 'button' : undefined}
             accessibilityLabel={`${i + 1}번째 컷${panels[i]?.caption ? `, ${panels[i].caption}` : ''}`}
             style={({ pressed }) => [{ width: cell, height: cell }, pressed && { opacity: press }]}>
-            <ComicPanelView index={i} size={cell} layout={layout} imageUrls={imageUrls} panel={panels[i]} />
+            <ComicPanelView
+              index={i}
+              size={cell}
+              layout={layout}
+              imageUrls={imageUrls}
+              panel={panels[i]}
+              onSettled={() => settle(i)}
+            />
           </Pressable>
         ))}
     </View>
@@ -58,10 +76,12 @@ type PanelProps = {
   panel: ComicPanel | undefined;
   /** 크게 볼 때는 대사를 줄이지 않는다 */
   full?: boolean;
+  /** 그림을 받았거나 못 받아 걷어 냈다(그림이 없는 컷은 바로) */
+  onSettled?: () => void;
 };
 
 /** 컷 하나. 뷰어의 칸과 크게 보기가 함께 쓴다 */
-export function ComicPanelView({ index, size, layout, imageUrls, panel, full }: PanelProps) {
+export function ComicPanelView({ index, size, layout, imageUrls, panel, full, onSettled: notify }: PanelProps) {
   const source = layout === 'grid2x2' ? imageUrls[0] : layout === 'panels4' ? imageUrls[index] : undefined;
   /**
    * 그림을 받는 동안은 스켈레톤을 깐다(이슈 #129, 2026-10-26 사용자 — 꿈 나눔 글에서 검은 칸만 보였다).
@@ -78,6 +98,9 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full }: 
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const waiting = !!key && loadedKey !== key;
   const onSettled = () => setLoadedKey(key);
+  useEffect(() => {
+    if (!waiting) notify?.();
+  }, [waiting, notify]);
   const image = source && key ? { uri: source, cacheKey: key } : undefined;
   return (
     <View style={[s.panel, { width: size, height: size }]}>

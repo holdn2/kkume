@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { Button, DeleteLink, EmptyCard, ErrorCard, Header, Loading, Screen, Sheet, showToast, Stack } from '@components';
@@ -74,6 +74,9 @@ export default function ComicDetail() {
   // 사진에 저장 — 화면의 네 컷(말풍선 포함)을 찍는다(이슈 #151)
   const shot = useRef<View>(null);
   const [saving, setSaving] = useState(false);
+  // 네 컷을 다 받은 뒤에만 찍는다 — 받는 중에 찍으면 말풍선 없는 스켈레톤이 저장된다(이슈 #151 리뷰)
+  const [shotReady, setShotReady] = useState(false);
+  const markReady = useCallback(() => setShotReady(true), []);
   const save = () => {
     if (saving) return;
     setSaving(true);
@@ -115,10 +118,16 @@ export default function ComicDetail() {
               {title}
             </AppText>
           )}
-          <ComicView layout={data.layout} imageUrls={data.imageUrls} panels={data.panels} onPressPanel={setZoom} />
+          <ComicView
+            layout={data.layout}
+            imageUrls={data.imageUrls}
+            panels={data.panels}
+            onPressPanel={setZoom}
+            onReady={markReady}
+          />
         </View>
         <Stack gap={sp[2]}>
-          {CAN_SAVE_COMIC && <Button label="사진에 저장" loading={saving} onPress={save} />}
+          {CAN_SAVE_COMIC && <Button label="사진에 저장" loading={saving} disabled={!shotReady} onPress={save} />}
           {/* 공유 = 꿈 나눔 글쓰기로(계획서 003 CM-3) */}
           <Button
             label="꿈 나눔에 올리기"
