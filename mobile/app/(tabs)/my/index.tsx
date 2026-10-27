@@ -188,6 +188,8 @@ export default function MyScreen() {
    * 막 올라가는 중에 옛 숫자가 남지 않게(PR #149 리뷰). 로그인하거나 나가면 다시 센다
    */
   const [unsynced, setUnsynced] = useState(0);
+  // 화면 밖에서 동기화를 부른 뒤(동의 직후) 다시 세게 올린다(PR #149 재검토)
+  const [syncTick, setSyncTick] = useState(0);
   useFocusEffect(
     useCallback(() => {
       if (!signedIn) {
@@ -209,6 +211,17 @@ export default function MyScreen() {
       };
     }, [signedIn]),
   );
+  useEffect(() => {
+    if (!signedIn || syncTick === 0) return;
+    let alive = true;
+    void getDreamRepo()
+      .then((repo) => repo.countUnsynced())
+      .then((n) => alive && setUnsynced(n))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [signedIn, syncTick]);
   const { serverConsent, sendConsent } = auth;
   useFocusEffect(
     useCallback(() => {
@@ -272,7 +285,9 @@ export default function MyScreen() {
           // 서버에 남긴다. 실패해도(오프라인) 시트를 다시 띄우지 않는다 — 폰에 동의가 있으니 다음 포커스가 조용히 다시 올린다
           await sendConsent(CONSENT_VERSION).catch(() => {});
           // 동의 전에는 동기화가 멈춰 있었다 — 폰에 동의가 남았으니 지금 올린다
-          void syncIfSignedIn({ force: true });
+          void syncIfSignedIn({ force: true })
+            .catch(() => null)
+            .then(() => setSyncTick((t) => t + 1));
           return;
         }
         if (after !== 'signUp') return;
