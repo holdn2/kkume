@@ -6,48 +6,83 @@ import org.junit.jupiter.api.Test;
 
 import tools.jackson.databind.json.JsonMapper;
 
-/** 대본 검사(문서 081 06장 "서버가 검사할 것") */
+/** 대본 검사(문서 081 06장 "서버가 검사할 것") · 인물 방식 D(문서 100 2장) */
 class ComicScriptTest {
 
 	private final JsonMapper json = JsonMapper.builder().build();
 
+	private static final String GOOD = FakeComicAi.GOOD_SCRIPT;
+
 	@Test
 	void 앞뒤에_말이_붙어도_가장_바깥_객체를_읽는다() {
-		ComicScript s = ComicScript.parse(this.json, "다음과 같습니다:\n```json\n" + FakeComicAi.GOOD_SCRIPT + "\n```").orElseThrow();
-		assertThat(s.character()).startsWith("a young adult");
+		ComicScript s = ComicScript.parse(this.json, "다음과 같습니다:\n```json\n" + GOOD + "\n```").orElseThrow();
+		assertThat(s.cast()).extracting(ComicScript.Member::name).containsExactly("ME", "PUPPY");
+		assertThat(s.cast().get(0).look()).startsWith("a young adult");
 		assertThat(s.scenes()).hasSize(4);
 		assertThat(s.panels().get(3).dialogue()).isEqualTo("늦었잖아");
 	}
 
 	@Test
 	void 컷이_4개가_아니면_어긋난_것이다() {
-		String three = FakeComicAi.GOOD_SCRIPT.replaceFirst(
-				",\\s*\\{\"scene\":\"A small puppy[^}]*\\}", "");
+		String three = GOOD.replaceFirst(",\\s*\\{\"scene\":\"Behind the last door[^}]*\\}", "");
 		assertThat(ComicScript.parse(this.json, three)).isEmpty();
 	}
 
 	@Test
 	void 인물이나_장면에_한글이_있으면_어긋난_것이다() {
-		assertThat(ComicScript.parse(this.json, FakeComicAi.GOOD_SCRIPT.replace("grey hoodie", "회색 후드"))).isEmpty();
-		assertThat(ComicScript.parse(this.json, FakeComicAi.GOOD_SCRIPT.replace("bright blue sea", "파란 바다"))).isEmpty();
+		assertThat(ComicScript.parse(this.json, GOOD.replace("grey hoodie", "회색 후드"))).isEmpty();
+		assertThat(ComicScript.parse(this.json, GOOD.replace("bright blue sea", "파란 바다"))).isEmpty();
 	}
 
 	@Test
 	void 어긋나면_걸린_검사_이름을_돌려준다() {
-		String good = FakeComicAi.GOOD_SCRIPT;
-		assertThat(ComicScript.check(this.json, good).problem()).isNull();
+		assertThat(ComicScript.check(this.json, GOOD).problem()).isNull();
 		assertThat(ComicScript.check(this.json, null).problem()).isEqualTo("empty");
 		assertThat(ComicScript.check(this.json, " ").problem()).isEqualTo("empty");
 		assertThat(ComicScript.check(this.json, "만들 수 없습니다").problem()).isEqualTo("no_json");
 		assertThat(ComicScript.check(this.json, "{not json}").problem()).isEqualTo("bad_json");
-		assertThat(ComicScript.check(this.json, "{\"panels\":[]}").problem()).isEqualTo("no_character");
-		assertThat(ComicScript.check(this.json, good.replace("grey hoodie", "회색 후드")).problem()).isEqualTo("character_hangul");
-		assertThat(ComicScript.check(this.json, "{\"character\":\"x\",\"panels\":[]}").problem()).isEqualTo("panel_count");
-		assertThat(ComicScript.check(this.json, good.replace("\"A long school hallway stretches endlessly.\"", "null")).problem())
+		assertThat(ComicScript.check(this.json, "{\"panels\":[]}").problem()).isEqualTo("no_cast");
+		assertThat(ComicScript.check(this.json, "{\"cast\":[],\"panels\":[]}").problem()).isEqualTo("no_cast");
+		// 첫 인물은 꿈꾼 사람 ME · 이름표는 영어 대문자 · 겹치지 않음
+		assertThat(ComicScript.check(this.json, GOOD.replace("\"name\":\"ME\"", "\"name\":\"DREAMER\"")).problem())
+			.isEqualTo("cast_name");
+		assertThat(ComicScript.check(this.json, GOOD.replace("\"name\":\"PUPPY\"", "\"name\":\"ME\"")).problem())
+			.isEqualTo("cast_name");
+		assertThat(ComicScript.check(this.json, GOOD.replace("\"name\":\"PUPPY\"", "\"name\":\"강아지\"")).problem())
+			.isEqualTo("cast_name");
+		assertThat(ComicScript.check(this.json, GOOD.replace("\"a small white puppy with a red collar\"", "null")).problem())
+			.isEqualTo("cast_look");
+		assertThat(ComicScript.check(this.json, GOOD.replace("grey hoodie", "회색 후드")).problem()).isEqualTo("cast_hangul");
+		assertThat(ComicScript.check(this.json, "{\"cast\":[{\"name\":\"ME\",\"look\":\"x\"}],\"panels\":[]}").problem())
+			.isEqualTo("panel_count");
+		assertThat(ComicScript.check(this.json, GOOD.replace("\"Another door shows the same ocean.\"", "null")).problem())
 			.isEqualTo("no_scene");
-		assertThat(ComicScript.check(this.json, good.replace("bright blue sea", "파란 바다")).problem()).isEqualTo("scene_hangul");
-		assertThat(ComicScript.check(this.json, good.replace("\"복도를 걸었는데 길이 끝없이 늘어났다\"", "\"\"")).problem())
+		assertThat(ComicScript.check(this.json, GOOD.replace("bright blue sea", "파란 바다")).problem()).isEqualTo("scene_hangul");
+		assertThat(ComicScript.check(this.json, GOOD.replace("\"복도를 걸었는데 길이 끝없이 늘어났다\"", "\"\"")).problem())
 			.isEqualTo("no_caption");
+	}
+
+	@Test
+	void 이름표는_대문자로_맞추고_컷_인물은_who_와_장면에_나온_이름을_인물_순서로_모은다() {
+		ComicScript s = ComicScript.parse(this.json, GOOD.replace("\"name\":\"PUPPY\"", "\"name\":\"puppy\"")
+			.replace("\"who\":[\"ME\"],\"caption\":\"첫", "\"who\":[\"GHOST\",\"me\"],\"caption\":\"첫")).orElseThrow();
+		assertThat(s.cast().get(1).name()).isEqualTo("PUPPY");
+		assertThat(s.scenes().get(0).who()).containsExactly("ME");
+		// 모르는 이름(GHOST)은 버린다
+		assertThat(s.scenes().get(1).who()).containsExactly("ME");
+		assertThat(s.scenes().get(2).who()).isEmpty();
+		// who 에는 PUPPY 만 적었지만 장면 문장에 ME 가 나온다
+		assertThat(s.scenes().get(3).who()).containsExactly("ME", "PUPPY");
+		assertThat(s.castIndex("PUPPY")).isEqualTo(1);
+	}
+
+	@Test
+	void 인물이_넷을_넘으면_앞의_넷만_쓴다() {
+		String many = GOOD.replace("{\"name\":\"PUPPY\",\"look\":\"a small white puppy with a red collar\"}",
+				"{\"name\":\"PUPPY\",\"look\":\"a puppy\"},{\"name\":\"CAT\",\"look\":\"a cat\"},{\"name\":\"OWL\",\"look\":\"an owl\"},"
+						+ "{\"name\":\"FOX\",\"look\":\"a fox\"}");
+		ComicScript s = ComicScript.parse(this.json, many).orElseThrow();
+		assertThat(s.cast()).extracting(ComicScript.Member::name).containsExactly("ME", "PUPPY", "CAT", "OWL");
 	}
 
 	@Test
@@ -55,14 +90,14 @@ class ComicScriptTest {
 		assertThat(ComicScript.parse(this.json, "만들 수 없습니다")).isEmpty();
 		assertThat(ComicScript.parse(this.json, "{not json}")).isEmpty();
 		assertThat(ComicScript.parse(this.json, null)).isEmpty();
-		assertThat(ComicScript.parse(this.json, FakeComicAi.GOOD_SCRIPT.replace("\"복도를 걸었는데 길이 끝없이 늘어났다\"", "\"\""))).isEmpty();
+		assertThat(ComicScript.parse(this.json, GOOD.replace("\"복도를 걸었는데 길이 끝없이 늘어났다\"", "\"\""))).isEmpty();
 	}
 
 	@Test
 	void 해설은_30자_대사는_20자에서_자른다() {
 		String longCaption = "가".repeat(40);
 		String longLine = "나".repeat(25);
-		String s = FakeComicAi.GOOD_SCRIPT.replace("복도를 걸었는데 길이 끝없이 늘어났다", longCaption).replace("바다다!", longLine);
+		String s = GOOD.replace("복도를 걸었는데 길이 끝없이 늘어났다", longCaption).replace("바다다!", longLine);
 		ComicScript script = ComicScript.parse(this.json, s).orElseThrow();
 		assertThat(script.panels().get(0).caption()).hasSize(30);
 		assertThat(script.panels().get(1).dialogue()).hasSize(20);
@@ -74,7 +109,7 @@ class ComicScriptTest {
 	}
 
 	private ComicScript withCaption(String caption) {
-		return ComicScript.parse(this.json, FakeComicAi.GOOD_SCRIPT.replace("복도를 걸었는데 길이 끝없이 늘어났다", caption)).orElseThrow();
+		return ComicScript.parse(this.json, GOOD.replace("복도를 걸었는데 길이 끝없이 늘어났다", caption)).orElseThrow();
 	}
 
 	@Test
@@ -104,29 +139,29 @@ class ComicScriptTest {
 	}
 
 	@Test
-	void 대본_프롬프트는_주인공을_the_main_character_로_부르게_한다() {
-		assertThat(ComicScript.SYSTEM).contains("age, gender, hair color and style, and one outfit with clear colors",
-				"In every scene call the dreamer \"the main character\"",
-				"Whenever another person or animal appears, describe their own look in that scene");
+	void 대본_프롬프트는_인물을_이름표로만_부르고_대명사를_막는다() {
+		assertThat(ComicScript.SYSTEM).contains("The first cast member is the dreamer and is always named ME",
+				"at most 4 cast members", "refer to characters ONLY by their cast name in capitals",
+				"Never use pronouns", "Start with the place");
 	}
 
 	@Test
-	void 그림_프롬프트는_컷마다_주인공_모습을_끼우고_글자_금지로_끝난다() {
-		ComicScript script = ComicScript.parse(this.json, FakeComicAi.GOOD_SCRIPT
-			.replace("A long school hallway stretches endlessly.", "The main character walks down a long school hallway.")
-			.replace("She opens a door to a bright blue sea.", "A door opens and the Main Character sees a blue sea."))
-			.orElseThrow();
-		String c = "a young adult with short black hair wearing a grey hoodie";
-		String prompt = script.gridPrompt("soft");
-		assertThat(prompt).contains(
-				"Main character, drawn identically in all four panels (same face, same hairstyle and hair color, same outfit): " + c + ".",
-				"Top-left panel: The main character (" + c + ") walks down a long school hallway.",
-				"Top-right panel: A door opens and the Main Character (" + c + ") sees a blue sea.",
-				"Bottom-left panel: the main character (" + c + "). Another door shows the same ocean.");
-		assertThat(prompt).endsWith("Reminder: no speech bubbles, no text, no letters, no signs or writing anywhere in the image.");
-		// 첫 번째만 바꾼다
-		assertThat(script.withCharacter("the main character waves; the main character smiles"))
-			.isEqualTo("the main character (" + c + ") waves; the main character smiles");
+	void 기준_그림은_인물을_왼쪽부터_순서대로_세운다() {
+		ComicScript s = ComicScript.parse(this.json, GOOD).orElseThrow();
+		assertThat(s.lineupPrompt("ink")).contains("Character reference sheet", "plain white background",
+				"From left to right: 1. a young adult with short black hair wearing a grey hoodie; 2. a small white puppy with a red collar.",
+				"black and white ink manga style");
+	}
+
+	@Test
+	void 컷_프롬프트는_그_컷_인물만_참조로_짝짓고_글자_금지로_끝난다() {
+		ComicScript s = ComicScript.parse(this.json, GOOD).orElseThrow();
+		String last = s.panelPrompt(3, "soft");
+		assertThat(last).contains("not split into smaller panels",
+				"image 1 is ME (a young adult with short black hair wearing a grey hoodie); image 2 is PUPPY (a small white puppy with a red collar)",
+				"Draw the place of the scene in detail", "Scene: Behind the last door, PUPPY waits for ME.", "pastel watercolor");
+		assertThat(last).endsWith("Reminder: no speech bubbles, no text, no letters, no signs or writing anywhere in the image.");
+		assertThat(s.panelPrompt(2, "soft")).contains("No people or animals in this panel.").doesNotContain("image 1");
 	}
 
 	@Test

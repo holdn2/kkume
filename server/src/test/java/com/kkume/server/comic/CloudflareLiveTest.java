@@ -3,6 +3,8 @@ package com.kkume.server.comic;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -15,7 +17,7 @@ import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * 진짜 Workers AI 에 한 편을 그려 본다(약 150뉴런 — 무료 한도 하루 10,000 안). 평소에는 돌지 않는다.
+ * 진짜 Workers AI 에 한 편을 그려 본다(약 620뉴런 — 무료 한도 하루 10,000 안). 평소에는 돌지 않는다.
  *
  * <pre>KKUME_CF_KEY_FILE=/d/_kkume/secrets/cloudflare.key.txt ./gradlew test --tests '*CloudflareLiveTest'</pre>
  *
@@ -47,9 +49,20 @@ class CloudflareLiveTest {
 		Files.writeString(Path.of("build/comic-live.txt"), script.panels().stream()
 			.map(p -> p.caption() + (p.dialogue() == null ? "" : " 「" + p.dialogue() + "」")).collect(Collectors.joining("\n")));
 
-		ComicAi.Reply<byte[]> image = ai.draw(script.gridPrompt("soft"));
-		System.out.println("그림 " + image.usage().durationMs() + "ms, " + image.value().length + " bytes, $" + image.usage().usd());
-		assertThat(image.value()).startsWith((byte) 0xFF, (byte) 0xD8);
-		Files.write(Path.of("build/comic-live.jpg"), image.value());
+		// 일꾼과 같은 순서(D 방식): 기준 그림 → 인물별로 잘라 → 컷 넷 → 2×2
+		int people = script.cast().size();
+		ComicAi.Reply<byte[]> lineup = ai.draw(script.lineupPrompt("soft"), people > 1 ? 1024 : 512, 512, List.of());
+		System.out.println("기준 그림 " + lineup.usage().durationMs() + "ms, " + ComicPricing.neurons(lineup.usage().usd()) + "뉴런");
+		List<byte[]> pieces = ComicImages.split(lineup.value(), people);
+		List<byte[]> cells = new ArrayList<>();
+		for (int i = 0; i < ComicScript.PANELS; i++) {
+			List<byte[]> refs = script.scenes().get(i).who().stream().map(n -> pieces.get(script.castIndex(n))).toList();
+			ComicAi.Reply<byte[]> cell = ai.draw(script.panelPrompt(i, "soft"), 512, 512, refs);
+			System.out.println("컷 " + (i + 1) + " " + cell.usage().durationMs() + "ms, " + ComicPricing.neurons(cell.usage().usd()) + "뉴런");
+			cells.add(cell.value());
+		}
+		byte[] grid = ComicImages.grid(cells);
+		assertThat(grid).startsWith((byte) 0xFF, (byte) 0xD8);
+		Files.write(Path.of("build/comic-live.jpg"), grid);
 	}
 }

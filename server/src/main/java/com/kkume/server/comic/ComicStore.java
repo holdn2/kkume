@@ -163,6 +163,14 @@ class ComicStore {
 			.addValue("now", time(now)));
 	}
 
+	/** 아직 그리는 중인가. 그 사이 지웠거나(앱 · 계정 삭제) 멈춘 것으로 처리됐으면 {@code false} — 남은 컷을 그리지 않는다 */
+	boolean isDrawing(UUID id) {
+		Boolean drawing = this.jdbc.queryForObject("""
+				select exists (select 1 from comics where id = :id and status = 'drawing' and deleted_at is null)
+				""", new MapSqlParameterSource("id", id), Boolean.class);
+		return Boolean.TRUE.equals(drawing);
+	}
+
 	/** 다 그렸다. 그 사이 지웠거나(앱 · 계정 삭제) 멈춘 것으로 처리됐으면 0 — 부른 쪽이 올린 그림을 지운다 */
 	int finishDone(UUID id, String layout, String imageKey, Instant now) {
 		return this.jdbc.update("""

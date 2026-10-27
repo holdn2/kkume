@@ -34,6 +34,10 @@ public class FakeComicStorage implements ComicStorage {
 		this.objects.keySet().removeIf(k -> k.startsWith(prefix));
 	}
 
+	public byte[] get(String key) {
+		return this.objects.get(key);
+	}
+
 	public boolean has(String key) {
 		return this.objects.containsKey(key);
 	}
