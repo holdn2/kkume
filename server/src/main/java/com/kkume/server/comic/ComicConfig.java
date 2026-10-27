@@ -56,7 +56,7 @@ class ComicConfig {
 		}
 
 		@Override
-		public Reply<byte[]> draw(String prompt) {
+		public Reply<byte[]> draw(String prompt, int width, int height, java.util.List<byte[]> references) {
 			throw new IllegalStateException("만화 모델이 설정되지 않았습니다");
 		}
 	}

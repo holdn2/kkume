@@ -186,9 +186,22 @@ class ComicApiTest {
 
 		// 꿈 제목 · 본문만 모델에 간다. 그림 프롬프트에는 글자를 넣지 말라는 말과 그림체가 들어간다
 		assertThat(this.ai.lastUserMessage).isEqualTo("복도 꿈\n\n학교 복도가 끝없이 길어졌다.");
-		assertThat(this.ai.lastPrompt).contains("2x2 grid", "no text", "pastel watercolor",
-				"a young adult with short black hair", "Top-left panel: the main character (a young adult with short black hair wearing a grey hoodie). A long school hallway");
-		assertThat(this.storage.has("comics/" + this.me.id() + "/" + id + "/grid.jpg")).isTrue();
+		// 그림은 D 방식(문서 100 2장): 인물을 줄 세운 기준 그림 한 장 → 컷 넷을 따로, 그 컷 인물의 조각만 참조로
+		assertThat(this.ai.sizes).containsExactly("1024x512", "512x512", "512x512", "512x512", "512x512");
+		assertThat(this.ai.prompts.get(0)).contains("Character reference sheet",
+				"1. a young adult with short black hair wearing a grey hoodie; 2. a small white puppy with a red collar", "pastel watercolor");
+		// 4컷은 who 에 PUPPY 만 적었지만 장면에 ME 가 나와 둘 다 넣는다(인물 순서)
+		assertThat(this.ai.referenceCounts).containsExactly(0, 1, 1, 0, 2);
+		assertThat(this.ai.prompts.get(1)).contains("no text", "pastel watercolor", "not split into smaller panels",
+				"image 1 is ME (a young adult with short black hair wearing a grey hoodie)",
+				"Scene: In a long school hallway, ME walks as the hallway stretches endlessly.");
+		assertThat(this.ai.prompts.get(3)).contains("No people or animals in this panel.");
+		assertThat(this.ai.prompts.get(4)).contains("image 1 is ME (", "image 2 is PUPPY (a small white puppy with a red collar)");
+		// 붙인 그림은 1024×1024 한 장 — 앱은 지금처럼 네 칸으로 잘라 본다
+		java.awt.image.BufferedImage grid = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(
+				this.storage.get("comics/" + this.me.id() + "/" + id + "/grid.jpg")));
+		assertThat(grid.getWidth()).isEqualTo(1024);
+		assertThat(grid.getHeight()).isEqualTo(1024);
 
 		// 끝난 만화에는 꿈 내용 · 장면 묘사가 남지 않는다
 		Map<String, Object> row = this.jdbc.queryForMap("select title, dream_text, scenes from comics where id = ?::uuid", id);
@@ -203,16 +216,19 @@ class ComicApiTest {
 		List<Map<String, Object>> costs = this.jdbc.queryForList(
 				"select step, model, ok, input_tokens, output_tokens, images, neurons, usd from comic_costs where comic_id = ?::uuid order by id",
 				id);
-		assertThat(costs).hasSize(2);
+		assertThat(costs).hasSize(6);
 		assertThat(costs.get(0)).containsEntry("step", "script").containsEntry("model", "@cf/openai/gpt-oss-120b")
 			.containsEntry("ok", true).containsEntry("input_tokens", 600).containsEntry("output_tokens", 900);
 		// 600 × $0.35/M + 900 × $0.75/M = $0.000885 = 80.455 뉴런
 		assertThat((BigDecimal) costs.get(0).get("usd")).isEqualByComparingTo("0.000885");
 		assertThat((BigDecimal) costs.get(0).get("neurons")).isEqualByComparingTo("80.455");
-		// 1024² = 512² 네 칸 × $0.000287 = $0.001148 = 104.364 뉴런
+		// 그림은 크기와 상관없이 한 번에 104.20뉴런(10-27 실측) — 기준 그림은 참조 없음
 		assertThat(costs.get(1)).containsEntry("step", "image").containsEntry("images", 1);
-		assertThat((BigDecimal) costs.get(1).get("usd")).isEqualByComparingTo("0.001148");
-		assertThat((BigDecimal) costs.get(1).get("neurons")).isEqualByComparingTo("104.364");
+		assertThat((BigDecimal) costs.get(1).get("usd")).isEqualByComparingTo("0.001146");
+		assertThat((BigDecimal) costs.get(1).get("neurons")).isEqualByComparingTo("104.200");
+		// 참조 그림 한 장에 5.37뉴런이 붙는다
+		assertThat((BigDecimal) costs.get(2).get("neurons")).isEqualByComparingTo("109.570");
+		assertThat(costs.subList(1, 6)).extracting(m -> m.get("step")).containsOnly("image");
 	}
 
 	@Test
@@ -391,14 +407,14 @@ class ComicApiTest {
 		assertThat(gender(id)).isEqualTo("female");
 		drain();
 		assertThat(this.ai.lastSystem).startsWith(ComicScript.SYSTEM).endsWith(
-				"\nThe dreamer is a woman: \"character\" must describe a woman, and the main character is a woman in every scene.");
+				"\nThe dreamer ME is a woman: the look of ME must describe a woman.");
 		assertThat((String) JsonPath.read(read(this.me, id), "$.status")).isEqualTo("done");
 		assertThat(gender(id)).isNull();
 
 		String man = JsonPath.read(json(createWithGender(login(), ",\"gender\":\"male\"").andExpect(status().isAccepted())), "$.id");
 		drain();
 		assertThat(this.ai.lastSystem).endsWith(
-				"\nThe dreamer is a man: \"character\" must describe a man, and the main character is a man in every scene.");
+				"\nThe dreamer ME is a man: the look of ME must describe a man.");
 		assertThat(gender(man)).isNull();
 	}
 
@@ -472,9 +488,9 @@ class ComicApiTest {
 		String id = createId(this.me, dreamId());
 		drain();
 		assertThat((String) JsonPath.read(read(this.me, id), "$.status")).isEqualTo("done");
-		assertThat(this.ai.drawCalls).hasValue(2);
+		assertThat(this.ai.drawCalls).hasValue(6);
 		assertThat(this.jdbc.queryForList("select error from comic_costs where comic_id = ?::uuid and step = 'image' order by id",
-				String.class, id)).containsExactly("cf_3030", null);
+				String.class, id)).containsExactly("cf_3030", null, null, null, null, null);
 	}
 
 	@Test
@@ -525,7 +541,7 @@ class ComicApiTest {
 	@Test
 	void 대본이_계약에_맞지_않으면_한_번_다시_부른다() throws Exception {
 		// 장면에 한글이 섞였다(082 꿈 2에서 실제로 본 것)
-		this.ai.nextScript(() -> FakeComicAi.GOOD_SCRIPT.replace("A long school hallway stretches endlessly.", "끝없는 복도"));
+		this.ai.nextScript(() -> FakeComicAi.GOOD_SCRIPT.replace("In a long school hallway, ME walks as the hallway stretches endlessly.", "끝없는 복도"));
 		String id = createId(this.me, dreamId());
 		drain();
 		assertThat(this.ai.scriptCalls).hasValue(2);
@@ -581,7 +597,7 @@ class ComicApiTest {
 	@Test
 	void 대본이_두_번_다_어긋나면_그리지_않고_failed() throws Exception {
 		this.ai.nextScript(() -> "죄송하지만 만들 수 없습니다");
-		this.ai.nextScript(() -> "{\"character\":\"x\",\"panels\":[]}");
+		this.ai.nextScript(() -> "{\"cast\":[{\"name\":\"ME\",\"look\":\"x\"}],\"panels\":[]}");
 		String id = createId(this.me, dreamId());
 		drain();
 		assertThat(this.ai.drawCalls).hasValue(0);
@@ -649,7 +665,7 @@ class ComicApiTest {
 			.isZero();
 		assertThat(this.storage.keysUnder("comics/" + this.me.id() + "/")).isEmpty();
 		assertThat(this.jdbc.queryForObject("select count(*) from comic_costs where comic_id = ?::uuid", Long.class, id))
-			.isEqualTo(2);
+			.isEqualTo(6);
 	}
 
 	// ---------------------------------------------------------------- 03 꿈 나눔에 붙이기

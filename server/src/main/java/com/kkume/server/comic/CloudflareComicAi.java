@@ -7,7 +7,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -24,7 +28,7 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <ul>
  * <li>대본: OpenAI 호환 {@code POST /ai/v1/chat/completions}. {@code reasoning_effort: low}, {@code max_tokens 4000}
- * <li>그림: {@code POST /ai/run/{model}} multipart(prompt · width · height). 응답 {@code result.image}가 base64 JPEG
+ * <li>그림: {@code POST /ai/run/{model}} multipart(prompt · width · height · input_image_N). 응답 {@code result.image}가 base64 JPEG
  * </ul>
  *
  * <p>오류 본문의 {@code errors[].code}로 가른다. 8007(NSFW)은 거절, 3036 · 4006(무료 한도 다 씀)은 한도 초과, 그 밖은 실패.
@@ -33,8 +37,6 @@ import tools.jackson.databind.json.JsonMapper;
  * 토큰은 로그 · 예외 메시지에 넣지 않는다.
  */
 class CloudflareComicAi implements ComicAi {
-
-	static final int IMAGE_SIZE = 1024;
 
 	private static final int NSFW = 8007;
 
@@ -95,23 +97,39 @@ class CloudflareComicAi implements ComicAi {
 		JsonNode usage = reply.path("usage");
 		Integer in = usage.has("prompt_tokens") ? usage.get("prompt_tokens").asInt() : null;
 		Integer out = usage.has("completion_tokens") ? usage.get("completion_tokens").asInt() : null;
-		Usage u = new Usage("script", this.config.scriptModel(), in, out, 0, ComicPricing.script(in, out), elapsed(started));
+		// 실제로 빠진 뉴런이 응답에 온다(10-27 확인). 없으면 토큰으로 어림한다
+		BigDecimal usd = usage.path("neurons").isNumber()
+				? ComicPricing.fromNeurons(usage.get("neurons").decimalValue()) : ComicPricing.script(in, out);
+		Usage u = new Usage("script", this.config.scriptModel(), in, out, 0, usd, elapsed(started));
 		String content = reply.path("choices").path(0).path("message").path("content").asString("");
 		return new Reply<>(content, u);
 	}
 
+	/**
+	 * 참조 그림은 {@code input_image_0 …} 파일 칸으로 넣는다(094 실측에서 Workers AI 가 받음). 청구된 뉴런은 응답 머리글
+	 * {@code cf-ai-neurons}에서 읽는다 — 크기와 상관없이 한 번에 104.20 이라 가격표로 셈하면 틀린다.
+	 */
 	@Override
-	public Reply<byte[]> draw(String prompt) {
+	public Reply<byte[]> draw(String prompt, int width, int height, List<byte[]> references) {
 		MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
 		form.add("prompt", prompt);
-		form.add("width", String.valueOf(IMAGE_SIZE));
-		form.add("height", String.valueOf(IMAGE_SIZE));
+		form.add("width", String.valueOf(width));
+		form.add("height", String.valueOf(height));
+		for (int i = 0; i < references.size(); i++) {
+			HttpHeaders part = new HttpHeaders();
+			part.setContentType(MediaType.IMAGE_JPEG);
+			part.setContentDisposition(ContentDisposition.formData().name("input_image_" + i).filename("ref" + i + ".jpg").build());
+			form.add("input_image_" + i, new HttpEntity<>(references.get(i), part));
+		}
 
 		long started = System.nanoTime();
 		String raw;
+		BigDecimal neurons;
 		try {
-			raw = this.http.post().uri("/run/" + this.config.imageModel()).contentType(MediaType.MULTIPART_FORM_DATA)
-				.body(form).retrieve().body(String.class);
+			ResponseEntity<String> response = this.http.post().uri("/run/" + this.config.imageModel())
+				.contentType(MediaType.MULTIPART_FORM_DATA).body(form).retrieve().toEntity(String.class);
+			raw = response.getBody();
+			neurons = neurons(response.getHeaders().getFirst("cf-ai-neurons"));
 		}
 		catch (RestClientResponseException ex) {
 			throw failure("image", this.config.imageModel(), ex, elapsed(started));
@@ -121,7 +139,7 @@ class CloudflareComicAi implements ComicAi {
 		}
 
 		Usage u = new Usage("image", this.config.imageModel(), null, null, 1,
-				ComicPricing.image(IMAGE_SIZE, IMAGE_SIZE), elapsed(started));
+				neurons != null ? ComicPricing.fromNeurons(neurons) : ComicPricing.image(references.size()), elapsed(started));
 		JsonNode reply = this.json.readTree(raw == null ? "{}" : raw);
 		String b64 = reply.path("result").path("image").asString("");
 		if (b64.isEmpty()) {
@@ -154,6 +172,19 @@ class CloudflareComicAi implements ComicAi {
 		Usage u = new Usage(step, model, null, null, 0, BigDecimal.ZERO, ms);
 		String label = ex instanceof ResourceAccessException ? "network" : "client_error";
 		return new ComicAiException(ComicAiException.Kind.FAILED, label, "Workers AI " + step + " — 닿지 못함", u, ex);
+	}
+
+	/** {@code cf-ai-neurons} 머리글. 없거나 숫자가 아니면 null */
+	private static BigDecimal neurons(String header) {
+		if (header == null || header.isBlank()) {
+			return null;
+		}
+		try {
+			return new BigDecimal(header.strip());
+		}
+		catch (NumberFormatException ex) {
+			return null;
+		}
 	}
 
 	/** 코드를 모르는 429 — 본문이 무료 한도를 다 썼다고 말하는가 */

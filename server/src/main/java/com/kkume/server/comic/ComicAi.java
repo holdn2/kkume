@@ -1,6 +1,7 @@
 package com.kkume.server.comic;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * 대본 · 그림을 만드는 모델. 운영은 Cloudflare Workers AI({@link CloudflareComicAi}), 테스트는 가짜다.
@@ -22,11 +23,12 @@ public interface ComicAi {
 	Reply<String> script(String system, String user);
 
 	/**
-	 * 그림 한 장(1024×1024 JPEG).
+	 * 그림 한 장(JPEG).
 	 *
+	 * @param references 참조 그림(JPEG). 순서대로 프롬프트의 "image 1 · image 2 …"가 된다. 없으면 빈 목록
 	 * @throws ComicAiException 거절({@link ComicAiException.Kind#REFUSED}) · 무료 한도 초과 · 그 밖의 실패
 	 */
-	Reply<byte[]> draw(String prompt);
+	Reply<byte[]> draw(String prompt, int width, int height, List<byte[]> references);
 
 	/**
 	 * @param usd 가격표로 환산한 금액. 무료 한도 안이면 실제 청구는 0이다

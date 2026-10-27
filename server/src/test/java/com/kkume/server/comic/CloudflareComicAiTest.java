@@ -58,23 +58,47 @@ class CloudflareComicAiTest {
 		assertThat(r.value()).isEqualTo("{\"character\":\"x\"}");
 		assertThat(r.usage().inputTokens()).isEqualTo(1000);
 		assertThat(r.usage().outputTokens()).isEqualTo(2000);
-		// 1000 × 0.35/M + 2000 × 0.75/M
+		// 응답에 뉴런이 없으면 토큰으로 어림한다: 1000 × 0.35/M + 2000 × 0.75/M
 		assertThat(r.usage().usd()).isEqualByComparingTo("0.00185");
 	}
 
 	@Test
-	void 그림은_multipart_로_보내고_base64_JPEG_를_푼다() {
+	void 대본_응답에_뉴런이_있으면_그_값으로_센다() {
+		this.server.expect(requestTo(BASE + "/v1/chat/completions"))
+			.andRespond(withSuccess("""
+					{"choices":[{"message":{"content":"{}"}}],
+					 "usage":{"prompt_tokens":557,"completion_tokens":663,"neurons":62.92715835571289}}""", MediaType.APPLICATION_JSON));
+		ComicAi.Reply<String> r = this.ai.script("system", "꿈");
+		assertThat(ComicPricing.neurons(r.usage().usd())).isEqualByComparingTo("62.927");
+	}
+
+	@Test
+	void 그림은_multipart_로_보내고_base64_JPEG_를_풀고_뉴런은_머리글에서_읽는다() {
 		byte[] jpeg = { (byte) 0xFF, (byte) 0xD8, 1, 2 };
 		this.server.expect(requestTo(BASE + "/run/@cf/black-forest-labs/flux-2-klein-4b"))
 			.andExpect(method(HttpMethod.POST))
 			.andExpect(content().contentTypeCompatibleWith(MediaType.MULTIPART_FORM_DATA))
+			.andExpect(content().string(org.hamcrest.Matchers.allOf(
+					org.hamcrest.Matchers.containsString("name=\"width\""),
+					org.hamcrest.Matchers.containsString("name=\"input_image_0\"; filename=\"ref0.jpg\""),
+					org.hamcrest.Matchers.containsString("name=\"input_image_1\""))))
 			.andRespond(withSuccess("{\"result\":{\"image\":\"" + Base64.getEncoder().encodeToString(jpeg)
-					+ "\"},\"success\":true}", MediaType.APPLICATION_JSON));
+					+ "\"},\"success\":true}", MediaType.APPLICATION_JSON).header("cf-ai-neurons", "114.94"));
 
-		ComicAi.Reply<byte[]> r = this.ai.draw("prompt");
+		ComicAi.Reply<byte[]> r = this.ai.draw("prompt", 512, 512, java.util.List.of(new byte[] { 1 }, new byte[] { 2 }));
 		assertThat(r.value()).containsExactly(jpeg);
 		assertThat(r.usage().images()).isEqualTo(1);
-		assertThat(r.usage().usd()).isEqualByComparingTo("0.001148");
+		assertThat(ComicPricing.neurons(r.usage().usd())).isEqualByComparingTo("114.940");
+	}
+
+	@Test
+	void 뉴런_머리글이_없으면_한_번_104_20에_참조_한_장마다_5_37로_어림한다() {
+		byte[] jpeg = { (byte) 0xFF, (byte) 0xD8, 1, 2 };
+		this.server.expect(requestTo(BASE + "/run/@cf/black-forest-labs/flux-2-klein-4b"))
+			.andRespond(withSuccess("{\"result\":{\"image\":\"" + Base64.getEncoder().encodeToString(jpeg)
+					+ "\"},\"success\":true}", MediaType.APPLICATION_JSON));
+		ComicAi.Reply<byte[]> r = this.ai.draw("prompt", 1024, 512, java.util.List.of(new byte[] { 1 }));
+		assertThat(ComicPricing.neurons(r.usage().usd())).isEqualByComparingTo("109.570");
 	}
 
 	@Test
@@ -82,7 +106,7 @@ class CloudflareComicAiTest {
 		this.server.expect(requestTo(BASE + "/run/@cf/black-forest-labs/flux-2-klein-4b"))
 			.andRespond(withStatus(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON).body("""
 					{"errors":[{"message":"AiError: AiError: Input prompt contains NSFW content.","code":8007}],"success":false}"""));
-		assertThatThrownBy(() -> this.ai.draw("p")).isInstanceOfSatisfying(ComicAiException.class, ex -> {
+		assertThatThrownBy(() -> this.ai.draw("p", 512, 512, java.util.List.of())).isInstanceOfSatisfying(ComicAiException.class, ex -> {
 			assertThat(ex.kind()).isEqualTo(ComicAiException.Kind.REFUSED);
 			assertThat(ex.code()).isEqualTo("cf_8007");
 			assertThat(ex.usage().usd()).isZero();
@@ -124,7 +148,7 @@ class CloudflareComicAiTest {
 		this.server.expect(requestTo(BASE + "/run/@cf/black-forest-labs/flux-2-klein-4b"))
 			.andRespond(withStatus(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON).body("""
 					{"errors":[{"message":"AiError: Your output has been flagged. Please choose another prompt / input image combination","code":3030}]}"""));
-		assertThatThrownBy(() -> this.ai.draw("p")).isInstanceOfSatisfying(ComicAiException.class, ex -> {
+		assertThatThrownBy(() -> this.ai.draw("p", 512, 512, java.util.List.of())).isInstanceOfSatisfying(ComicAiException.class, ex -> {
 			assertThat(ex.kind()).isEqualTo(ComicAiException.Kind.FAILED);
 			assertThat(ex.code()).isEqualTo(CloudflareComicAi.OUTPUT_FLAGGED);
 		});
@@ -134,7 +158,7 @@ class CloudflareComicAiTest {
 	void 그_밖의_오류는_실패이고_본문이_JSON_이_아니면_상태_코드로_남긴다() {
 		this.server.expect(requestTo(BASE + "/run/@cf/black-forest-labs/flux-2-klein-4b"))
 			.andRespond(withStatus(HttpStatus.BAD_GATEWAY).body("<html>bad gateway</html>"));
-		assertThatThrownBy(() -> this.ai.draw("p")).isInstanceOfSatisfying(ComicAiException.class, ex -> {
+		assertThatThrownBy(() -> this.ai.draw("p", 512, 512, java.util.List.of())).isInstanceOfSatisfying(ComicAiException.class, ex -> {
 			assertThat(ex.kind()).isEqualTo(ComicAiException.Kind.FAILED);
 			assertThat(ex.code()).isEqualTo("http_502");
 			// 토큰은 메시지에 들어가지 않는다
@@ -147,7 +171,7 @@ class CloudflareComicAiTest {
 		this.server.expect(requestTo(BASE + "/run/@cf/black-forest-labs/flux-2-klein-4b"))
 			.andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS).contentType(MediaType.APPLICATION_JSON)
 				.body("{\"errors\":[{\"message\":\"Capacity temporarily exceeded\",\"code\":3040}]}"));
-		assertThatThrownBy(() -> this.ai.draw("p")).isInstanceOfSatisfying(ComicAiException.class, ex -> {
+		assertThatThrownBy(() -> this.ai.draw("p", 512, 512, java.util.List.of())).isInstanceOfSatisfying(ComicAiException.class, ex -> {
 			assertThat(ex.kind()).isEqualTo(ComicAiException.Kind.FAILED);
 			assertThat(ex.code()).isEqualTo("cf_3040");
 		});
@@ -157,7 +181,7 @@ class CloudflareComicAiTest {
 	void 그림_응답에_이미지가_없으면_실패() {
 		this.server.expect(requestTo(BASE + "/run/@cf/black-forest-labs/flux-2-klein-4b"))
 			.andRespond(withSuccess("{\"result\":{},\"success\":true}", MediaType.APPLICATION_JSON));
-		assertThatThrownBy(() -> this.ai.draw("p")).isInstanceOfSatisfying(ComicAiException.class,
+		assertThatThrownBy(() -> this.ai.draw("p", 512, 512, java.util.List.of())).isInstanceOfSatisfying(ComicAiException.class,
 				ex -> assertThat(ex.code()).isEqualTo("empty_image"));
 	}
 }
