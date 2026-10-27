@@ -130,14 +130,26 @@ class CommunityStore {
 	 * 피드. 지우지도 가리지도 않은 글 중 {@code viewer}가 차단하지 않은 사람의 것.
 	 *
 	 * @param after 이 위치 뒤부터. {@code null}이면 첫 쪽
+	 * @param query 제목 · 꿈 내용 · 한마디에 이 글자가 든 글만. {@code null}이면 거르지 않는다. 대소문자는 무시하고
+	 *     {@code %} · {@code _}도 글자 그대로다 — LIKE 가 아니라 position 으로 찾아 와일드카드가 생기지 않는다.
+	 *     지금 글 수로는 순차 탐색으로 충분하다(인덱스 pg_trgm 은 필요해지면 그때)
 	 */
-	List<PostRow> feed(FeedSort sort, FeedCursor after, UUID viewer, int limit) {
+	List<PostRow> feed(FeedSort sort, FeedCursor after, UUID viewer, String query, int limit) {
 		MapSqlParameterSource params = new MapSqlParameterSource("viewer", viewer).addValue("limit", limit);
+		String search = "";
+		if (query != null) {
+			params.addValue("q", query);
+			search = """
+					  and (position(lower(:q) in lower(coalesce(p.title, ''))) > 0
+					       or position(lower(:q) in lower(p.dream_text)) > 0
+					       or position(lower(:q) in lower(p.body)) > 0)
+					""";
+		}
 		String sql = "select " + POST_COLUMNS + """
 				from posts p join users u on u.id = p.author_id
 				where p.deleted_at is null and p.hidden_at is null
 				  and not exists (select 1 from user_blocks b where b.blocker_id = :viewer and b.blocked_id = p.author_id)
-				""" + after(sort, after, params) + order(sort) + " limit :limit";
+				""" + search + after(sort, after, params) + order(sort) + " limit :limit";
 		return this.jdbc.query(sql, params, POST);
 	}
 

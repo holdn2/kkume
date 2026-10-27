@@ -42,8 +42,8 @@ public class CommunityController {
 
 	@GetMapping("/api/community/posts")
 	public Page<PostSummary> feed(@AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) String sort,
-			@RequestParam(required = false) String cursor) {
-		return this.community.feed(viewer(jwt), sort, cursor);
+			@RequestParam(required = false) String cursor, @RequestParam(required = false) String q) {
+		return this.community.feed(viewer(jwt), sort, cursor, q);
 	}
 
 	@GetMapping("/api/community/posts/{postId}")
