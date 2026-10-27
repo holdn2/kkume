@@ -74,6 +74,8 @@ export default function MyScreen() {
   const [reminder, setReminder] = useState<ReminderTime | null>(null);
   const [notifyPerm, setNotifyPerm] = useState<Permission>('unavailable');
   const [pickingReminder, setPickingReminder] = useState(false);
+  // 이번에 시각을 골랐는데 허락받지 못했다 — 「설정 열기」를 보인다
+  const [refused, setRefused] = useState(false);
   const readReminder = useCallback(() => {
     if (!HAS_NOTIFICATIONS) return;
     void Promise.all([readReminderTime(), permission()])
@@ -90,10 +92,14 @@ export default function MyScreen() {
         const p = notifyPerm === 'granted' ? 'granted' : await askPermission();
         setNotifyPerm(p);
         // 허락하지 않았으면 켜지 않는다 — 켜진 것처럼 보이는데 울리지 않는 것이 가장 나쁘다. 시트에 이유가 남는다
-        if (p !== 'granted') return;
+        if (p !== 'granted') {
+          setRefused(true);
+          return;
+        }
       }
       await saveReminderTime(time);
       setReminder(time);
+      setRefused(false);
       setPickingReminder(false);
     } catch {
       showToast('저장하지 못했어요. 다시 골라 주세요.');
@@ -380,7 +386,10 @@ export default function MyScreen() {
 
       <Sheet
         visible={pickingReminder}
-        onClose={() => setPickingReminder(false)}
+        onClose={() => {
+          setPickingReminder(false);
+          setRefused(false);
+        }}
         title="낮 확인 알림"
         description="확인 안 한 꿈 기록이 있을 때만, 고른 시각에 한 번 알려 드려요. 기억이 남아 있을 때 다듬을 수 있게요.">
         <Stack gap={sp[3]}>
@@ -395,7 +404,7 @@ export default function MyScreen() {
               />
             ))}
           </Stack>
-          {notifyPerm === 'denied' && (
+          {(notifyPerm === 'denied' || refused) && notifyPerm !== 'granted' && (
             <Stack gap={sp[2]}>
               <AppText size="caption" color={c.fgMuted}>
                 알림이 꺼져 있어요. 설정에서 꾸메의 알림을 켠 뒤 다시 골라 주세요.

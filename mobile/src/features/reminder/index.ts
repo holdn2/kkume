@@ -36,21 +36,29 @@ const TARGET = '/log';
 
 export type Permission = 'granted' | 'ask' | 'denied' | 'unavailable';
 
+type PermissionResponse = Awaited<ReturnType<N['getPermissionsAsync']>>;
+
+/**
+ * **한 번 거부했으면 `denied`다** — `canAskAgain`만 보지 않는다. Android는 거부한 뒤에도, 설정 앱에서 알림을 끈 뒤에도
+ * `canAskAgain`이 참으로 남는데 그때 권한 창은 다시 뜨지 않는다(PR #146 리뷰). 그러면 「켜기」가 아무 일도 안 하는
+ * 버튼이 된다. 거부했으면 설정 앱으로 보낸다
+ */
+function toPermission(N: N, p: PermissionResponse): Permission {
+  if (p.granted || p.ios?.status === N.IosAuthorizationStatus.PROVISIONAL) return 'granted';
+  return p.canAskAgain && p.status !== 'denied' ? 'ask' : 'denied';
+}
+
 export async function permission(): Promise<Permission> {
   const N = notifications();
   if (!N) return 'unavailable';
-  const p = await N.getPermissionsAsync();
-  if (p.granted || p.ios?.status === N.IosAuthorizationStatus.PROVISIONAL) return 'granted';
-  return p.canAskAgain ? 'ask' : 'denied';
+  return toPermission(N, await N.getPermissionsAsync());
 }
 
-/** 시스템 권한 창. 이미 거부했으면 창이 뜨지 않으므로 `denied`를 돌려준다 — 그때는 설정 앱으로 보낸다 */
+/** 시스템 권한 창. 이미 거부했으면 창이 뜨지 않고 `denied`가 온다 — 그때는 설정 앱으로 보낸다 */
 export async function askPermission(): Promise<Permission> {
   const N = notifications();
   if (!N) return 'unavailable';
-  const p = await N.requestPermissionsAsync({ ios: { allowAlert: true, allowSound: true, allowBadge: false } });
-  if (p.granted) return 'granted';
-  return p.canAskAgain ? 'ask' : 'denied';
+  return toPermission(N, await N.requestPermissionsAsync({ ios: { allowAlert: true, allowSound: true, allowBadge: false } }));
 }
 
 export function openSystemSettings() {
@@ -103,6 +111,9 @@ export function syncReminder(): Promise<void> {
 }
 
 /**
+ * 알림 시각에 앱을 보고 있으면 알림은 뜨지 않는다(`setNotificationHandler`를 두지 않음) — 이미 앱 안이라 꿈 로그가 한 번
+ * 누르면 닿는 자리다. 그 회차는 그대로 지나가고, 앱이 뒤로 갈 때 다음 날로 다시 잡힌다.
+ *
  * 켤 때 · 앱이 뒤로 갈 때 예약을 맞춘다. 새벽에 남긴 기록은 앱이 뒤로 가는 순간 세어진다.
  * **앱 뿌리(`app/_layout.tsx`)에서 부른다** — 위젯으로 켜면 탭을 거치지 않고 새벽 화면만 열린다
  */
@@ -110,9 +121,8 @@ export function useReminderSync() {
   useEffect(() => {
     if (!HAS_NOTIFICATIONS) return;
     void syncReminder();
-    const app = AppState.addEventListener('change', (st) => {
-      if (st !== 'active') void syncReminder();
-    });
+    // 뒤로 갈 때 — 새벽 기록이 세어진다. 앞으로 올 때 — 설정 앱에서 알림을 켜고 돌아온 경우(PR #146 리뷰)
+    const app = AppState.addEventListener('change', () => void syncReminder());
     return () => app.remove();
   }, []);
 }
@@ -133,9 +143,8 @@ export function useReminderTap() {
       N.clearLastNotificationResponse();
     };
     const tap = N.addNotificationResponseReceivedListener(open);
-    void N.getLastNotificationResponseAsync()
-      .then(open)
-      .catch(() => {});
+    // 앱이 꺼져 있다가 알림으로 켜졌으면 리스너보다 먼저 와 있다. 둘 다 같은 응답을 받아도 같은 곳으로 갈 뿐이다
+    open(N.getLastNotificationResponse());
     return () => tap.remove();
   }, [router]);
 }
