@@ -20,6 +20,7 @@ import {
   REMINDER_TIMES,
   reminderLabel,
   TimePicker,
+  toPickerTime,
   saveReminderTime,
   type Permission,
   type ReminderTime,
@@ -516,7 +517,7 @@ export default function MyScreen() {
               {/* 그 밖의 시각(이슈 #153). 정해 둔 것이 있으면 그 시각을 보인다 */}
               <Radio
                 selected={!!reminder && !isPresetTime(reminder)}
-                onSelect={() => setCustomTime(reminder && !isPresetTime(reminder) ? reminder : CUSTOM_START)}
+                onSelect={() => setCustomTime(reminder && !isPresetTime(reminder) ? toPickerTime(reminder) : CUSTOM_START)}
                 label="직접 정하기"
                 description={reminder && !isPresetTime(reminder) ? reminderLabel(reminder) : undefined}
               />

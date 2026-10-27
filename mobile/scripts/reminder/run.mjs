@@ -18,7 +18,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const entry = path.resolve(here, '..', '..', 'src', 'features', 'reminder', 'logic.ts');
 const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'kkume-reminder-')), 'logic.mjs');
 await build({ entryPoints: [entry], bundle: true, format: 'esm', platform: 'node', outfile: out, logLevel: 'silent' });
-const { nextFireAt, planReminder, parseReminderTime, reminderLabel, joinTime, splitTime, isPresetTime } = await import(
+const { nextFireAt, planReminder, parseReminderTime, reminderLabel, joinTime, splitTime, isPresetTime, toPickerTime } = await import(
   pathToFileURL(out).href
 );
 
@@ -44,6 +44,7 @@ const cases = [
   ['나누고 다시 합치면 같음', () => ['00:00', '07:30', '12:00', '12:50', '23:10'].map((t) => { const x = splitTime(t); return joinTime(x.pm, x.hour12, x.minute); }).join('|'), '00:00|07:30|12:00|12:50|23:10'],
   ['오전 12시는 0시 · 오후 12시는 정오', () => [joinTime(false, 12, 0), joinTime(true, 12, 0), joinTime(true, 6, 0)].join('|'), '00:00|12:00|18:00'],
   ['바로 고르는 셋인가', () => [isPresetTime('12:00'), isPresetTime('12:10'), isPresetTime(null)].join('|'), 'true|false|false'],
+  ['고르기 칸에 맞춤 — 10분 단위로 내림(PR #154 리뷰)', () => ['07:35', '12:09', '23:59', '00:00'].map(toPickerTime).join('|'), '07:30|12:00|23:50|00:00'],
   ['직접 정한 시각도 예약됨', () => show(planReminder(kst('2026-10-27T05:00'), '07:30', 1)?.at), '2026-10-27 07:30'],
 ];
 

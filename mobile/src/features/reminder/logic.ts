@@ -41,6 +41,15 @@ export function joinTime(pm: boolean, hour12: number, minute: number): ReminderT
   return `${String(h).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
+/**
+ * 「직접 정하기」가 고를 수 있는 시각(10분 단위)으로 내린다. 저장값은 아무 분이나 받으므로(손으로 고친 값 등)
+ * 고르기를 열 때 맞춘다 — 그대로 두면 칸은 30분을 가리키는데 저장은 35분으로 되는 어긋남이 생긴다(PR #154 리뷰)
+ */
+export function toPickerTime(v: ReminderTime): ReminderTime {
+  const { pm, hour12, minute } = splitTime(v);
+  return joinTime(pm, hour12, minute - (minute % 10));
+}
+
 export function reminderLabel(v: ReminderTime | null): string {
   if (!v) return '끔';
   const preset = REMINDER_TIMES.find((t) => t.value === v);

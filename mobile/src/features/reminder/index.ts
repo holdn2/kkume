@@ -14,6 +14,7 @@ export {
   REMINDER_TIMES,
   reminderLabel,
   splitTime,
+  toPickerTime,
   type ReminderTime,
 } from './logic';
 export { TimePicker } from './TimePicker';

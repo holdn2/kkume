@@ -21,7 +21,9 @@ const MINUTES = ['00', '10', '20', '30', '40', '50'].map((m) => ({ value: m, lab
  * 시는 열두 칸이라 한 줄 세그먼트에 안 들어가 네 칸씩 세 줄로 놓되, 칸 모양 · 선택 표시는 세그먼트와 같다
  */
 export function TimePicker({ value, onChange }: { value: ReminderTime; onChange: (next: ReminderTime) => void }) {
-  const { pm, hour12, minute } = splitTime(value);
+  // 부르는 쪽이 `toPickerTime`으로 맞춰 넘긴다. 그래도 10분 단위가 아니면 고르는 순간 칸이 가리키는 분으로 맞춘다
+  const { pm, hour12, minute: raw } = splitTime(value);
+  const minute = raw - (raw % 10);
   const set = (next: { pm?: boolean; hour12?: number; minute?: number }) =>
     onChange(joinTime(next.pm ?? pm, next.hour12 ?? hour12, next.minute ?? minute));
 
@@ -59,7 +61,7 @@ export function TimePicker({ value, onChange }: { value: ReminderTime; onChange:
         </AppText>
         <Segmented
           options={MINUTES}
-          value={String(minute - (minute % 10)).padStart(2, '0')}
+          value={String(minute).padStart(2, '0')}
           onChange={(v) => set({ minute: Number(v) })}
         />
       </Stack>
