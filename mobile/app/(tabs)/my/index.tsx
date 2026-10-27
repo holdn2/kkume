@@ -86,7 +86,11 @@ export default function MyScreen() {
       .catch(() => {});
   }, []);
   useFocusEffect(readReminder);
+  // 고르는 중에 또 고르면 앞의 것이 실패해 되돌릴 때 뒤의 값을 덮는다(PR #146 재검토) — 하나씩만
+  const pickingNow = useRef(false);
   const pickReminder = async (time: ReminderTime | null) => {
+    if (pickingNow.current) return;
+    pickingNow.current = true;
     try {
       if (time) {
         const p = notifyPerm === 'granted' ? 'granted' : await askPermission();
@@ -103,6 +107,8 @@ export default function MyScreen() {
       setPickingReminder(false);
     } catch {
       showToast('저장하지 못했어요. 다시 골라 주세요.');
+    } finally {
+      pickingNow.current = false;
     }
   };
   // 켜 두었는데 설정 앱에서 알림을 끈 경우 — 시각 대신 그 사실을 보인다
