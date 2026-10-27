@@ -1,9 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { Button, DeleteLink, EmptyCard, ErrorCard, Header, Loading, Screen, Sheet, showToast, Stack } from '@components';
-import { ComicPanelView, ComicSteps, ComicView, seenComic, useComic, useComicActions } from '@features/comic';
+import { CAN_SAVE_COMIC, ComicPanelView, ComicSteps, ComicView, saveComicImage, seenComic, useComic, useComicActions } from '@features/comic';
 import { useMe } from '@features/community';
 import { dreamTitle } from '@features/community/DreamPicker';
 import { isComicRunning } from '@shared/api/comic';
@@ -71,6 +71,24 @@ export default function ComicDetail() {
       });
   };
 
+  // 사진에 저장 — 화면의 네 컷(말풍선 포함)을 찍는다(이슈 #151)
+  const shot = useRef<View>(null);
+  const [saving, setSaving] = useState(false);
+  // 네 컷을 다 받은 뒤에만 찍는다 — 받는 중에 찍으면 말풍선 없는 스켈레톤이 저장된다(이슈 #151 리뷰)
+  const [shotReady, setShotReady] = useState(false);
+  const markReady = useCallback(() => setShotReady(true), []);
+  const save = () => {
+    if (saving) return;
+    setSaving(true);
+    void saveComicImage(shot)
+      .then((r) => {
+        if (r === 'saved') showToast('사진에 저장했어요.', 'neutral');
+        else if (r === 'denied') showToast('사진 권한이 없어 저장하지 못했어요. 설정에서 꾸메의 사진 권한을 켜 주세요.');
+        else showToast('저장하지 못했어요. 다시 시도해 주세요.');
+      })
+      .finally(() => setSaving(false));
+  };
+
   let body;
   if (me === null) {
     body = <EmptyCard title="로그인한 뒤 볼 수 있어요." hint="마이 탭에서 로그인해 주세요." />;
@@ -92,14 +110,25 @@ export default function ComicDetail() {
   } else if (data.status === 'done') {
     body = (
       <Stack gap={sp[6]}>
-        {title && (
-          <AppText size="title" weight="bold" numberOfLines={2}>
-            {title}
-          </AppText>
-        )}
-        <ComicView layout={data.layout} imageUrls={data.imageUrls} panels={data.panels} onPressPanel={setZoom} />
+        {/* 찍히는 영역 — 제목과 네 컷. 배경을 칠해 둔다(투명 PNG면 사진 앱에서 검게 · 하얗게 제각각 보인다).
+            collapsable={false} — Android가 감싼 View를 지워 찍을 대상이 사라지지 않게 */}
+        <View ref={shot} collapsable={false} style={s.shot}>
+          {title && (
+            <AppText size="title" weight="bold" numberOfLines={2}>
+              {title}
+            </AppText>
+          )}
+          <ComicView
+            layout={data.layout}
+            imageUrls={data.imageUrls}
+            panels={data.panels}
+            onPressPanel={setZoom}
+            onReady={markReady}
+          />
+        </View>
         <Stack gap={sp[2]}>
-          {/* 공유 = 꿈 나눔 글쓰기로(계획서 003 CM-3). 갤러리 저장은 다음 빌드(expo-media-library) */}
+          {CAN_SAVE_COMIC && <Button label="사진에 저장" loading={saving} disabled={!shotReady} onPress={save} />}
+          {/* 공유 = 꿈 나눔 글쓰기로(계획서 003 CM-3) */}
           <Button
             label="꿈 나눔에 올리기"
             variant="secondary"
@@ -164,5 +193,6 @@ export default function ComicDetail() {
 }
 
 const s = StyleSheet.create({
+  shot: { gap: sp[6], backgroundColor: c.bg },
   zoom: { flex: 1, backgroundColor: c.scrim, alignItems: 'center', justifyContent: 'center', padding: sp[4] },
 });
