@@ -214,6 +214,13 @@ export function createSqliteRepo(db: Db): DreamRepo {
       return { total: Number(row?.total ?? 0), unread: Number(row?.unread ?? 0) };
     },
 
+    async recordedTimes() {
+      const rows = await db.getAllAsync<{ recorded_at: string }>(
+        'SELECT recorded_at FROM dreams WHERE deleted_at IS NULL',
+      );
+      return rows.map((r) => r.recorded_at);
+    },
+
     async softDelete(id: string) {
       const current = await this.get(id);
       if (!current) return;

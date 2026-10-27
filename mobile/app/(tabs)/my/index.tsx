@@ -1,10 +1,13 @@
+import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Bell, FileText, LayoutGrid, Pencil, Shield, Smile, UserMinus, UserX } from 'lucide-react-native';
+import { Bell, FileText, LayoutGrid, Mail, Pencil, Shield, Smile, UserMinus, UserX } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Linking, StyleSheet, View } from 'react-native';
 
 import { Button, Card, Chip, ListRow, Radio, Row, Screen, Sheet, showToast, Skeleton, Stack, Title } from '@components';
 import { COMIC_ENABLED, GENDER_OPTIONS, genderLabel, parseGender } from '@features/comic';
 import { NicknameSheet } from '@features/community/NicknameSheet';
+import { recordStats, type RecordStats } from '@features/log/stats';
 import { ConsentSheet } from '@features/consent/ConsentSheet';
 import { CONSENT_VERSION, consentAction, needsConsent, recordConsent } from '@features/consent/logic';
 import {
@@ -113,6 +116,29 @@ export default function MyScreen() {
   };
   // 켜 두었는데 설정 앱에서 알림을 끈 경우 — 시각 대신 그 사실을 보인다
   const reminderValue = reminder && notifyPerm !== 'granted' ? '설정에서 꺼짐' : reminderLabel(reminder);
+
+  /**
+   * 기록 통계(계획서 001 MY-1 — 총 기록 · 연속 기록일 · 이번 달)와 서버에 아직 못 올린 기록 수.
+   * 폰의 기록에서 센다 — 로그인하지 않아도 통계는 보인다. 다른 탭에서 기록하고 돌아오면 바뀌어야 하므로 포커스마다
+   */
+  const [stats, setStats] = useState<RecordStats | null>(null);
+  const [unsynced, setUnsynced] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      void getDreamRepo()
+        .then(async (repo) => {
+          const [times, pending] = await Promise.all([repo.recordedTimes(), repo.listUnsynced(UNSYNCED_CAP)]);
+          if (!alive) return;
+          setStats(recordStats(times));
+          setUnsynced(pending.length);
+        })
+        .catch(() => {});
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
 
   // 빠르게 두 번 누르면 `auth.busy`가 버튼을 끄기 전에 두 번 들어온다 — 다시 그리기를 기다리지 않는 ref 로 막는다(PR #68 리뷰)
   const deletingNow = useRef(false);
@@ -270,8 +296,11 @@ export default function MyScreen() {
               {/* 곁가지 동작이라 큰 버튼이 아니라 이름 옆의 작은 칩(2026-10-03 사용자 요청) */}
               <Chip label="닉네임 바꾸기" icon={Pencil} iconOnly onPress={() => setRenaming(true)} />
             </Row>
+            {/* 동기화 대기 표시(계획서 001 5.8 — 오프라인 우선이라 필수). 올릴 것이 없으면 평소 문구 */}
             <AppText size="caption" color={c.fgFaint}>
-              기록이 서버에 함께 보관돼요
+              {unsynced > 0
+                ? `서버에 아직 올리지 않은 기록 ${unsynced >= UNSYNCED_CAP ? `${UNSYNCED_CAP}건 넘게` : `${unsynced}건`}이 있어요. 인터넷에 연결되면 올라가요.`
+                : '기록이 서버에 함께 보관돼요'}
             </AppText>
             <Button
               label="로그아웃"
@@ -316,6 +345,16 @@ export default function MyScreen() {
         )}
       </Card>
 
+      {!!stats && (
+        <Card>
+          <View style={s.stats}>
+            <Stat value={stats.total} label="총 기록" />
+            <Stat value={stats.streak} label="연속 기록일" />
+            <Stat value={stats.thisMonth} label="이번 달" />
+          </View>
+        </Card>
+      )}
+
       <Stack gap={sp[3]}>
         {/* 온보딩에서 건너뛴 사람이 돌아오는 자리다. ON-7은 최대 이탈 지점이라
             다시 열 길이 없으면 위젯 없이 쓰는 사용자가 그대로 남는다 */}
@@ -357,6 +396,19 @@ export default function MyScreen() {
       <Stack gap={sp[3]}>
         <ListRow icon={FileText} label="이용약관" onPress={() => void openWebPage(TERMS_URL)} />
         <ListRow icon={Shield} label="개인정보처리방침" onPress={() => void openWebPage(PRIVACY_URL)} />
+        {/* 앱 버전 · 문의(계획서 001 MY-1). 문의처는 처리방침에 적힌 곳과 같다 */}
+        <ListRow
+          icon={Mail}
+          label="문의하기"
+          value={CONTACT_EMAIL}
+          // 메일 앱이 없으면 열리지 않는다 — 주소를 알려 준다
+          onPress={() =>
+            void Linking.openURL(`mailto:${CONTACT_EMAIL}`).catch(() => showToast(`${CONTACT_EMAIL} 로 보내 주세요.`))
+          }
+        />
+        <AppText size="caption" color={c.fgFaint} style={{ textAlign: 'center' }}>
+          버전 {Constants.expoConfig?.version ?? '-'}
+        </AppText>
       </Stack>
 
       {/* MY-5 계정 삭제 — 맨 아래, 다른 줄과 떨어진 위험색(계획서 001 · 003). 로그인했을 때만 */}
@@ -465,6 +517,30 @@ export default function MyScreen() {
     </Screen>
   );
 }
+
+/** 통계 칸 하나 */
+function Stat({ value, label }: { value: number; label: string }) {
+  return (
+    <View style={s.stat}>
+      <AppText size="title" weight="bold">
+        {value}
+      </AppText>
+      <AppText size="caption" color={c.fgMuted}>
+        {label}
+      </AppText>
+    </View>
+  );
+}
+
+/** 처리방침 · 소개 페이지(`site/`)에 적힌 문의처 */
+const CONTACT_EMAIL = 'yoocy01@gmail.com';
+/** 못 올린 기록을 이만큼까지만 센다 — 더 많으면 「넘게」로 */
+const UNSYNCED_CAP = 1000;
+
+const s = StyleSheet.create({
+  stats: { flexDirection: 'row' },
+  stat: { flex: 1, alignItems: 'center', gap: sp[1] },
+});
 
 /**
  * 「Apple로 계속하기」. **애플이 주는 버튼을 그대로 쓴다** — 로고 · 글자 · 색을 직접 그리면 App Store 심사에서 거절된다
