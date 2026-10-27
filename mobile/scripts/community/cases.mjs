@@ -117,6 +117,20 @@ check(
 const myList = (await api.userPosts('u-me', 'latest', null)).items;
 check('N10', '내 글 목록도 정렬을 받는다', myList.every((p) => p.author.id === 'u-me') && myList.length >= 1);
 
+// ---- 검색 q — 배포된 서버(#155 · PR #156, 문서 102)와 같은 규칙(이슈 #159) ----
+const found = async (q, sort = 'latest') => (await api.feed(sort, null, q)).items.map((p) => p.id).sort().join();
+check('Q1', '제목에서 찾는다', (await found('이빨이')) === 'p-teeth');
+check('Q2', '꿈 내용에서 찾는다(제목 없는 글 포함)', (await found('답안지')) === 'p-exam');
+check('Q3', '한마디에서 찾는다', (await found('울컥')) === 'p-sea');
+check('Q4', '닉네임은 찾지 않는다', (await found('밤고양이')) === '');
+check('Q5', '앞뒤 공백을 자르고, 비면 그냥 피드', (await found('  울컥 ')) === 'p-sea' && (await found('   ')) === (await found('')));
+const caseShared = await api.createPost(newPost({ dreamId: 'd-case', title: 'UFO를 본 꿈', dreamText: '100% 진짜 같았다', body: 'snake_case' }));
+check('Q6', '대소문자 무시', (await found('ufo')).split(',').includes(caseShared.id));
+check('Q7', '% · _ 는 와일드카드가 아니라 글자', (await found('100%')) === caseShared.id && (await found('e_c')) === caseShared.id && (await found('%')) === caseShared.id && (await found('o_')) === '');
+check('Q8', '50자(코드 포인트)까지 되고 넘으면 400 invalid_query', (await code(api.feed('latest', null, '가'.repeat(50)))) === 'ok' && (await code(api.feed('latest', null, '가'.repeat(51)))) === 'invalid_query' && (await code(api.feed('latest', null, '😀'.repeat(50)))) === 'ok');
+check('Q9', '정렬도 그대로 받는다', (await api.feed('empathy', null, '꿈')).items[0]?.id === 'p-teeth');
+await api.deletePost(caseShared.id);
+
 // ---- 서버 계약 056 확정본(2026-09-30)의 규칙 — 구현보다 먼저 넣었다 ----
 const asUser = (id, nickname) =>
   saveSession({ accessToken: 't', expiresAt: new Date(Date.now() + 3_600_000).toISOString(), user: { id, nickname } });
@@ -295,6 +309,10 @@ check(
   reply = () => json(200, { items: [], nextCursor: null });
   await http.feed('empathy', 'c/1');
   check('W1', '피드는 GET /api/community/posts?sort&cursor, 로그인 전엔 토큰 없음', last().url === '/api/community/posts?sort=empathy&cursor=c%2F1' && last().method === 'GET' && last().auth === null, JSON.stringify(last()));
+  await http.feed('latest', null, ' 고래 & 100% ');
+  const withQ = last().url;
+  await http.feed('latest', 'c1', '   ');
+  check('W1b', '검색어는 공백을 잘라 q 로 붙이고, 비면 빼고 보낸다', withQ === '/api/community/posts?sort=latest&q=%EA%B3%A0%EB%9E%98%20%26%20100%25' && last().url === '/api/community/posts?sort=latest&cursor=c1', withQ);
   reply = () => json(404, { code: 'post_not_found', message: '글을 찾을 수 없어요' });
   check('W2', '없는 글은 null', (await http.post('p-x').catch((e) => e)) === null && last().url === '/api/community/posts/p-x');
   reply = () => json(404, { code: 'user_not_found', message: '' });

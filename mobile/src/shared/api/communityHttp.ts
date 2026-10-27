@@ -43,7 +43,10 @@ export function createHttpCommunity(auth: { token: () => Promise<string | null> 
     });
 
   return {
-    feed: (sort, cursor) => read<Page<PostSummary>>(`/api/community/posts${pageQuery(sort, cursor)}`),
+    feed: (sort, cursor, q) => {
+      const term = q?.trim();
+      return read<Page<PostSummary>>(`/api/community/posts${pageQuery(sort, cursor)}${term ? `&q=${encodeURIComponent(term)}` : ''}`);
+    },
 
     post: (postId) => nullOn404(read<PostDetail>(`/api/community/posts/${id(postId)}`)),
 

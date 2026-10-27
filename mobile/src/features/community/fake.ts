@@ -2,6 +2,7 @@ import {
   MAX_COMMENT,
   NICKNAME_MAX,
   NICKNAME_MIN,
+  SEARCH_MAX,
   type Author,
   type Comment,
   type CommunityApi,
@@ -191,6 +192,13 @@ function page(
   };
 }
 
+/** 검색 — 제목 · 꿈 내용 · 한마디에 글자 그대로(대소문자 무시). 닉네임은 찾지 않는다(익명성) */
+function matches(p: PostRow, term: string) {
+  if (!term) return true;
+  const needle = term.toLowerCase();
+  return [p.title ?? '', p.dreamText, p.body].some((t) => t.toLowerCase().includes(needle));
+}
+
 /** 부모 바로 뒤에 답글을 둔다. 가려지거나 지운 부모에 살아 있는 답글이 있으면 자리를 남긴다 */
 function threaded(postId: string, myId: string | null): Comment[] {
   const all = [...comments.values()].filter((c) => c.postId === postId);
@@ -228,12 +236,21 @@ const mineFor = (userId: string, dreamId: string) =>
   [...posts.values()].find((p) => p.authorId === userId && p.dreamId === dreamId && !p.deleted) ?? null;
 
 export const fakeCommunity: CommunityApi = {
-  async feed(sort, cursor) {
+  async feed(sort, cursor, q) {
     await wait();
+    // 배포된 서버(82178a3)와 같은 규칙 — 잘라 쓰지 않고 거절한다. 길이는 코드 포인트로 센다
+    const term = (q ?? '').trim();
+    if ([...term].length > SEARCH_MAX) throw err(400, 'invalid_query', '검색어는 50자까지예요');
     const m = await me();
     const blocked = blockedBy(m?.id ?? null);
     // 피드는 가려진 글을 모두에게서 빼고, 차단한 사람의 글도 뺀다 — 서버가 걸러 쪽이 비지 않는다
-    return page([...posts.values()], sort, cursor, m?.id ?? null, (p) => visible(p) && !blocked.has(p.authorId));
+    return page(
+      [...posts.values()],
+      sort,
+      cursor,
+      m?.id ?? null,
+      (p) => visible(p) && !blocked.has(p.authorId) && matches(p, term),
+    );
   },
 
   async post(id) {
