@@ -4,7 +4,7 @@ import { useCallback } from 'react';
 import { COMIC_POLL_MS, isComicRunning, type NewComic } from '@shared/api/comic';
 
 import { getComicApi } from './api';
-import { watchComic } from './watch';
+import { watchComic } from './watchStore';
 
 /**
  * 만화 응답의 캐시. 커뮤니티와 같은 `queryClient` 를 쓰므로(`app/_layout.tsx`) 계정이 없어지면

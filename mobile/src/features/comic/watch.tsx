@@ -1,18 +1,17 @@
 import { usePathname, useRouter } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { showToast } from '@components';
 import { useMe } from '@features/community';
 import { isComicRunning, type ComicStatus } from '@shared/api/comic';
-import { onAccountGone } from '@shared/auth';
-import { getDreamRepo, SETTINGS } from '@shared/db';
 import { AppText } from '@shared/ui';
 import { c, press, r, sp } from '@theme/token';
 
 import { COMIC_STEPS, stepStates } from './logic';
 import { useComic } from './queries';
+import { useWatchedComic } from './watchStore';
 
 /**
  * CM-2 진행 표시(계획서 001 · 003 — 「이탈해도 백그라운드 진행 → BottomAccessory에 표시, 완료 시 알림」).
@@ -23,57 +22,8 @@ import { useComic } from './queries';
  * **앱이 뒤에 있을 때 알리는 것은 서버 푸시가 있어야 한다** — 이 앱은 그동안 JS가 돌지 않는다. 앱으로 돌아오면
  * 그때 다시 묻고 알린다.
  *
- * 지켜보는 만화 id는 폰에 적어 둔다(`SETTINGS.comicWatch`) — 만드는 중에 앱을 껐다 켜도 이어 보이게.
+ * 지켜보는 id는 `watchStore.ts`가 들고 있다.
  */
-let watched: string | null = null;
-let loaded = false;
-const listeners = new Set<() => void>();
-
-function set(id: string | null) {
-  watched = id;
-  listeners.forEach((fn) => fn());
-  void getDreamRepo()
-    .then((repo) => repo.setSetting(SETTINGS.comicWatch, id ?? ''))
-    .catch(() => {});
-}
-
-function load() {
-  if (loaded) return;
-  loaded = true;
-  void getDreamRepo()
-    .then((repo) => repo.getSetting(SETTINGS.comicWatch))
-    .then((v) => {
-      // 읽는 사이에 새로 만든 만화가 있으면 그쪽이 맞다
-      if (v && watched == null) {
-        watched = v;
-        listeners.forEach((fn) => fn());
-      }
-    })
-    .catch(() => {});
-}
-
-// 만화는 계정의 것이다 — 로그아웃 · 계정 삭제 뒤 다음 사람에게 남지 않게
-onAccountGone(() => set(null));
-
-/** 만화를 만들었으면 부른다. 앞의 것은 더 지켜보지 않는다 */
-export function watchComic(id: string) {
-  set(id);
-}
-
-/** 이 만화를 열었으면 부른다. 끝난 것만 놓는다 — 만드는 중에 열었다 나가면 계속 진행을 보여야 한다 */
-export function seenComic(id: string, status: ComicStatus | undefined) {
-  if (watched === id && status && !isComicRunning(status)) set(null);
-}
-
-function subscribe(fn: () => void) {
-  listeners.add(fn);
-  load();
-  return () => listeners.delete(fn);
-}
-
-function useWatched() {
-  return useSyncExternalStore(subscribe, () => watched);
-}
 
 /** 한 줄 문구. 만드는 중이면 지금 단계 */
 function line(status: ComicStatus): string {
@@ -88,7 +38,7 @@ function line(status: ComicStatus): string {
  * 끝나는 순간 그 만화 화면에 있지 않으면 토스트를 띄운다
  */
 export function useComicAccessory() {
-  const id = useWatched();
+  const id = useWatchedComic();
   const me = useMe();
   const comic = useComic(me?.id, id);
   const status = comic.data?.id === id ? comic.data?.status : undefined;
