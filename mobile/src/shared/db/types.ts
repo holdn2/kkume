@@ -151,6 +151,8 @@ export interface DreamRepo {
    * 빼면 한쪽에서 지운 기록이 다른 기기에 영영 남는다.
    */
   listUnsynced(limit?: number): Promise<Dream[]>;
+  /** `listUnsynced`와 같은 조건의 개수. 마이 탭의 「아직 서버에 없는 변경 n건」 — 행을 읽지 않고 센다 */
+  countUnsynced(): Promise<number>;
 
   /**
    * 올린 것이 받아들여졌다고 표시한다. **보낸 그 버전일 때만** 표시한다.

@@ -86,6 +86,10 @@ export function createMemoryRepo(): DreamRepo {
       return { total: live.length, unread: live.filter((r) => r.reviewedAt == null).length };
     },
 
+    async countUnsynced() {
+      return rows.filter((r) => r.syncedAt == null || r.updatedAt > r.syncedAt).length;
+    },
+
     async recordedTimes() {
       return rows.filter((r) => !r.deletedAt).map((r) => r.recordedAt);
     },

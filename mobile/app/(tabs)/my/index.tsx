@@ -118,21 +118,16 @@ export default function MyScreen() {
   const reminderValue = reminder && notifyPerm !== 'granted' ? '설정에서 꺼짐' : reminderLabel(reminder);
 
   /**
-   * 기록 통계(계획서 001 MY-1 — 총 기록 · 연속 기록일 · 이번 달)와 서버에 아직 못 올린 기록 수.
-   * 폰의 기록에서 센다 — 로그인하지 않아도 통계는 보인다. 다른 탭에서 기록하고 돌아오면 바뀌어야 하므로 포커스마다
+   * 기록 통계(계획서 001 MY-1 — 총 기록 · 연속 기록일 · 이번 달). 폰의 기록에서 센다 — 로그인하지 않아도 보인다.
+   * 다른 탭에서 기록하고 돌아오면 바뀌어야 하므로 포커스마다
    */
   const [stats, setStats] = useState<RecordStats | null>(null);
-  const [unsynced, setUnsynced] = useState(0);
   useFocusEffect(
     useCallback(() => {
       let alive = true;
       void getDreamRepo()
-        .then(async (repo) => {
-          const [times, pending] = await Promise.all([repo.recordedTimes(), repo.listUnsynced(UNSYNCED_CAP)]);
-          if (!alive) return;
-          setStats(recordStats(times));
-          setUnsynced(pending.length);
-        })
+        .then((repo) => repo.recordedTimes())
+        .then((times) => alive && setStats(recordStats(times)))
         .catch(() => {});
       return () => {
         alive = false;
@@ -186,6 +181,34 @@ export default function MyScreen() {
   const readLocalConsent = useCallback(() => getDreamRepo().then((repo) => repo.getSetting(SETTINGS.consent)), []);
   const setConsentRecord = (value: string) => getDreamRepo().then((repo) => repo.setSetting(SETTINGS.consent, value));
   const signedIn = !!auth.session;
+
+  /**
+   * 동기화 대기 표시(계획서 001 5.8 — 오프라인 우선이라 필수). 아직 서버에 없는 변경(새 기록 · 고친 것 · 지운 것) 수.
+   * 로그인했을 때만 센다. 센 뒤 동기화를 한 번 부르고(간격 제한을 그대로 따름) 끝나면 다시 센다 — 로그인 직후처럼
+   * 막 올라가는 중에 옛 숫자가 남지 않게(PR #149 리뷰). 로그인하거나 나가면 다시 센다
+   */
+  const [unsynced, setUnsynced] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      if (!signedIn) {
+        setUnsynced(0);
+        return;
+      }
+      let alive = true;
+      const count = () =>
+        getDreamRepo()
+          .then((repo) => repo.countUnsynced())
+          .then((n) => alive && setUnsynced(n))
+          .catch(() => {});
+      void count()
+        .then(() => syncIfSignedIn())
+        .catch(() => null)
+        .then(count);
+      return () => {
+        alive = false;
+      };
+    }, [signedIn]),
+  );
   const { serverConsent, sendConsent } = auth;
   useFocusEffect(
     useCallback(() => {
@@ -298,9 +321,8 @@ export default function MyScreen() {
             </Row>
             {/* 동기화 대기 표시(계획서 001 5.8 — 오프라인 우선이라 필수). 올릴 것이 없으면 평소 문구 */}
             <AppText size="caption" color={c.fgFaint}>
-              {unsynced > 0
-                ? `서버에 아직 올리지 않은 기록 ${unsynced >= UNSYNCED_CAP ? `${UNSYNCED_CAP}건 넘게` : `${unsynced}건`}이 있어요. 인터넷에 연결되면 올라가요.`
-                : '기록이 서버에 함께 보관돼요'}
+              {/* 「연결되면 올라가요」라고 약속하지 않는다 — 동의 전이거나 서버가 거절한 변경은 연결돼도 남는다(PR #149 리뷰) */}
+              {unsynced > 0 ? `아직 서버에 올라가지 않은 변경이 ${unsynced}건 있어요.` : '기록이 서버에 함께 보관돼요'}
             </AppText>
             <Button
               label="로그아웃"
@@ -534,8 +556,6 @@ function Stat({ value, label }: { value: number; label: string }) {
 
 /** 처리방침 · 소개 페이지(`site/`)에 적힌 문의처 */
 const CONTACT_EMAIL = 'yoocy01@gmail.com';
-/** 못 올린 기록을 이만큼까지만 센다 — 더 많으면 「넘게」로 */
-const UNSYNCED_CAP = 1000;
 
 const s = StyleSheet.create({
   stats: { flexDirection: 'row' },

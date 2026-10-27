@@ -214,6 +214,13 @@ export function createSqliteRepo(db: Db): DreamRepo {
       return { total: Number(row?.total ?? 0), unread: Number(row?.unread ?? 0) };
     },
 
+    async countUnsynced() {
+      const row = await db.getFirstAsync<{ n: number }>(
+        'SELECT count(*) AS n FROM dreams WHERE synced_at IS NULL OR updated_at > synced_at',
+      );
+      return Number(row?.n ?? 0);
+    },
+
     async recordedTimes() {
       const rows = await db.getAllAsync<{ recorded_at: string }>(
         'SELECT recorded_at FROM dreams WHERE deleted_at IS NULL',
