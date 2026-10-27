@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { COMIC_POLL_MS, isComicRunning, type NewComic } from '@shared/api/comic';
 
 import { getComicApi } from './api';
+import { watchComic } from './watch';
 
 /**
  * 만화 응답의 캐시. 커뮤니티와 같은 `queryClient` 를 쓰므로(`app/_layout.tsx`) 계정이 없어지면
@@ -49,6 +50,8 @@ export function useComicActions() {
   const create = useCallback(
     async (input: NewComic) => {
       const comic = await getComicApi().create(input);
+      // 탭바 위에 진행을 보인다(CM-2) — 이 화면을 떠나도 끝나는 것을 알 수 있게
+      watchComic(comic.id);
       void invalidate();
       return comic;
     },

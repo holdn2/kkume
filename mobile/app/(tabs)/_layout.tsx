@@ -1,5 +1,6 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
+import { useComicAccessory } from '@features/comic';
 import { useReminderTap } from '@features/reminder';
 
 /**
@@ -16,8 +17,11 @@ import { useReminderTap } from '@features/reminder';
 export default function TabsLayout() {
   // 낮 확인 알림을 누르면 꿈 로그로(이슈 #145)
   useReminderTap();
+  // 만화를 만드는 동안 탭바 위 진행 줄(CM-2, iOS 26 이상). 없으면 null
+  const comicAccessory = useComicAccessory();
   return (
     <NativeTabs>
+      {comicAccessory}
       <NativeTabs.Trigger name="log">
         <NativeTabs.Trigger.Icon sf={{ default: 'moon.stars', selected: 'moon.stars.fill' }} md="nightlight" />
         <NativeTabs.Trigger.Label>꿈로그</NativeTabs.Trigger.Label>

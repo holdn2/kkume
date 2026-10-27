@@ -11,3 +11,4 @@ export {
   stepStates,
 } from './logic';
 export { comicKeys, useComic, useComicActions, useComicsForDream } from './queries';
+export { seenComic, useComicAccessory } from './watch';
