@@ -58,7 +58,15 @@ export async function permission(): Promise<Permission> {
 export async function askPermission(): Promise<Permission> {
   const N = notifications();
   if (!N) return 'unavailable';
+  // Android 13+는 채널이 하나도 없으면 권한 창을 띄우지 않는다 — 묻기 전에 만든다(PR #146 리뷰)
+  await ensureChannel(N);
   return toPermission(N, await N.requestPermissionsAsync({ ios: { allowAlert: true, allowSound: true, allowBadge: false } }));
+}
+
+/** Android 채널. 이미 있으면 그대로다(같은 id로 다시 만들어도 사용자가 바꾼 설정은 남는다) */
+async function ensureChannel(N: N) {
+  if (Platform.OS !== 'android') return;
+  await N.setNotificationChannelAsync(CHANNEL_ID, { name: '낮 확인 알림', importance: N.AndroidImportance.DEFAULT });
 }
 
 export function openSystemSettings() {
@@ -70,10 +78,18 @@ export async function readReminderTime(): Promise<ReminderTime | null> {
   return parseReminderTime(await repo.getSetting(SETTINGS.dayReminder));
 }
 
+/** 시각을 바꾸고 예약을 맞춘다. 예약이 실패하면 앞의 값으로 되돌리고 던진다 — 화면이 「저장하지 못했어요」를 띄운다 */
 export async function saveReminderTime(time: ReminderTime | null) {
   const repo = await getDreamRepo();
+  const before = await repo.getSetting(SETTINGS.dayReminder);
   await repo.setSetting(SETTINGS.dayReminder, time ?? '');
-  await syncReminder();
+  try {
+    await syncReminder();
+  } catch (e) {
+    await repo.setSetting(SETTINGS.dayReminder, before ?? '').catch(() => {});
+    void syncReminder().catch(() => {});
+    throw e;
+  }
 }
 
 /** 앞의 맞추기가 끝난 뒤에 맞춘다 — 늦게 끝난 옛 계산이 새 예약을 지우지 않게 */
@@ -81,7 +97,8 @@ let queue: Promise<unknown> = Promise.resolve();
 
 /**
  * 예약을 지금 상태에 맞춘다. 꺼져 있거나 · 권한이 없거나 · 확인할 기록이 없으면 지운다.
- * 실패는 삼킨다 — 알림 하나 때문에 화면이 오류를 띄울 일은 아니다
+ * **실패는 부른 쪽에 돌려준다** — 마이 탭에서 시각을 고른 경우 예약이 안 됐는데 켜진 것처럼 보이면 안 된다(PR #146 리뷰).
+ * 줄은 실패해도 다음 맞추기로 이어진다. 앱이 뒤로 갈 때처럼 알아서 부르는 쪽은 실패를 버린다
  */
 export function syncReminder(): Promise<void> {
   const run = async () => {
@@ -94,35 +111,38 @@ export function syncReminder(): Promise<void> {
       await N.cancelScheduledNotificationAsync(REMINDER_ID);
       return;
     }
-    if (Platform.OS === 'android') {
-      await N.setNotificationChannelAsync(CHANNEL_ID, {
-        name: '낮 확인 알림',
-        importance: N.AndroidImportance.DEFAULT,
-      });
-    }
+    await ensureChannel(N);
     await N.scheduleNotificationAsync({
       identifier: REMINDER_ID,
       content: { title: plan.title, body: plan.body, data: { to: TARGET } },
       trigger: { type: N.SchedulableTriggerInputTypes.DATE, date: plan.at, channelId: CHANNEL_ID },
     });
   };
-  queue = queue.then(run).catch(() => {});
-  return queue as Promise<void>;
+  const next = queue.then(run);
+  queue = next.catch(() => {});
+  return next;
 }
 
 /**
- * 알림 시각에 앱을 보고 있으면 알림은 뜨지 않는다(`setNotificationHandler`를 두지 않음) — 이미 앱 안이라 꿈 로그가 한 번
- * 누르면 닿는 자리다. 그 회차는 그대로 지나가고, 앱이 뒤로 갈 때 다음 날로 다시 잡힌다.
+ * 알림 시각에 앱을 보고 있어도 배너로 보인다(`setNotificationHandler`) — 핸들러가 없으면 앱이 앞에 있는 동안 조용히
+ * 지나가 그 회차를 놓친다(PR #146 리뷰). 소리는 내지 않는다. 다른 알림은 이 앱에 없지만, 생기면 기본(안 보임)으로 둔다.
  *
  * 켤 때 · 앱이 뒤로 갈 때 예약을 맞춘다. 새벽에 남긴 기록은 앱이 뒤로 가는 순간 세어진다.
  * **앱 뿌리(`app/_layout.tsx`)에서 부른다** — 위젯으로 켜면 탭을 거치지 않고 새벽 화면만 열린다
  */
 export function useReminderSync() {
   useEffect(() => {
-    if (!HAS_NOTIFICATIONS) return;
-    void syncReminder();
+    const N = notifications();
+    if (!N) return;
+    N.setNotificationHandler({
+      handleNotification: async (n) => {
+        const mine = n.request.identifier === REMINDER_ID;
+        return { shouldShowBanner: mine, shouldShowList: mine, shouldPlaySound: false, shouldSetBadge: false };
+      },
+    });
+    void syncReminder().catch(() => {});
     // 뒤로 갈 때 — 새벽 기록이 세어진다. 앞으로 올 때 — 설정 앱에서 알림을 켜고 돌아온 경우(PR #146 리뷰)
-    const app = AppState.addEventListener('change', () => void syncReminder());
+    const app = AppState.addEventListener('change', () => void syncReminder().catch(() => {}));
     return () => app.remove();
   }, []);
 }
