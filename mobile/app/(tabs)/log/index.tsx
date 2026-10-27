@@ -14,7 +14,7 @@ import {
   Screen,
   SCROLL_TAIL,
   Title,
-  useBottomInset,
+  useBleedBottom,
 } from '@components';
 import { DictationPrompt } from '@features/log/DictationPrompt';
 import { DreamCard } from '@features/log/DreamCard';
@@ -35,7 +35,7 @@ import { sp } from '@theme/token';
 export default function LogScreen() {
   const router = useRouter();
   // 목록이 탭바 뒤까지 내려간다(`bleedBottom`) — 끝 여백에 그 높이를 더해 마지막 카드가 탭바 위로 올라오게(이슈 #153)
-  const under = useBottomInset();
+  const under = useBleedBottom();
   // 새벽 녹음을 마치고 떨어진 것이면 권한 카드를 띄우지 않는다(record.tsx의 leave)
   const { from } = useLocalSearchParams<{ from?: string }>();
   // 파라미터는 **이 화면의** navigation으로 지운다. 전역 router.setParams는 그 순간 포커스된 화면에

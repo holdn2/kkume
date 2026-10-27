@@ -39,6 +39,13 @@ function useKeyboardHeight(enabled: boolean) {
  * 탭바 위에 놓인다. 그 밖의 화면에서는 0이다
  */
 const BottomUnder = createContext(0);
+
+/**
+ * 탭바가 떠 있는 유리(iOS 26)일 때만 내용을 그 뒤로 내린다. iOS 18 이하의 탭바는 스크롤 끝 모양이 투명이라,
+ * 그 뒤로 카드 글자가 지나가면 탭 이름과 겹쳐 둘 다 읽기 어렵다(PR #154 리뷰). Android의 탭바는 내용 위에 겹치지 않아
+ * 얻는 것이 없다
+ */
+const CAN_BLEED = Platform.OS === 'ios' && Number.parseInt(String(Platform.Version), 10) >= 26;
 export const useScreenBottom = () => useContext(BottomUnder);
 
 /**
@@ -48,6 +55,15 @@ export const useScreenBottom = () => useContext(BottomUnder);
 export function useBottomInset() {
   // inset이 0인 기기(홈 버튼)에서도 바닥에 딱 붙지 않게 최소값을 깐다
   return Math.max(useSafeAreaInsets().bottom, sp[4]);
+}
+
+/**
+ * `bleedBottom` 화면의 목록 끝에 더할 높이 — 내용이 탭바 뒤로 내려가는 기기(iOS 26 이상)에서만 아래 여백, 아니면 0.
+ * `Screen` 바깥(목록을 그리는 화면)에서 읽는다
+ */
+export function useBleedBottom() {
+  const bottom = useBottomInset();
+  return CAN_BLEED ? bottom : 0;
 }
 
 /**
@@ -99,6 +115,7 @@ export function Screen({
   // 아래도 같다. **홈 인디케이터가 있는 기기에서는 화면 맨 아래 버튼이 그 막대에 물린다** —
   // 눌리기는 하는데 손가락이 제스처로 먹혀서 "가끔 안 눌리는 버튼"이 된다.
   const bottom = useBottomInset();
+  const bleed = !!bleedBottom && CAN_BLEED;
   // 키보드가 떠 있으면 그 높이가 곧 아래 여백이다 — 키보드 높이에 홈 인디케이터 자리가 이미 들어 있다
   const keyboard = useKeyboardHeight(!!liftFooter);
 
@@ -106,7 +123,7 @@ export function Screen({
     <View
       style={[
         { flex: 1, paddingHorizontal: sp[5], gap: sp[4] },
-        scroll && { paddingBottom: SCROLL_TAIL + (bleedBottom ? bottom : 0) },
+        scroll && { paddingBottom: SCROLL_TAIL + (bleed ? bottom : 0) },
         style,
       ]}
       {...rest}>
@@ -126,6 +143,8 @@ export function Screen({
         <ScrollView
           contentContainerStyle={{ flexGrow: 1 }}
           automaticallyAdjustKeyboardInsets={!liftFooter}
+          // 내용은 탭바 뒤까지 내려가도 스크롤 표시줄은 탭바 위에서 끝나게
+          scrollIndicatorInsets={bleed ? { bottom } : undefined}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive">
           {inner}
@@ -160,7 +179,7 @@ export function Screen({
       style={{
         flex: 1,
         paddingTop: top,
-        paddingBottom: bleedBottom ? keyboard : Math.max(bottom, keyboard),
+        paddingBottom: bleed ? keyboard : Math.max(bottom, keyboard),
         backgroundColor: night ? c.night : c.bg,
       }}>
       {!!header && (
@@ -170,7 +189,7 @@ export function Screen({
           {header}
         </View>
       )}
-      <BottomUnder.Provider value={bleedBottom ? bottom : 0}>{main}</BottomUnder.Provider>
+      <BottomUnder.Provider value={bleed ? bottom : 0}>{main}</BottomUnder.Provider>
     </View>
   );
 }

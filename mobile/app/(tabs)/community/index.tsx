@@ -20,7 +20,7 @@ import {
   Sheet,
   Stack,
   Title,
-  useBottomInset,
+  useBleedBottom,
 } from '@components';
 import { useFeed, useMe, usePullRefresh, useRefetchOnFocus, useUserPosts } from '@features/community';
 import { PostCard } from '@features/community/PostCard';
@@ -50,7 +50,7 @@ const SORTS: FeedSort[] = ['latest', 'empathy'];
 export default function CommunityScreen() {
   const router = useRouter();
   // 목록이 탭바 뒤까지 내려간다(`bleedBottom`) — 끝 여백에 그 높이를 더해 마지막 카드가 탭바 위로 올라오게(이슈 #153)
-  const under = useBottomInset();
+  const under = useBleedBottom();
   const me = useMe();
   const meId = me === undefined ? undefined : (me?.id ?? null);
   const [scope, setScope] = useState<Scope>('all');
