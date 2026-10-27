@@ -271,6 +271,11 @@ export const SETTINGS = {
    * 이 폰에 쌓인 기록을 알리는 것이다
    */
   dayReminder: 'day_reminder',
+  /**
+   * 탭바 위에 진행을 보이는 만화 id(CM-2). 마지막으로 만든 것 하나, 끝난 뒤 그 만화를 열면 비운다.
+   * **로그아웃 · 계정 삭제 때 비운다** — 만화는 계정의 것이다
+   */
+  comicWatch: 'comic_watch',
 } as const;
 
 /**

@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import { Button, Header, Radio, Screen, Skeleton, Stack } from '@components';
-import { explainCreateError, genderLabel, parseGender, useComicActions } from '@features/comic';
+import { explainCreateError, genderLabel, parseGender, useComicActions, watchComic } from '@features/comic';
 import { useMe } from '@features/community';
 import type { ComicGender, ComicStyle } from '@shared/api/comic';
 import { useBack } from '@shared/back';
@@ -69,8 +69,11 @@ export default function ComicNew() {
       .catch((e) => {
         const f = explainCreateError(e);
         // 이미 만드는 중이면 그 만화로 보낸다 — 동시에 하나만 만든다(081 01장)
-        if (f.kind === 'inProgress') router.replace(`/comic/${f.comicId}`);
-        else setError(f.message);
+        if (f.kind === 'inProgress') {
+          // 그 만화도 탭바 위에 진행을 보인다(PR #150 리뷰)
+          watchComic(f.comicId);
+          router.replace(`/comic/${f.comicId}`);
+        } else setError(f.message);
       })
       .finally(() => setBusy(false));
   };

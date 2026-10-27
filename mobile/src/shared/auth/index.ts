@@ -25,6 +25,18 @@ export function onAccountGone(fn: () => void): () => void {
   return () => goneListeners.delete(fn);
 }
 
+const signedOutListeners = new Set<() => void>();
+
+/**
+ * 이 기기에서 계정이 빠지면 부른다 — 로그아웃과 계정이 없어진 경우 둘 다. 계정에 딸린 폰의 상태(지켜보는 만화 등)를
+ * 비우는 쪽이 듣는다. `onAccountGone`은 계정이 없어진 경우만이다(PR #150 리뷰 — 로그아웃 뒤 앞 계정의 만화가 남았다)
+ */
+export function onSignedOut(fn: () => void): () => void {
+  signedOutListeners.add(fn);
+  return () => signedOutListeners.delete(fn);
+}
+const notifySignedOut = () => signedOutListeners.forEach((fn) => fn());
+
 export const forgetAccount = onceAtATime(() =>
   runSteps(
     [
@@ -39,7 +51,10 @@ export const forgetAccount = onceAtATime(() =>
       async () => (await getDreamRepo()).setSetting(SETTINGS.comicGender, ''),
     ],
     // 한 단계가 실패해도 화면 · 캐시에는 알린다 — 세션은 이미 지웠는데 화면만 로그인한 채로 남지 않게(PR #68 리뷰)
-    () => goneListeners.forEach((fn) => fn()),
+    () => {
+      goneListeners.forEach((fn) => fn());
+      notifySignedOut();
+    },
   ),
 );
 
@@ -256,6 +271,7 @@ export function useAuth(): AuthState {
       // 토큰은 이미 지웠다 — 앞 단계가 던져도 화면은 로그인 전으로(PR #73 리뷰)
       setSession(null);
       setBusy(false);
+      notifySignedOut();
     }
   }, []);
 

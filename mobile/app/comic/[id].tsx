@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { Button, DeleteLink, EmptyCard, ErrorCard, Header, Loading, Screen, Sheet, showToast, Stack } from '@components';
-import { ComicPanelView, ComicSteps, ComicView, useComic, useComicActions } from '@features/comic';
+import { ComicPanelView, ComicSteps, ComicView, seenComic, useComic, useComicActions } from '@features/comic';
 import { useMe } from '@features/community';
 import { dreamTitle } from '@features/community/DreamPicker';
 import { isComicRunning } from '@shared/api/comic';
@@ -16,8 +16,8 @@ import { c, sp } from '@theme/token';
  * CM-2 진행 + CM-3 뷰어(계획서 003). 같은 만화를 보는 화면이라 하나로 둔다 —
  * 만드는 중이면 단계 체크리스트, 끝나면 네 컷, 실패면 문구와 다시 만들기.
  *
- * 나가도 서버가 계속 만든다. 끝났다는 알림과 탭바 위 진행 표시(BottomAccessory)는 서버가 붙은 뒤에 본다 —
- * 그 전에는 꿈 상세의 「만화 보기」로 다시 들어온다.
+ * 나가도 서버가 계속 만든다. 나간 뒤에는 탭바 위 진행 줄(iOS 26 이상)과 끝날 때 토스트로 알린다
+ * (`features/comic/watch.tsx`, 이슈 #148). 앱이 뒤에 있을 때의 알림은 서버 푸시가 있어야 해서 아직 없다.
  */
 export default function ComicDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -31,6 +31,12 @@ export default function ComicDetail() {
 
   const back = useBack('/log');
   const data = comic.data;
+
+  // 끝난 만화를 열었으면 탭바 위 「다 그려졌어요」 줄을 거둔다(CM-2)
+  const seenStatus = data?.id === id ? data.status : undefined;
+  useEffect(() => {
+    if (id) seenComic(id, seenStatus);
+  }, [id, seenStatus]);
 
   // 어느 꿈의 만화인지 네 컷 위에 한 줄(이슈 #137, 095 E3 · 097 C4). 제목은 서버에 없고 폰의 꿈에서 읽는다 —
   // 폰에서 지운 꿈이면 줄을 그리지 않는다
