@@ -18,7 +18,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const entry = path.resolve(here, '..', '..', 'src', 'features', 'reminder', 'logic.ts');
 const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'kkume-reminder-')), 'logic.mjs');
 await build({ entryPoints: [entry], bundle: true, format: 'esm', platform: 'node', outfile: out, logLevel: 'silent' });
-const { nextFireAt, planReminder, parseReminderTime, reminderLabel } = await import(pathToFileURL(out).href);
+const { nextFireAt, planReminder, parseReminderTime, reminderLabel, joinTime, splitTime, isPresetTime } = await import(
+  pathToFileURL(out).href
+);
 
 const kst = (s) => new Date(`${s}+09:00`);
 /** 한국 시각 글자로 */
@@ -35,9 +37,14 @@ const cases = [
   ['꺼져 있으면 예약 없음', () => planReminder(kst('2026-10-27T05:00'), null, 3), null],
   ['켜져 있고 기록이 있으면 그 수를 문구에', () => planReminder(kst('2026-10-27T05:00'), '12:00', 3)?.body.includes('3건'), true],
   ['예약 시각도 함께', () => show(planReminder(kst('2026-10-27T05:00'), '09:00', 1)?.at), '2026-10-27 09:00'],
-  ['알 수 없는 저장값은 꺼짐', () => [parseReminderTime('07:30'), parseReminderTime(''), parseReminderTime(null)].join('|'), '||'],
-  ['아는 값은 그대로', () => parseReminderTime('18:00'), '18:00'],
-  ['이름', () => [reminderLabel(null), reminderLabel('12:00')].join('|'), '끔|정오'],
+  ['망가진 저장값은 꺼짐', () => [parseReminderTime('7:30'), parseReminderTime('24:00'), parseReminderTime('12:60'), parseReminderTime(''), parseReminderTime(null)].join('|'), '||||'],
+  ['직접 정한 시각도 받음(이슈 #153)', () => [parseReminderTime('07:30'), parseReminderTime('18:00'), parseReminderTime('00:00')].join('|'), '07:30|18:00|00:00'],
+  ['이름 — 바로 고르는 셋', () => [reminderLabel(null), reminderLabel('09:00'), reminderLabel('12:00'), reminderLabel('18:00')].join('|'), '끔|오전 9시|정오|오후 6시'],
+  ['이름 — 직접 정한 것', () => [reminderLabel('07:30'), reminderLabel('13:00'), reminderLabel('00:10'), reminderLabel('12:40')].join('|'), '오전 7시 30분|오후 1시|오전 12시 10분|오후 12시 40분'],
+  ['나누고 다시 합치면 같음', () => ['00:00', '07:30', '12:00', '12:50', '23:10'].map((t) => { const x = splitTime(t); return joinTime(x.pm, x.hour12, x.minute); }).join('|'), '00:00|07:30|12:00|12:50|23:10'],
+  ['오전 12시는 0시 · 오후 12시는 정오', () => [joinTime(false, 12, 0), joinTime(true, 12, 0), joinTime(true, 6, 0)].join('|'), '00:00|12:00|18:00'],
+  ['바로 고르는 셋인가', () => [isPresetTime('12:00'), isPresetTime('12:10'), isPresetTime(null)].join('|'), 'true|false|false'],
+  ['직접 정한 시각도 예약됨', () => show(planReminder(kst('2026-10-27T05:00'), '07:30', 1)?.at), '2026-10-27 07:30'],
 ];
 
 let failed = 0;

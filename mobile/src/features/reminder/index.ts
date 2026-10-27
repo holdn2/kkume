@@ -7,7 +7,16 @@ import { getDreamRepo, SETTINGS } from '@shared/db';
 
 import { parseReminderTime, planReminder, type ReminderTime } from './logic';
 
-export { REMINDER_TIMES, parseReminderTime, reminderLabel, type ReminderTime } from './logic';
+export {
+  isPresetTime,
+  joinTime,
+  parseReminderTime,
+  REMINDER_TIMES,
+  reminderLabel,
+  splitTime,
+  type ReminderTime,
+} from './logic';
+export { TimePicker } from './TimePicker';
 
 /**
  * 낮 확인 알림(이슈 #145, 계획서 001 LOG-3 유도 · ON-4). 폰 안에서 예약하는 알림이라 서버가 없다.
