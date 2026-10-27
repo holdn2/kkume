@@ -28,6 +28,18 @@
         "buildType": "apk"
       },
       "channel": "preview"
+    },
+    "production": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_STORYBOOK_ENABLED": "false",
+        "EXPO_PUBLIC_DEV_ROWS": "false"
+      },
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "channel": "production"
     }
   }
 }

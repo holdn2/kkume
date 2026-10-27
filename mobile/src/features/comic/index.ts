@@ -11,5 +11,6 @@ export {
   stepStates,
 } from './logic';
 export { comicKeys, useComic, useComicActions, useComicsForDream } from './queries';
+export { CAN_SAVE_COMIC, saveComicImage } from './save';
 export { useComicAccessory } from './watch';
 export { seenComic, watchComic } from './watchStore';

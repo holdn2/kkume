@@ -25,7 +25,7 @@ import {
 import type { ComicGender } from '@shared/api/comic';
 import { appleAvailable, HAS_NATIVE_APPLE, useAuth, type Provider } from '@shared/auth';
 import { getDreamRepo, SETTINGS } from '@shared/db';
-import { STORYBOOK_ENABLED } from '@shared/storybook';
+import { DEV_ROWS_ENABLED, STORYBOOK_ENABLED } from '@shared/storybook';
 import { syncIfSignedIn } from '@shared/sync';
 import { openWebPage, PRIVACY_URL, TERMS_URL } from '@shared/web';
 import { AppText } from '@shared/ui';
@@ -416,18 +416,20 @@ export default function MyScreen() {
           (2026-09-01) 고정 알림을 뺐고, 기상 시각은 그 알림을 언제 다시 올릴지 알기 위한 값이었다(문서 009).
           알림은 위의 「낮 확인 알림」(LOG-3 유도, 이슈 #145)으로만 돌아왔다 — 시각은 기상 시각이 아니라 고르는 값이다 */}
 
-      <Stack gap={sp[3]}>
-        <AppText size="caption" color={c.fgFaint}>
-          개발용
-        </AppText>
-        {/* 스토리북을 뺀 번들(preview 빌드 · OTA)에서는 줄 자체를 숨긴다.
-            누르면 갈 곳이 없는 버튼을 두지 않는다 */}
-        {STORYBOOK_ENABLED && (
-          <ListRow label="스토리북 열기" onPress={() => router.push('/storybook')} />
-        )}
-        {/* 스토리북은 preview 빌드에서 꺼진다. 정작 판정이 필요한 빌드라 진단은 따로 둔다 */}
-        <ListRow label="빌드 진단" onPress={() => router.push('/diag')} />
-      </Stack>
+      {DEV_ROWS_ENABLED && (
+        <Stack gap={sp[3]}>
+          <AppText size="caption" color={c.fgFaint}>
+            개발용
+          </AppText>
+          {/* 스토리북을 뺀 번들(preview 빌드 · OTA)에서는 줄 자체를 숨긴다.
+              누르면 갈 곳이 없는 버튼을 두지 않는다 */}
+          {STORYBOOK_ENABLED && (
+            <ListRow label="스토리북 열기" onPress={() => router.push('/storybook')} />
+          )}
+          {/* 스토리북은 preview 빌드에서 꺼진다. 정작 판정이 필요한 빌드라 진단은 따로 둔다 */}
+          <ListRow label="빌드 진단" onPress={() => router.push('/diag')} />
+        </Stack>
+      )}
 
       {/* MY-3 · 4 — 공개 페이지(저장소 site/ · GitHub Pages)를 앱 안 브라우저로 연다 */}
       <Stack gap={sp[3]}>
