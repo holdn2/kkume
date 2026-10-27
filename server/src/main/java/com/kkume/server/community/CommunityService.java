@@ -49,6 +49,9 @@ public class CommunityService {
 
 	static final int MAX_COMMENT = 500;
 
+	/** 검색어 글자 수(코드 포인트) 상한. 넘으면 자르지 않고 400 — 잘린 검색어로 찾은 결과는 사용자가 친 것과 다르다 */
+	static final int MAX_QUERY = 50;
+
 	/** 서로 다른 신고자가 이만큼 모이면 가린다(계획서 001 커뮤니티 최소 운영 장치) */
 	static final int HIDE_AT_REPORTERS = CommunityLimits.HIDE_AT_REPORTERS;
 
@@ -72,11 +75,30 @@ public class CommunityService {
 
 	// ------------------------------------------------------------------ 읽기
 
+	/**
+	 * 피드. {@code query}가 있으면 제목 · 꿈 내용 · 한마디에 그 글자가 그대로 든 글만 준다(COM-5, 문서 100 1장).
+	 * 닉네임은 찾지 않는다 — 사람 찾기가 되면 익명성 원칙과 어긋난다. 커서에 검색어를 묶지 않는다 —
+	 * 앱은 검색어가 바뀌면 커서를 버리고 처음부터 읽는다.
+	 */
 	@Transactional(readOnly = true)
-	public Page<PostSummary> feed(UUID viewer, String sort, String cursor) {
+	public Page<PostSummary> feed(UUID viewer, String sort, String cursor, String query) {
 		FeedSort feedSort = FeedSort.of(sort);
-		List<PostRow> rows = this.store.feed(feedSort, FeedCursor.decode(cursor, feedSort), orNobody(viewer), PAGE_SIZE + 1);
+		String q = searchQuery(query);
+		List<PostRow> rows = this.store.feed(feedSort, FeedCursor.decode(cursor, feedSort), orNobody(viewer), q,
+				PAGE_SIZE + 1);
 		return page(rows, feedSort, viewer);
+	}
+
+	/** 앞뒤 공백을 자르고 비면 {@code null}(검색 없음) */
+	static String searchQuery(String query) {
+		if (query == null || query.isBlank()) {
+			return null;
+		}
+		String q = query.strip();
+		if (q.codePointCount(0, q.length()) > MAX_QUERY) {
+			throw CommunityApiException.badRequest("invalid_query", "검색어는 " + MAX_QUERY + "자까지예요");
+		}
+		return q;
 	}
 
 	@Transactional(readOnly = true)

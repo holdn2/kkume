@@ -642,6 +642,96 @@ class CommunityApiTest {
 		assertThat(JsonPath.<List<String>>read(json(call(this.me, get("/api/community/blocks"))), "$.items")).isEmpty();
 	}
 
+	// ---------------------------------------------------------------- 검색 (S, COM-5 · 문서 100 1장)
+
+	private List<String> searchIds(Who who, String q) throws Exception {
+		return JsonPath.read(json(call(who, get("/api/community/posts").param("q", q)).andExpect(status().isOk())),
+				"$.items[*].id");
+	}
+
+	private String postWith(Who who, String title, String dreamText, String body) throws Exception {
+		return JsonPath.read(json(share(who, dream(who), title, dreamText, body).andExpect(status().isCreated())), "$.id");
+	}
+
+	@Test
+	void S1_제목_꿈_내용_한마디에서_대소문자_없이_찾고_닉네임은_찾지_않는다() throws Exception {
+		String tag = "고래" + UUID.randomUUID().toString().substring(0, 6);
+		String inTitle = postWith(this.me, "푸른 " + tag + " 꿈", "바다", "");
+		String inText = postWith(this.other, null, "커다란 " + tag.toUpperCase() + "가 날았다", "");
+		String inBody = postWith(this.me, "제목", "꿈 내용", "또 " + tag + " 꿈");
+		String none = postWith(this.me, "제목", "꿈 내용", "");
+
+		assertThat(searchIds(null, tag)).containsExactlyInAnyOrder(inTitle, inText, inBody).doesNotContain(none);
+		assertThat(searchIds(null, "  " + tag.toUpperCase() + "  ")).containsExactlyInAnyOrder(inTitle, inText, inBody);
+
+		call(this.other, patch("/api/me"), "{\"nickname\":\"" + tag + "\"}").andExpect(status().isOk());
+		String byNickname = newPost(this.other);
+		assertThat(searchIds(null, tag)).doesNotContain(byNickname);
+	}
+
+	@Test
+	void S2_퍼센트와_밑줄은_와일드카드가_아니다() throws Exception {
+		String tag = UUID.randomUUID().toString().substring(0, 6);
+		String percent = postWith(this.me, "100%" + tag, "꿈 내용", "");
+		String plain = postWith(this.me, "100점" + tag, "꿈 내용", "");
+		String underscore = postWith(this.me, "a_" + tag, "꿈 내용", "");
+		String other = postWith(this.me, "ab" + tag, "꿈 내용", "");
+
+		assertThat(searchIds(null, "100%" + tag)).containsExactly(percent).doesNotContain(plain);
+		assertThat(searchIds(null, "a_" + tag)).containsExactly(underscore).doesNotContain(other);
+	}
+
+	@Test
+	void S3_지운_글_가린_글_차단한_사람의_글은_검색에서도_빠진다() throws Exception {
+		String tag = "부엉이" + UUID.randomUUID().toString().substring(0, 6);
+		Who owl = login();
+		String kept = postWith(this.me, tag, "꿈 내용", "");
+		String deleted = postWith(this.me, tag, "꿈 내용", "");
+		String hidden = postWith(this.other, tag, "꿈 내용", "");
+		String blocked = postWith(owl, tag, "꿈 내용", "");
+		call(this.me, delete("/api/community/posts/" + deleted)).andExpect(status().isNoContent());
+		hideByReports("post", hidden);
+		call(this.me, put("/api/community/blocks/" + owl.id())).andExpect(status().isNoContent());
+
+		assertThat(searchIds(this.me, tag)).containsExactly(kept);
+		assertThat(searchIds(null, tag)).containsExactlyInAnyOrder(kept, blocked);
+	}
+
+	@Test
+	void S4_빈_검색어는_전체_피드이고_50자를_넘으면_invalid_query() throws Exception {
+		newPost(this.me);
+		assertThat(searchIds(null, "   ")).isEqualTo(feedIds(null, "latest"));
+
+		call(null, get("/api/community/posts").param("q", "가".repeat(50))).andExpect(status().isOk());
+		ResultActions r = call(null, get("/api/community/posts").param("q", "가".repeat(51))).andExpect(status().isBadRequest());
+		assertThat(code(r)).isEqualTo("invalid_query");
+		assertThat(JsonPath.<String>read(json(r), "$.message")).isEqualTo("검색어는 50자까지예요");
+	}
+
+	@Test
+	void S5_검색_결과도_커서로_이어_읽고_공감순도_된다() throws Exception {
+		String tag = "별" + UUID.randomUUID().toString().substring(0, 6);
+		List<String> made = new java.util.ArrayList<>();
+		for (int i = 0; i < CommunityService.PAGE_SIZE + 2; i++) {
+			made.add(postWith(this.me, tag + " " + i, "꿈 내용", ""));
+		}
+		String first = json(call(null, get("/api/community/posts").param("q", tag)).andExpect(status().isOk()));
+		List<String> firstIds = JsonPath.read(first, "$.items[*].id");
+		String cursor = JsonPath.read(first, "$.nextCursor");
+		String second = json(call(null, get("/api/community/posts").param("q", tag).param("cursor", cursor))
+			.andExpect(status().isOk()));
+		List<String> all = new java.util.ArrayList<>(firstIds);
+		all.addAll(JsonPath.<List<String>>read(second, "$.items[*].id"));
+		assertThat(firstIds).hasSize(CommunityService.PAGE_SIZE);
+		assertThat(all).containsExactlyInAnyOrderElementsOf(made);
+		assertThat(JsonPath.<Object>read(second, "$.nextCursor")).isNull();
+
+		like(this.other, made.get(0), true).andExpect(status().isOk());
+		String empathy = json(call(null, get("/api/community/posts").param("q", tag).param("sort", "empathy"))
+			.andExpect(status().isOk()));
+		assertThat(JsonPath.<List<String>>read(empathy, "$.items[*].id").get(0)).isEqualTo(made.get(0));
+	}
+
 	// ---------------------------------------------------------------- 닉네임 (F16, F17)
 
 	@Test
