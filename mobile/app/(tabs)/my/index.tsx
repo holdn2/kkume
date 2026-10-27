@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { FileText, LayoutGrid, Pencil, Shield, Smile, UserMinus, UserX } from 'lucide-react-native';
+import { Bell, FileText, LayoutGrid, Pencil, Shield, Smile, UserMinus, UserX } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Button, Card, Chip, ListRow, Radio, Row, Screen, Sheet, showToast, Skeleton, Stack, Title } from '@components';
@@ -7,6 +7,18 @@ import { COMIC_ENABLED, GENDER_OPTIONS, genderLabel, parseGender } from '@featur
 import { NicknameSheet } from '@features/community/NicknameSheet';
 import { ConsentSheet } from '@features/consent/ConsentSheet';
 import { CONSENT_VERSION, consentAction, needsConsent, recordConsent } from '@features/consent/logic';
+import {
+  askPermission,
+  HAS_NOTIFICATIONS,
+  openSystemSettings,
+  permission,
+  readReminderTime,
+  REMINDER_TIMES,
+  reminderLabel,
+  saveReminderTime,
+  type Permission,
+  type ReminderTime,
+} from '@features/reminder';
 import type { ComicGender } from '@shared/api/comic';
 import { appleAvailable, HAS_NATIVE_APPLE, useAuth, type Provider } from '@shared/auth';
 import { getDreamRepo, SETTINGS } from '@shared/db';
@@ -54,6 +66,53 @@ export default function MyScreen() {
       .then(() => setGender(parseGender(value)))
       .catch(() => showToast('저장하지 못했어요. 다시 골라 주세요.'));
   };
+
+  /**
+   * 낮 확인 알림(이슈 #145 · 계획서 ON-4). 기본은 꺼 둔다. 켤 때 이유를 먼저 보이고 시스템 권한 창을 띄운다 —
+   * 거부했으면 창이 다시 뜨지 않으므로 설정 앱으로 가는 버튼을 보인다. 설정 앱에서 돌아오면 포커스마다 다시 읽는다
+   */
+  const [reminder, setReminder] = useState<ReminderTime | null>(null);
+  const [notifyPerm, setNotifyPerm] = useState<Permission>('unavailable');
+  const [pickingReminder, setPickingReminder] = useState(false);
+  // 이번에 시각을 골랐는데 허락받지 못했다 — 「설정 열기」를 보인다
+  const [refused, setRefused] = useState(false);
+  const readReminder = useCallback(() => {
+    if (!HAS_NOTIFICATIONS) return;
+    void Promise.all([readReminderTime(), permission()])
+      .then(([t, p]) => {
+        setReminder(t);
+        setNotifyPerm(p);
+      })
+      .catch(() => {});
+  }, []);
+  useFocusEffect(readReminder);
+  // 고르는 중에 또 고르면 앞의 것이 실패해 되돌릴 때 뒤의 값을 덮는다(PR #146 재검토) — 하나씩만
+  const pickingNow = useRef(false);
+  const pickReminder = async (time: ReminderTime | null) => {
+    if (pickingNow.current) return;
+    pickingNow.current = true;
+    try {
+      if (time) {
+        const p = notifyPerm === 'granted' ? 'granted' : await askPermission();
+        setNotifyPerm(p);
+        // 허락하지 않았으면 켜지 않는다 — 켜진 것처럼 보이는데 울리지 않는 것이 가장 나쁘다. 시트에 이유가 남는다
+        if (p !== 'granted') {
+          setRefused(true);
+          return;
+        }
+      }
+      await saveReminderTime(time);
+      setReminder(time);
+      setRefused(false);
+      setPickingReminder(false);
+    } catch {
+      showToast('저장하지 못했어요. 다시 골라 주세요.');
+    } finally {
+      pickingNow.current = false;
+    }
+  };
+  // 켜 두었는데 설정 앱에서 알림을 끈 경우 — 시각 대신 그 사실을 보인다
+  const reminderValue = reminder && notifyPerm !== 'granted' ? '설정에서 꺼짐' : reminderLabel(reminder);
 
   // 빠르게 두 번 누르면 `auth.busy`가 버튼을 끄기 전에 두 번 들어온다 — 다시 그리기를 기다리지 않는 ref 로 막는다(PR #68 리뷰)
   const deletingNow = useRef(false);
@@ -266,6 +325,9 @@ export default function MyScreen() {
           onPress={() => router.push('/onboarding?step=widget')}
           highlight
         />
+        {HAS_NOTIFICATIONS && (
+          <ListRow icon={Bell} label="낮 확인 알림" value={reminderValue} onPress={() => setPickingReminder(true)} />
+        )}
         {/* 차단은 서버에 있어 로그인해야 의미가 있다. 전에는 그 사람의 프로필까지 가야 풀 수 있었다 */}
         {!!auth.session && <ListRow icon={UserX} label="차단한 사용자" onPress={() => router.push('/blocks')} />}
         {/* 만화는 로그인해야 만든다 — 로그인 전에는 정할 이유가 없다 */}
@@ -274,12 +336,9 @@ export default function MyScreen() {
         )}
       </Stack>
 
-      {/* "기상 시각"과 "기상 알림"이 여기 있었다. 만들다 만 것이 아니라
-          **안 하기로 한 것**이라 지운다.
-          진입점을 위젯 하나로 좁히면서(2026-09-01) 고정 알림을 뺐고,
-          기상 시각은 그 알림을 언제 다시 올릴지 알기 위한 값이었다(문서 009).
-          알림 자체가 없어지자 근거가 같이 사라졌다.
-          LOG-3 유도 알림을 붙이는 4주차 이후에 그 문맥으로 다시 들어온다. */}
+      {/* "기상 시각"과 "기상 알림"이 여기 있었다. **안 하기로 한 것**이라 지웠다 — 진입점을 위젯 하나로 좁히면서
+          (2026-09-01) 고정 알림을 뺐고, 기상 시각은 그 알림을 언제 다시 올릴지 알기 위한 값이었다(문서 009).
+          알림은 위의 「낮 확인 알림」(LOG-3 유도, 이슈 #145)으로만 돌아왔다 — 시각은 기상 시각이 아니라 고르는 값이다 */}
 
       <Stack gap={sp[3]}>
         <AppText size="caption" color={c.fgFaint}>
@@ -328,6 +387,37 @@ export default function MyScreen() {
               label={o.label}
             />
           ))}
+        </Stack>
+      </Sheet>
+
+      <Sheet
+        visible={pickingReminder}
+        onClose={() => {
+          setPickingReminder(false);
+          setRefused(false);
+        }}
+        title="낮 확인 알림"
+        description="확인 안 한 꿈 기록이 있을 때만, 고른 시각에 한 번 알려 드려요. 기억이 남아 있을 때 다듬을 수 있게요.">
+        <Stack gap={sp[3]}>
+          <Stack gap={sp[1]}>
+            <Radio selected={!reminder} onSelect={() => void pickReminder(null)} label="끄기" />
+            {REMINDER_TIMES.map((t) => (
+              <Radio
+                key={t.value}
+                selected={reminder === t.value}
+                onSelect={() => void pickReminder(t.value)}
+                label={t.label}
+              />
+            ))}
+          </Stack>
+          {(notifyPerm === 'denied' || refused) && notifyPerm !== 'granted' && (
+            <Stack gap={sp[2]}>
+              <AppText size="caption" color={c.fgMuted}>
+                알림이 꺼져 있어요. 설정에서 꾸메의 알림을 켠 뒤 다시 골라 주세요.
+              </AppText>
+              <Button label="설정 열기" size="sm" variant="ghost" onPress={openSystemSettings} />
+            </Stack>
+          )}
         </Stack>
       </Sheet>
 

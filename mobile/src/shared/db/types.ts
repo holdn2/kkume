@@ -262,6 +262,11 @@ export const SETTINGS = {
    * **로그아웃 · 계정 삭제 때 지운다** — 동의와 같은 이유로, 같은 폰에서 다음에 로그인하는 사람에게 넘어가지 않게
    */
   comicGender: 'comic_gender',
+  /**
+   * 낮 확인 알림 시각(이슈 #145). `HH:MM`, 비어 있으면 꺼 둠. **폰의 설정이라 로그아웃해도 남긴다** — 계정이 아니라
+   * 이 폰에 쌓인 기록을 알리는 것이다
+   */
+  dayReminder: 'day_reminder',
 } as const;
 
 /**

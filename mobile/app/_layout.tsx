@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 
 import { ToastHost } from '@components';
 import { queryClient } from '@features/community';
+import { useReminderSync } from '@features/reminder';
 import { ensureWidgetSnapshot } from '@features/widget';
 import { c } from '@theme/token';
 
@@ -31,6 +32,9 @@ export default function RootLayout() {
   useEffect(() => {
     ensureWidgetSnapshot();
   }, []);
+
+  // 낮 확인 알림 예약을 맞춘다(이슈 #145). 위젯으로 켜도 지나가는 자리라 여기 둔다
+  useReminderSync();
 
   useEffect(() => {
     // 폰트 로딩이 실패해도 스플래시에 갇히면 안 된다.
