@@ -98,7 +98,9 @@ export default function CommunityScreen() {
   };
 
   // 로그인 여부를 읽는 동안(쿼리가 아직 꺼져 있음)도 불러오는 중이다 — 빈 목록 문구가 깜빡이지 않게
-  const loading = list.isPending;
+  // 검색어를 바꾼 뒤 새 결과를 받는 동안은 앞 결과(placeholder)가 보인다 — 그게 비어 있으면 새 검색어로
+  // 「없어요」를 말하게 되므로 그때도 불러오는 중으로 본다(PR #160 리뷰)
+  const loading = list.isPending || (list.isPlaceholderData && list.items.length === 0);
   const error = list.error ? ((list.error as { message?: string }).message ?? String(list.error)) : null;
 
   return (
