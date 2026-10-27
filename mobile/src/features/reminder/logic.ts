@@ -7,9 +7,9 @@
 export type ReminderTime = string;
 
 /**
- * 고를 수 있는 시각. 계획서 001이 미뤄 둔 「낮 확인 알림 시각」(고정값 / 기상 시각 + N / 사용자 설정)을
- * **몇 개 중에서 고르기**로 정했다 — 기상 시각은 지웠고(문서 022), 시각을 분 단위로 고르게 하면 시계 휠이 필요한데
- * 그 정밀도가 쓸모없다
+ * 바로 고르는 시각 세 개. 계획서 001이 미뤄 둔 「낮 확인 알림 시각」을 몇 개 중에서 고르기로 시작했고(이슈 #145),
+ * 101 기기 확인에서 사용자가 직접 정하기를 더 원했다(이슈 #153 — "기존 3가지는 그대로 두고"). 그래서 이 셋은 그대로 두고
+ * 그 밖의 시각도 받는다
  */
 export const REMINDER_TIMES: { value: ReminderTime; label: string }[] = [
   { value: '09:00', label: '오전 9시' },
@@ -17,13 +17,45 @@ export const REMINDER_TIMES: { value: ReminderTime; label: string }[] = [
   { value: '18:00', label: '오후 6시' },
 ];
 
-/** 저장값을 읽는다. 알 수 없는 값은 꺼진 것으로 본다 — 옛 값이 남아도 엉뚱한 시각에 울리지 않게 */
+const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/** 저장값을 읽는다. `HH:MM`이 아니면 꺼진 것으로 본다 — 망가진 값으로 엉뚱한 시각에 울리지 않게 */
 export function parseReminderTime(v: string | null | undefined): ReminderTime | null {
-  return REMINDER_TIMES.some((t) => t.value === v) ? (v as ReminderTime) : null;
+  return v && HHMM.test(v) ? v : null;
+}
+
+/** 바로 고르는 세 개 중 하나인가 — 아니면 「직접 정하기」로 정한 것이다 */
+export function isPresetTime(v: ReminderTime | null): boolean {
+  return REMINDER_TIMES.some((t) => t.value === v);
+}
+
+/** 시각을 오전/오후 · 1~12시 · 분으로 나눈다 */
+export function splitTime(v: ReminderTime): { pm: boolean; hour12: number; minute: number } {
+  const [h, m] = v.split(':').map(Number);
+  return { pm: h >= 12, hour12: h % 12 === 0 ? 12 : h % 12, minute: m };
+}
+
+/** 오전/오후 · 1~12시 · 분을 저장값으로. 오전 12시는 0시, 오후 12시는 정오다 */
+export function joinTime(pm: boolean, hour12: number, minute: number): ReminderTime {
+  const h = (hour12 % 12) + (pm ? 12 : 0);
+  return `${String(h).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+/**
+ * 「직접 정하기」가 고를 수 있는 시각(10분 단위)으로 내린다. 저장값은 아무 분이나 받으므로(손으로 고친 값 등)
+ * 고르기를 열 때 맞춘다 — 그대로 두면 칸은 30분을 가리키는데 저장은 35분으로 되는 어긋남이 생긴다(PR #154 리뷰)
+ */
+export function toPickerTime(v: ReminderTime): ReminderTime {
+  const { pm, hour12, minute } = splitTime(v);
+  return joinTime(pm, hour12, minute - (minute % 10));
 }
 
 export function reminderLabel(v: ReminderTime | null): string {
-  return REMINDER_TIMES.find((t) => t.value === v)?.label ?? '끔';
+  if (!v) return '끔';
+  const preset = REMINDER_TIMES.find((t) => t.value === v);
+  if (preset) return preset.label;
+  const { pm, hour12, minute } = splitTime(v);
+  return `${pm ? '오후' : '오전'} ${hour12}시${minute ? ` ${minute}분` : ''}`;
 }
 
 /**

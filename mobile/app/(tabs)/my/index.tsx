@@ -16,8 +16,11 @@ import {
   openSystemSettings,
   permission,
   readReminderTime,
+  isPresetTime,
   REMINDER_TIMES,
   reminderLabel,
+  TimePicker,
+  toPickerTime,
   saveReminderTime,
   type Permission,
   type ReminderTime,
@@ -79,6 +82,8 @@ export default function MyScreen() {
   const [pickingReminder, setPickingReminder] = useState(false);
   // 이번에 시각을 골랐는데 허락받지 못했다 — 「설정 열기」를 보인다
   const [refused, setRefused] = useState(false);
+  // 「직접 정하기」로 고르는 중인 시각. null이면 목록 단계(이슈 #153)
+  const [customTime, setCustomTime] = useState<ReminderTime | null>(null);
   const readReminder = useCallback(() => {
     if (!HAS_NOTIFICATIONS) return;
     void Promise.all([readReminderTime(), permission()])
@@ -107,6 +112,7 @@ export default function MyScreen() {
       await saveReminderTime(time);
       setReminder(time);
       setRefused(false);
+      setCustomTime(null);
       setPickingReminder(false);
     } catch {
       showToast('저장하지 못했어요. 다시 골라 주세요.');
@@ -312,7 +318,7 @@ export default function MyScreen() {
 
   return (
     // 탭 제목도 위에 고정한다 — 다른 탭(꿈 로그 · 꿈 나눔)은 목록만 스크롤돼 이미 그렇다(2026-10-03)
-    <Screen scroll header={<Title>마이</Title>}>
+    <Screen scroll bleedBottom header={<Title>마이</Title>}>
 
       {/* **로그인이 여기 있는 이유.** 새벽 흐름에는 로그인을 두지 않는다 —
           위젯을 눌렀는데 로그인 화면이 뜨면 그 기록이 사라진다(절대 규칙 1).
@@ -445,17 +451,9 @@ export default function MyScreen() {
             void Linking.openURL(`mailto:${CONTACT_EMAIL}`).catch(() => showToast(`${CONTACT_EMAIL} 로 보내 주세요.`))
           }
         />
-        <AppText size="caption" color={c.fgFaint} style={{ textAlign: 'center' }}>
-          버전 {Constants.expoConfig?.version ?? '-'}
-        </AppText>
+        {/* MY-5 계정 삭제 — 위험색. 로그인했을 때만. 문의하기 바로 아래에 붙인다(이슈 #153, 101 B3 사용자 요청) */}
+        {!!auth.session && <ListRow icon={UserMinus} label="계정 삭제" danger onPress={() => setDeleting(true)} />}
       </Stack>
-
-      {/* MY-5 계정 삭제 — 맨 아래, 다른 줄과 떨어진 위험색(계획서 001 · 003). 로그인했을 때만 */}
-      {!!auth.session && (
-        <Stack gap={sp[3]} style={{ marginTop: sp[6] }}>
-          <ListRow icon={UserMinus} label="계정 삭제" danger onPress={() => setDeleting(true)} />
-        </Stack>
-      )}
       {!!deletedNotice && (
         <Card>
           <AppText size="caption" color={c.fgMuted}>
@@ -463,6 +461,11 @@ export default function MyScreen() {
           </AppText>
         </Card>
       )}
+
+      {/* 버전은 화면 맨 아래(이슈 #153, 101 B3 사용자 요청 — "가장 밑에 있는게 나을듯") */}
+      <AppText size="caption" color={c.fgFaint} style={{ textAlign: 'center' }}>
+        버전 {Constants.expoConfig?.version ?? '-'}
+      </AppText>
 
       <Sheet
         visible={pickingGender}
@@ -486,21 +489,40 @@ export default function MyScreen() {
         onClose={() => {
           setPickingReminder(false);
           setRefused(false);
+          setCustomTime(null);
         }}
         title="낮 확인 알림"
         description="확인 안 한 꿈 기록이 있을 때만, 고른 시각에 한 번 알려 드려요. 기억이 남아 있을 때 다듬을 수 있게요.">
         <Stack gap={sp[3]}>
-          <Stack gap={sp[1]}>
-            <Radio selected={!reminder} onSelect={() => void pickReminder(null)} label="끄기" />
-            {REMINDER_TIMES.map((t) => (
+          {/* 직접 정하기는 같은 시트 안에서 단계만 바꾼다 — 시트를 닫고 새로 열면 iOS에서 안 뜰 수 있다(Sheet는 RN Modal) */}
+          {customTime ? (
+            <Stack gap={sp[4]}>
+              <TimePicker value={customTime} onChange={setCustomTime} />
+              <Stack gap={sp[2]}>
+                <Button label="이 시각으로 켜기" onPress={() => void pickReminder(customTime)} />
+                <Button label="뒤로" variant="ghost" onPress={() => setCustomTime(null)} />
+              </Stack>
+            </Stack>
+          ) : (
+            <Stack gap={sp[1]}>
+              <Radio selected={!reminder} onSelect={() => void pickReminder(null)} label="끄기" />
+              {REMINDER_TIMES.map((t) => (
+                <Radio
+                  key={t.value}
+                  selected={reminder === t.value}
+                  onSelect={() => void pickReminder(t.value)}
+                  label={t.label}
+                />
+              ))}
+              {/* 그 밖의 시각(이슈 #153). 정해 둔 것이 있으면 그 시각을 보인다 */}
               <Radio
-                key={t.value}
-                selected={reminder === t.value}
-                onSelect={() => void pickReminder(t.value)}
-                label={t.label}
+                selected={!!reminder && !isPresetTime(reminder)}
+                onSelect={() => setCustomTime(reminder && !isPresetTime(reminder) ? toPickerTime(reminder) : CUSTOM_START)}
+                label="직접 정하기"
+                description={reminder && !isPresetTime(reminder) ? reminderLabel(reminder) : undefined}
               />
-            ))}
-          </Stack>
+            </Stack>
+          )}
           {(notifyPerm === 'denied' || refused) && notifyPerm !== 'granted' && (
             <Stack gap={sp[2]}>
               <AppText size="caption" color={c.fgMuted}>
@@ -570,6 +592,9 @@ function Stat({ value, label }: { value: number; label: string }) {
     </View>
   );
 }
+
+/** 「직접 정하기」를 처음 열 때의 시각 — 일어난 뒤 가장 먼저 폰을 보는 무렵 */
+const CUSTOM_START = '08:00';
 
 /** 처리방침 · 소개 페이지(`site/`)에 적힌 문의처 */
 const CONTACT_EMAIL = 'yoocy01@gmail.com';

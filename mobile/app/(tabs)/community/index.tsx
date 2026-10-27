@@ -20,6 +20,7 @@ import {
   Sheet,
   Stack,
   Title,
+  useBleedBottom,
 } from '@components';
 import { useFeed, useMe, usePullRefresh, useRefetchOnFocus, useUserPosts } from '@features/community';
 import { PostCard } from '@features/community/PostCard';
@@ -48,6 +49,8 @@ const SORTS: FeedSort[] = ['latest', 'empathy'];
  */
 export default function CommunityScreen() {
   const router = useRouter();
+  // 목록이 탭바 뒤까지 내려간다(`bleedBottom`) — 끝 여백에 그 높이를 더해 마지막 카드가 탭바 위로 올라오게(이슈 #153)
+  const under = useBleedBottom();
   const me = useMe();
   const meId = me === undefined ? undefined : (me?.id ?? null);
   const [scope, setScope] = useState<Scope>('all');
@@ -78,7 +81,7 @@ export default function CommunityScreen() {
   const error = list.error ? ((list.error as { message?: string }).message ?? String(list.error)) : null;
 
   return (
-    <Screen>
+    <Screen bleedBottom>
       <Title sub="간밤의 꿈을 나누는 곳">꿈 나눔</Title>
 
       <Row gap={sp[3]}>
@@ -120,7 +123,7 @@ export default function CommunityScreen() {
         renderItem={({ item }) => <PostCard post={item} onPress={() => router.push(`/community/${item.id}`)} />}
         ItemSeparatorComponent={() => <View style={{ height: sp[3] }} />}
         // 떠 있는 공유 버튼에 마지막 글이 가리지 않게 아래를 비운다 — 버튼 높이 · 버튼 아래 띄움 · 여유
-        contentContainerStyle={{ paddingBottom: FAB_ROOM + SCROLL_TAIL }}
+        contentContainerStyle={{ paddingBottom: FAB_ROOM + SCROLL_TAIL + under }}
         showsVerticalScrollIndicator={false}
         onEndReached={list.more}
         onEndReachedThreshold={0.4}

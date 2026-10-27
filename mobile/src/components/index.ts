@@ -26,4 +26,4 @@ export { EmptyCard, ErrorCard, ListSkeleton, Loading, MoreLoading } from './Stat
 export { Switch } from './Switch';
 export { Toast } from './Toast';
 export { showToast, ToastHost } from './ToastHost';
-export { Row, Screen, SCROLL_TAIL, Spacer, Stack, Title } from './layout';
+export { Row, Screen, SCROLL_TAIL, Spacer, Stack, Title, useBleedBottom } from './layout';

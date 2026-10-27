@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Dimensions, Keyboard, Platform, ScrollView, StyleSheet, View, type ViewProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -35,6 +35,38 @@ function useKeyboardHeight(enabled: boolean) {
 }
 
 /**
+ * `bleedBottom` 화면에서 내용이 탭바 뒤로 내려가 있는 높이. 목록 끝 여백 · 떠 있는 버튼이 그만큼을 더해
+ * 탭바 위에 놓인다. 그 밖의 화면에서는 0이다
+ */
+const BottomUnder = createContext(0);
+
+/**
+ * 탭바가 떠 있는 유리(iOS 26)일 때만 내용을 그 뒤로 내린다. iOS 18 이하의 탭바는 스크롤 끝 모양이 투명이라,
+ * 그 뒤로 카드 글자가 지나가면 탭 이름과 겹쳐 둘 다 읽기 어렵다(PR #154 리뷰). Android의 탭바는 내용 위에 겹치지 않아
+ * 얻는 것이 없다
+ */
+const CAN_BLEED = Platform.OS === 'ios' && Number.parseInt(String(Platform.Version), 10) >= 26;
+export const useScreenBottom = () => useContext(BottomUnder);
+
+/**
+ * 화면 아래 여백 — 안전 영역(탭 화면이면 탭바 · 진행 줄 높이가 들어 있다). `Screen`과 같은 값이다.
+ * `bleedBottom` 화면을 그리는 쪽(목록 끝 여백)은 `Screen` 바깥이라 컨텍스트 대신 이것을 읽는다
+ */
+export function useBottomInset() {
+  // inset이 0인 기기(홈 버튼)에서도 바닥에 딱 붙지 않게 최소값을 깐다
+  return Math.max(useSafeAreaInsets().bottom, sp[4]);
+}
+
+/**
+ * `bleedBottom` 화면의 목록 끝에 더할 높이 — 내용이 탭바 뒤로 내려가는 기기(iOS 26 이상)에서만 아래 여백, 아니면 0.
+ * `Screen` 바깥(목록을 그리는 화면)에서 읽는다
+ */
+export function useBleedBottom() {
+  const bottom = useBottomInset();
+  return CAN_BLEED ? bottom : 0;
+}
+
+/**
  * 화면 루트. StyleSheet의 유일한 약점이 화면마다 create 블록이 반복되는 것인데
  * 이 넷으로 대부분 없어진다.
  *
@@ -47,11 +79,20 @@ export function Screen({
   header,
   footer,
   liftFooter,
+  bleedBottom,
   style,
   children,
   ...rest
 }: ViewProps & {
   night?: boolean;
+  /**
+   * 내용이 탭바(와 그 위 만화 진행 줄) **뒤까지** 내려가게 한다 — 목록 탭 화면(꿈 로그 · 꿈 나눔 · 마이).
+   * 아래 여백을 바깥에 두면 목록이 탭바 위에서 끊기고 그 사이가 바탕색 띠로 남는다. iOS 26의 유리 탭바 · 진행 줄은
+   * 뒤에 내용이 비쳐야 떠 있어 보이는데, 띠가 꿈 카드를 가렸다(101 C1 사용자 — "좌우로 배경이 쭉 이어서 있는데
+   * 그 부분이 마음에 안드는거야", 이슈 #153). 그 높이는 `useScreenBottom()`으로 목록 끝 · 떠 있는 버튼에 더한다.
+   * 빠른기록처럼 화면 아래에 버튼이 붙는 곳에는 쓰지 않는다 — 탭바 뒤로 숨는다
+   */
+  bleedBottom?: boolean;
   scroll?: boolean;
   /** 스크롤 바깥 맨 위에 붙는 줄(`Header` · 탭 화면의 `Title`). 내용이 길어도 위에 남는다 */
   header?: ReactNode;
@@ -73,13 +114,19 @@ export function Screen({
 
   // 아래도 같다. **홈 인디케이터가 있는 기기에서는 화면 맨 아래 버튼이 그 막대에 물린다** —
   // 눌리기는 하는데 손가락이 제스처로 먹혀서 "가끔 안 눌리는 버튼"이 된다.
-  // inset이 0인 기기(홈 버튼)에서도 바닥에 딱 붙지 않게 최소값을 깐다.
-  const bottom = Math.max(insets.bottom, sp[4]);
+  const bottom = useBottomInset();
+  const bleed = !!bleedBottom && CAN_BLEED;
   // 키보드가 떠 있으면 그 높이가 곧 아래 여백이다 — 키보드 높이에 홈 인디케이터 자리가 이미 들어 있다
   const keyboard = useKeyboardHeight(!!liftFooter);
 
   const inner = (
-    <View style={[{ flex: 1, paddingHorizontal: sp[5], gap: sp[4] }, scroll && { paddingBottom: SCROLL_TAIL }, style]} {...rest}>
+    <View
+      style={[
+        { flex: 1, paddingHorizontal: sp[5], gap: sp[4] },
+        scroll && { paddingBottom: SCROLL_TAIL + (bleed ? bottom : 0) },
+        style,
+      ]}
+      {...rest}>
       {children}
     </View>
   );
@@ -96,6 +143,8 @@ export function Screen({
         <ScrollView
           contentContainerStyle={{ flexGrow: 1 }}
           automaticallyAdjustKeyboardInsets={!liftFooter}
+          // 내용은 탭바 뒤까지 내려가도 스크롤 표시줄은 탭바 위에서 끝나게
+          scrollIndicatorInsets={bleed ? { bottom } : undefined}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive">
           {inner}
@@ -126,7 +175,13 @@ export function Screen({
   // 확인이 왔다(2026-10-05) — 모든 터치를 먼저 받는 층이 스크롤과 다툰다. 스크롤 영역은 아래 ScrollView 의
   // `keyboardShouldPersistTaps="handled"`가 이미 빈 곳 탭에 키보드를 내리므로, 스크롤 바깥인 헤더 줄에만 단다
   return (
-    <View style={{ flex: 1, paddingTop: top, paddingBottom: Math.max(bottom, keyboard), backgroundColor: night ? c.night : c.bg }}>
+    <View
+      style={{
+        flex: 1,
+        paddingTop: top,
+        paddingBottom: bleed ? keyboard : Math.max(bottom, keyboard),
+        backgroundColor: night ? c.night : c.bg,
+      }}>
       {!!header && (
         // onTouchEnd 는 안쪽 버튼(뒤로 · ⋯)이 받은 탭에도 온다 — 응답자가 되지 않아 버튼을 막지 않는다.
         // 응답자로 받으면 버튼 탭에는 안 와서, 댓글을 치다 ⋯ 를 누르면 키보드가 남은 채 메뉴가 떴다(PR #64 리뷰)
@@ -134,7 +189,7 @@ export function Screen({
           {header}
         </View>
       )}
-      {main}
+      <BottomUnder.Provider value={bleed ? bottom : 0}>{main}</BottomUnder.Provider>
     </View>
   );
 }

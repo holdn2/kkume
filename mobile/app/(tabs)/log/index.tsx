@@ -3,7 +3,19 @@ import { Mic } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { FlatList, View } from 'react-native';
 
-import { EmptyCard, ErrorCard, Fab, FAB_ROOM, Input, ListSkeleton, MoreLoading, Screen, SCROLL_TAIL, Title } from '@components';
+import {
+  EmptyCard,
+  ErrorCard,
+  Fab,
+  FAB_ROOM,
+  Input,
+  ListSkeleton,
+  MoreLoading,
+  Screen,
+  SCROLL_TAIL,
+  Title,
+  useBleedBottom,
+} from '@components';
 import { DictationPrompt } from '@features/log/DictationPrompt';
 import { DreamCard } from '@features/log/DreamCard';
 import { useDreamPages } from '@features/log/useDreamPages';
@@ -22,6 +34,8 @@ import { sp } from '@theme/token';
  */
 export default function LogScreen() {
   const router = useRouter();
+  // 목록이 탭바 뒤까지 내려간다(`bleedBottom`) — 끝 여백에 그 높이를 더해 마지막 카드가 탭바 위로 올라오게(이슈 #153)
+  const under = useBleedBottom();
   // 새벽 녹음을 마치고 떨어진 것이면 권한 카드를 띄우지 않는다(record.tsx의 leave)
   const { from } = useLocalSearchParams<{ from?: string }>();
   // 파라미터는 **이 화면의** navigation으로 지운다. 전역 router.setParams는 그 순간 포커스된 화면에
@@ -59,7 +73,7 @@ export default function LogScreen() {
   );
 
   return (
-    <Screen>
+    <Screen bleedBottom>
       <Title sub={sub(counts, searching)}>꿈 로그</Title>
 
       {/* 받아쓰기 권한을 낮에 한 번 묻는다. 새벽 녹음 화면은 권한을 조회만 한다(절대 규칙 7) */}
@@ -88,7 +102,7 @@ export default function LogScreen() {
         )}
         // 행 사이 간격이 곧 경계다. 구분선을 긋지 않는 것은 ListRow와 같은 이유다
         ItemSeparatorComponent={() => <View style={{ height: sp[3] }} />}
-        contentContainerStyle={{ paddingBottom: FAB_ROOM + SCROLL_TAIL }}
+        contentContainerStyle={{ paddingBottom: FAB_ROOM + SCROLL_TAIL + under }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
