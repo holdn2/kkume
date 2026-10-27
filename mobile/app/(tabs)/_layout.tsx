@@ -1,5 +1,7 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
+import { useReminderTap } from '@features/reminder';
+
 /**
  * 시스템 탭바를 그대로 쓴다(계획서 10장). iOS 26에서는 Liquid Glass,
  * 그 아래는 기존 탭바, Android는 Material 3로 알아서 적응한다.
@@ -12,6 +14,8 @@ import { NativeTabs } from 'expo-router/unstable-native-tabs';
  * "다른 데 갈 수 있다"는 신호가 되고 그것이 곧 결정이다 (절대 규칙 7).
  */
 export default function TabsLayout() {
+  // 낮 확인 알림을 누르면 꿈 로그로(이슈 #145)
+  useReminderTap();
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="log">
