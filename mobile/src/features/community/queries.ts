@@ -51,7 +51,8 @@ const who = (meId: string | null | undefined) => meId ?? 'anon';
 
 export const communityKeys = {
   all: ['community'] as const,
-  feed: (meId: string | null | undefined, sort: FeedSort) => ['community', who(meId), 'feed', sort] as const,
+  // 검색어도 키에 넣는다 — 커서가 검색어에 묶이지 않아서, 검색어마다 처음 쪽부터 따로 이어 붙여야 한다
+  feed: (meId: string | null | undefined, sort: FeedSort, q = '') => ['community', who(meId), 'feed', sort, q] as const,
   userPosts: (meId: string | null | undefined, userId: string, sort: FeedSort) =>
     ['community', who(meId), 'userPosts', userId, sort] as const,
   post: (meId: string | null | undefined, id: string) => ['community', who(meId), 'post', id] as const,
@@ -105,13 +106,20 @@ export function usePullRefresh(refetch: () => Promise<unknown>) {
 type PageFetcher = (cursor: string | null) => Promise<Page<PostSummary>>;
 
 /** 무한 스크롤 목록. 쪽을 이어 붙일 때 이미 있는 id 는 버린다 — 공감순은 쪽 사이에 순서가 움직인다(056) */
-function usePostPages(key: readonly unknown[], fetchPage: PageFetcher, enabled = true) {
+function usePostPages(
+  key: readonly unknown[],
+  fetchPage: PageFetcher,
+  enabled = true,
+  placeholderData?: (prev: InfiniteData<Page<PostSummary>, string | null> | undefined, prevKey: readonly unknown[] | undefined) =>
+    InfiniteData<Page<PostSummary>, string | null> | undefined,
+) {
   const query = useInfiniteQuery({
     queryKey: key,
     queryFn: ({ pageParam }) => fetchPage(pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
     enabled,
+    placeholderData: placeholderData && ((prev, prevQuery) => placeholderData(prev, prevQuery?.queryKey)),
   });
   const items = useMemo(
     () => (query.data?.pages ?? []).reduce<PostSummary[]>((acc, p) => mergePage(acc, p.items), []),
@@ -124,8 +132,15 @@ function usePostPages(key: readonly unknown[], fetchPage: PageFetcher, enabled =
   return { ...query, items, more };
 }
 
-export function useFeed(meId: string | null | undefined, sort: FeedSort) {
-  return usePostPages(communityKeys.feed(meId, sort), (cursor) => getCommunityApi().feed(sort, cursor), meId !== undefined);
+/** `q` 는 화면이 앞뒤 공백을 자르고 입력이 멈춘 뒤 넘긴다. 빈 값이면 그냥 피드 */
+export function useFeed(meId: string | null | undefined, sort: FeedSort, q = '') {
+  return usePostPages(
+    communityKeys.feed(meId, sort, q),
+    (cursor) => getCommunityApi().feed(sort, cursor, q),
+    meId !== undefined,
+    // 검색어만 바뀌는 동안은 앞 결과를 둔다 — 글자마다 뼈대(스켈레톤)로 깜빡이지 않게. 정렬 · 로그인이 바뀌면 두지 않는다
+    (prev, prevKey) => (prevKey && prevKey[1] === who(meId) && prevKey[3] === sort ? prev : undefined),
+  );
 }
 
 export function useUserPosts(meId: string | null | undefined, userId: string | null | undefined, sort: FeedSort) {

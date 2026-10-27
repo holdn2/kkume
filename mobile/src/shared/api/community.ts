@@ -126,8 +126,16 @@ export type NewPost = {
  * 화면이 부르는 전부. 실패하면 `ApiError`(`@shared/api/client`)와 같은 모양
  * `{ code, message, status }` 를 던진다.
  */
+/** 검색어 길이 상한(코드 포인트). 넘으면 서버가 잘라 쓰지 않고 `400 invalid_query` 를 준다 */
+export const SEARCH_MAX = 50;
+
 export interface CommunityApi {
-  feed(sort: FeedSort, cursor?: string | null): Promise<Page<PostSummary>>;
+  /**
+   * `q` 가 있으면 제목 · 꿈 내용 · 한마디에 그 글자가 든 글만(대소문자 무시, 글자 그대로 — `%` · `_` 도 글자).
+   * 닉네임은 찾지 않는다. 앞뒤 공백을 자르고 비면 그냥 피드다. 50자를 넘으면 `400 invalid_query`
+   * (서버 #155 · PR #156, 문서 102). 커서에 `q` 는 묶이지 않는다 — 검색어가 바뀌면 처음 쪽부터 읽는다
+   */
+  feed(sort: FeedSort, cursor?: string | null, q?: string): Promise<Page<PostSummary>>;
   post(id: string): Promise<PostDetail | null>;
   /** 이미 공유한 꿈이면 `409 already_shared` 를 던지고, 오류에 그 글의 `postId` 가 붙는다 */
   createPost(input: NewPost): Promise<PostSummary>;
