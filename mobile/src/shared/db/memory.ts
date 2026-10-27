@@ -86,6 +86,14 @@ export function createMemoryRepo(): DreamRepo {
       return { total: live.length, unread: live.filter((r) => r.reviewedAt == null).length };
     },
 
+    async countUnsynced() {
+      return rows.filter((r) => !r.syncedAt || r.updatedAt > r.syncedAt).length;
+    },
+
+    async recordedTimes() {
+      return rows.filter((r) => !r.deletedAt).map((r) => r.recordedAt);
+    },
+
     async softDelete(id: string) {
       // 지우는 것도 서버에 가야 하는 변경이라 update 와 같은 시각 규칙을 쓴다
       rows = rows.map((r) => {

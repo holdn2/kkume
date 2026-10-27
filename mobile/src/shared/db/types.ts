@@ -138,6 +138,8 @@ export interface DreamRepo {
    * 목록을 쪽으로 나눠 읽으므로 「N건 · 미확인 N건」은 읽은 행이 아니라 이것으로 센다
    */
   counts(query?: string): Promise<{ total: number; unread: number }>;
+  /** 지운 것을 뺀 모든 기록의 `recordedAt`. 마이 탭 통계(연속 기록일 · 이번 달)가 날짜만 본다 — 본문까지 읽지 않게 */
+  recordedTimes(): Promise<string[]>;
   softDelete(id: string): Promise<void>;
   /** 검수용. 화면에서 부르지 않는다 */
   clear(): Promise<void>;
@@ -149,6 +151,8 @@ export interface DreamRepo {
    * 빼면 한쪽에서 지운 기록이 다른 기기에 영영 남는다.
    */
   listUnsynced(limit?: number): Promise<Dream[]>;
+  /** `listUnsynced`와 같은 조건의 개수. 마이 탭의 「아직 서버에 없는 변경 n건」 — 행을 읽지 않고 센다 */
+  countUnsynced(): Promise<number>;
 
   /**
    * 올린 것이 받아들여졌다고 표시한다. **보낸 그 버전일 때만** 표시한다.
