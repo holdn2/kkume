@@ -12,9 +12,12 @@ import { getDreamRepo, SETTINGS } from '@shared/db';
  */
 let watched: string | null = null;
 let loaded = false;
+/** 바뀔 때마다 올린다. 앱을 켠 직후 읽던 옛 id가, 읽는 사이에 로그아웃 · 새 만화로 바뀐 값을 덮지 않게(PR #150 재검토) */
+let generation = 0;
 const listeners = new Set<() => void>();
 
 function set(id: string | null) {
+  generation += 1;
   watched = id;
   listeners.forEach((fn) => fn());
   void getDreamRepo()
@@ -25,11 +28,12 @@ function set(id: string | null) {
 function load() {
   if (loaded) return;
   loaded = true;
+  const at = generation;
   void getDreamRepo()
     .then((repo) => repo.getSetting(SETTINGS.comicWatch))
     .then((v) => {
-      // 읽는 사이에 새로 만든 만화가 있으면 그쪽이 맞다
-      if (v && watched == null) {
+      // 읽는 사이에 바뀌었으면(새 만화 · 로그아웃) 그쪽이 맞다
+      if (v && at === generation) {
         watched = v;
         listeners.forEach((fn) => fn());
       }
