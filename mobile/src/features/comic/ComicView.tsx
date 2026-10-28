@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
@@ -8,7 +8,7 @@ import type { ComicLayout, ComicPanel } from '@shared/api/comic';
 import { AppText } from '@shared/ui';
 import { avatarBg, c, press, r, sp } from '@theme/token';
 
-import { bubbleSide, gridCrop, imageKey, type BubbleSide } from './logic';
+import { BUBBLE_LINE, bubbleSide, bubbleSize, gridCrop, imageKey, TEXT_SHARE, type BubbleSide } from './logic';
 
 type Props = {
   layout: ComicLayout | null;
@@ -99,9 +99,14 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full, on
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const waiting = !!key && loadedKey !== key;
   const onSettled = () => setLoadedKey(key);
+  // 대사가 있으면 말풍선까지 그려진 뒤에 알린다 — 말풍선은 글자를 잰 다음 프레임에 그려져서,
+  // 그림만 보고 알리면 그 사이에 누른 사진에 저장에 대사가 빠졌다(PR #162 리뷰)
+  const talks = !!panel?.dialogue;
+  const [drawn, setDrawn] = useState(false);
+  const onDrawn = useCallback(() => setDrawn(true), []);
   useEffect(() => {
-    if (!waiting) notify?.();
-  }, [waiting, notify]);
+    if (!waiting && (!talks || drawn)) notify?.();
+  }, [waiting, talks, drawn, notify]);
   const image = source && key ? { uri: source, cacheKey: key } : undefined;
   return (
     <View style={[s.panel, { width: size, height: size }]}>
@@ -137,7 +142,15 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full, on
           </AppText>
         </View>
       )}
-      {!!panel?.dialogue && !waiting && <SpeechBubble text={panel.dialogue} side={bubbleSide(panel.speaker, index)} full={full} />}
+      {!!panel?.dialogue && !waiting && (
+        <SpeechBubble
+          text={panel.dialogue}
+          side={bubbleSide(panel.speaker, index)}
+          room={size - 2 * sp[2]}
+          full={full}
+          onDrawn={onDrawn}
+        />
+      )}
     </View>
   );
 }
@@ -146,17 +159,43 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full, on
  * 말풍선. 컷 위쪽 모서리에 놓고 꼬리를 그림 가운데 쪽 아래로 뺀다(이슈 #106 · #161).
  * 만화 말풍선처럼 흰 타원 + 검은 선이다 — 둥근 사각형은 만화가 아니라 앱 칩처럼 보였다(문서 103 B4).
  * 몸통과 꼬리를 **한 길**로 그려 선이 이어진다. 둘을 따로 그리면 꼬리 입구에 몸통 선이 남는다(이슈 #115에서 겪음).
- * 타원은 글자 상자를 재야 그릴 수 있어 첫 측정 전에는 글자를 숨긴다 — 바탕 없는 글자가 한 번 깜빡이지 않게
+ *
+ * 타원은 **글자 상자를 품도록** 글자를 잰 뒤 정한다(`bubbleSize`). 상자에 여백만 두르고 그 안에 타원을 그리면
+ * 넓은 윗줄 · 아랫줄의 끝 글자가 타원 밖으로 나갔다(PR #162 리뷰). 재기 전에는 글자를 숨긴다 — 바탕 없는 글자가 깜빡이지 않게.
+ * 글자 폭은 픽셀로 묶는다(`room`) — 퍼센트로 두면 타원에 맞춰 늘린 여백이 다시 글자 폭을 바꾼다
  */
-function SpeechBubble({ text, side, full }: { text: string; side: BubbleSide; full?: boolean }) {
-  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
+function SpeechBubble({
+  text,
+  side,
+  room,
+  full,
+  onDrawn,
+}: {
+  text: string;
+  side: BubbleSide;
+  /** 말풍선이 차지할 수 있는 가로 폭 */
+  room: number;
+  full?: boolean;
+  /** 타원까지 그려졌다 */
+  onDrawn?: () => void;
+}) {
+  const [txt, setTxt] = useState<{ w: number; h: number } | null>(null);
   const onLayout = (e: LayoutChangeEvent) => {
     const { width: w, height: h } = e.nativeEvent.layout;
-    setBox((cur) => (cur && cur.w === w && cur.h === h ? cur : { w, h }));
+    setTxt((cur) => (cur && cur.w === w && cur.h === h ? cur : { w, h }));
   };
+  const box = txt ? bubbleSize(txt.w, txt.h) : null;
+  useEffect(() => {
+    if (txt) onDrawn?.();
+  }, [txt, onDrawn]);
   return (
     <View pointerEvents="none" style={[s.bubbleRow, { alignItems: side === 'left' ? 'flex-start' : 'flex-end' }]}>
-      <View onLayout={onLayout} style={[s.bubble, !box && { opacity: 0 }]}>
+      <View
+        style={[
+          box && txt
+            ? { paddingHorizontal: (box.w - txt.w) / 2, paddingVertical: (box.h - txt.h) / 2 }
+            : { opacity: 0 },
+        ]}>
         {box && (
           <Svg width={box.w} height={box.h + TAIL} style={s.shape}>
             <Path
@@ -169,11 +208,14 @@ function SpeechBubble({ text, side, full }: { text: string; side: BubbleSide; fu
           </Svg>
         )}
         <AppText
+          onLayout={onLayout}
           size="caption"
           weight="semibold"
           color={c.actionFg}
           numberOfLines={full ? undefined : 2}
-          style={s.bubbleText}>
+          // 낱말 중간에서 줄이 갈리지 않게(「어/떻게」) — 말풍선 대사는 짧아서 한 낱말이 갈리면 바로 보인다
+          lineBreakStrategyIOS="hangul-word"
+          style={[s.bubbleText, { maxWidth: room * TEXT_SHARE }]}>
           {text}
         </AppText>
       </View>
@@ -181,14 +223,11 @@ function SpeechBubble({ text, side, full }: { text: string; side: BubbleSide; fu
   );
 }
 
-/** 몸통 선 두께. 만화처럼 또렷하되 굵지 않게(사용자 — "선 굵기가 너무 굵지는 않았으면") */
-const BUBBLE_LINE = 2;
 /** 꼬리가 몸통 아래로 나오는 길이 */
 const TAIL = sp[3];
 /** 꼬리 입구가 맨 아래에서 그림 가운데 쪽으로 돌아간 각도 · 입구 반폭(도) */
 const TAIL_TURN = 22;
 const TAIL_MOUTH = 8;
-
 /**
  * 타원 + 꼬리를 한 길로. 꼬리 입구 두 점 사이를 뺀 나머지 타원을 크게 돌아(호) 꼬리 끝을 거쳐 닫는다.
  * 선이 상자 밖으로 잘리지 않게 반지름을 선 두께의 절반만큼 줄인다. 꼬리는 처음엔 아래로 나오다 가운데로 휜다
@@ -222,8 +261,6 @@ const s = StyleSheet.create({
   abs: { position: 'absolute' },
   placeholder: { alignItems: 'center', justifyContent: 'center' },
   bubbleRow: { position: 'absolute', top: sp[2], left: sp[2], right: sp[2] },
-  // 타원은 상자 모서리를 깎으므로 사각형 때보다 안쪽 여백을 넉넉히 둔다 — 두 줄 대사의 끝 글자가 선에 닿지 않게
-  bubble: { maxWidth: '85%', paddingHorizontal: sp[4], paddingVertical: sp[2] + BUBBLE_LINE },
   shape: { position: 'absolute', top: 0, left: 0 },
   bubbleText: { textAlign: 'center' },
 });
