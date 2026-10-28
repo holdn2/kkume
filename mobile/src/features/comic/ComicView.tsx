@@ -1,13 +1,14 @@
 import { Image } from 'expo-image';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 
 import { Skeleton } from '@components';
 import type { ComicLayout, ComicPanel } from '@shared/api/comic';
 import { AppText } from '@shared/ui';
 import { avatarBg, c, press, r, sp } from '@theme/token';
 
-import { bubbleSide, gridCrop, imageKey, type BubbleSide } from './logic';
+import { BUBBLE_LINE, bubbleSide, bubbleSize, gridCrop, imageKey, TEXT_SHARE, type BubbleSide } from './logic';
 
 type Props = {
   layout: ComicLayout | null;
@@ -27,7 +28,7 @@ const GAP = sp[1];
 /**
  * CM-3의 네 컷(계획서 003 — "4컷 그리드, 탭하면 전체화면 확대").
  *
- * **글자는 그림 위에 앱이 얹는다**(문서 081). 대사는 위쪽 말풍선에 — 말풍선은 말하는 사람 쪽으로 붙는다(`speaker`).
+ * **글자는 그림 위에 앱이 얹는다**(문서 081). 대사는 위쪽 말풍선에 — 말풍선은 위쪽 모서리에 붙는다(`speaker` 쪽, 모르면 번갈아).
  * **해설은 그림 위에 얹지 않는다**(이슈 #115) — 짧게 줄인 해설이 오히려 꿈을 생략해 보였고, 만화는 늘
  * 꿈 본문과 함께 보인다. 해설은 화면 읽기(접근성 이름)에만 쓴다.
  * 그림이 없으면(가짜 서버 · 받는 중) 그 자리에 자리 그림을 그린다 — 글자는 그대로 읽힌다.
@@ -98,9 +99,14 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full, on
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const waiting = !!key && loadedKey !== key;
   const onSettled = () => setLoadedKey(key);
+  // 대사가 있으면 말풍선까지 그려진 뒤에 알린다 — 말풍선은 글자를 잰 다음 프레임에 그려져서,
+  // 그림만 보고 알리면 그 사이에 누른 사진에 저장에 대사가 빠졌다(PR #162 리뷰)
+  const talks = !!panel?.dialogue;
+  const [drawn, setDrawn] = useState(false);
+  const onDrawn = useCallback(() => setDrawn(true), []);
   useEffect(() => {
-    if (!waiting) notify?.();
-  }, [waiting, notify]);
+    if (!waiting && (!talks || drawn)) notify?.();
+  }, [waiting, talks, drawn, notify]);
   const image = source && key ? { uri: source, cacheKey: key } : undefined;
   return (
     <View style={[s.panel, { width: size, height: size }]}>
@@ -136,67 +142,117 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full, on
           </AppText>
         </View>
       )}
-      {!!panel?.dialogue && !waiting && <SpeechBubble text={panel.dialogue} side={bubbleSide(panel.speaker)} full={full} />}
+      {!!panel?.dialogue && !waiting && (
+        <SpeechBubble
+          text={panel.dialogue}
+          side={bubbleSide(panel.speaker, index)}
+          room={size - 2 * sp[2]}
+          full={full}
+          onDrawn={onDrawn}
+        />
+      )}
     </View>
   );
 }
 
 /**
- * 말풍선. 말하는 사람 쪽 위에 놓고 꼬리를 그쪽 아래로 뺀다(이슈 #106).
- * 꼬리는 테두리색 삼각형 위에 한 겹 작은 바탕색 삼각형을 겹쳐 테두리가 이어져 보이게 한다.
- * 안쪽 삼각형은 몸통 안으로 `TAIL_OVERLAP`만큼 올려 그린다 — 테두리와 딱 맞닿게 두면 기기 픽셀 반올림에 따라
- * 몸통 아래 테두리가 꼬리 입구에 한 줄 남았다(이슈 #115)
+ * 말풍선. 컷 위쪽 모서리에 놓고 꼬리를 그림 가운데 쪽 아래로 뺀다(이슈 #106 · #161).
+ * 만화 말풍선처럼 흰 타원 + 검은 선이다 — 둥근 사각형은 만화가 아니라 앱 칩처럼 보였다(문서 103 B4).
+ * 몸통과 꼬리를 **한 길**로 그려 선이 이어진다. 둘을 따로 그리면 꼬리 입구에 몸통 선이 남는다(이슈 #115에서 겪음).
+ *
+ * 타원은 **글자 상자를 품도록** 글자를 잰 뒤 정한다(`bubbleSize`). 상자에 여백만 두르고 그 안에 타원을 그리면
+ * 넓은 윗줄 · 아랫줄의 끝 글자가 타원 밖으로 나갔다(PR #162 리뷰). 재기 전에는 글자를 숨긴다 — 바탕 없는 글자가 깜빡이지 않게.
+ * 글자 폭은 픽셀로 묶는다(`room`) — 퍼센트로 두면 타원에 맞춰 늘린 여백이 다시 글자 폭을 바꾼다
  */
-function SpeechBubble({ text, side, full }: { text: string; side: BubbleSide; full?: boolean }) {
-  const align = side === 'left' ? 'flex-start' : side === 'right' ? 'flex-end' : 'center';
+function SpeechBubble({
+  text,
+  side,
+  room,
+  full,
+  onDrawn,
+}: {
+  text: string;
+  side: BubbleSide;
+  /** 말풍선이 차지할 수 있는 가로 폭 */
+  room: number;
+  full?: boolean;
+  /** 타원까지 그려졌다 */
+  onDrawn?: () => void;
+}) {
+  const [txt, setTxt] = useState<{ w: number; h: number } | null>(null);
+  const onLayout = (e: LayoutChangeEvent) => {
+    const { width: w, height: h } = e.nativeEvent.layout;
+    setTxt((cur) => (cur && cur.w === w && cur.h === h ? cur : { w, h }));
+  };
+  const box = txt ? bubbleSize(txt.w, txt.h) : null;
+  useEffect(() => {
+    if (txt) onDrawn?.();
+  }, [txt, onDrawn]);
   return (
-    <View pointerEvents="none" style={[s.bubbleRow, { alignItems: align }]}>
-      <View style={s.bubble}>
-        <AppText size="caption" color={c.actionFg} numberOfLines={full ? undefined : 2}>
+    <View pointerEvents="none" style={[s.bubbleRow, { alignItems: side === 'left' ? 'flex-start' : 'flex-end' }]}>
+      <View
+        style={[
+          box && txt
+            ? { paddingHorizontal: (box.w - txt.w) / 2, paddingVertical: (box.h - txt.h) / 2 }
+            : { opacity: 0 },
+        ]}>
+        {box && (
+          <Svg width={box.w} height={box.h + TAIL} style={s.shape}>
+            <Path
+              d={bubblePath(box.w, box.h, side)}
+              fill={c.action}
+              stroke={c.bg}
+              strokeWidth={BUBBLE_LINE}
+              strokeLinejoin="round"
+            />
+          </Svg>
+        )}
+        <AppText
+          onLayout={onLayout}
+          size="caption"
+          weight="semibold"
+          color={c.actionFg}
+          numberOfLines={full ? undefined : 2}
+          // 낱말 중간에서 줄이 갈리지 않게(「어/떻게」) — 말풍선 대사는 짧아서 한 낱말이 갈리면 바로 보인다
+          lineBreakStrategyIOS="hangul-word"
+          style={[s.bubbleText, { maxWidth: room * TEXT_SHARE }]}>
           {text}
         </AppText>
       </View>
-      <View style={[s.tail, side === 'left' ? s.tailLeft : side === 'right' ? s.tailRight : null]}>
-        <View style={[s.tri, triangle(side, TAIL, c.bg)]} />
-        <View style={[s.tri, s.triInner, innerPlace(side), triangle(side, innerSize(side), c.action)]} />
-      </View>
     </View>
   );
 }
 
-/** 아래를 향한 삼각형. 옆에 선 사람을 가리킬 때는 그쪽 변을 세워 비스듬히 뺀다 */
-function triangle(side: BubbleSide, size: number, color: string) {
-  return {
-    borderTopWidth: size,
-    borderTopColor: color,
-    borderLeftWidth: side === 'left' ? 0 : size * TAIL_SPREAD,
-    borderRightWidth: side === 'right' ? 0 : size * TAIL_SPREAD,
-  };
-}
-
-const TAIL = sp[4];
-/** 꼬리 밑변의 반폭 비율. 0.5면 가늘어 폰 크기 컷에서 꼬리로 읽히지 않았다 */
-const TAIL_SPREAD = 0.7;
-const BUBBLE_LINE = 1.5;
-/** 안쪽 삼각형을 몸통 안으로 겹쳐 올리는 높이. 몸통 위아래 여백(`sp[1]`)보다 작아 글자를 덮지 않는다 */
-const TAIL_OVERLAP = BUBBLE_LINE * 2;
-/** 비스듬한 변을 테두리 두께만큼 안으로 밀 때의 가로 거리 */
-const SLANT_INSET = BUBBLE_LINE * Math.sqrt(1 + TAIL_SPREAD * TAIL_SPREAD);
-
+/** 꼬리가 몸통 아래로 나오는 길이 */
+const TAIL = sp[3];
+/** 꼬리 입구가 맨 아래에서 그림 가운데 쪽으로 돌아간 각도 · 입구 반폭(도) */
+const TAIL_TURN = 22;
+const TAIL_MOUTH = 8;
 /**
- * 안쪽 삼각형의 높이. 바깥 삼각형과 변이 나란하고 테두리 두께만큼 안쪽에 있도록 꼭짓점을 올린 뒤,
- * 몸통 안으로 겹친 만큼 더한다. 옆을 가리키는 꼬리는 세운 변도 테두리 두께만큼 안으로 들어온다
+ * 타원 + 꼬리를 한 길로. 꼬리 입구 두 점 사이를 뺀 나머지 타원을 크게 돌아(호) 꼬리 끝을 거쳐 닫는다.
+ * 선이 상자 밖으로 잘리지 않게 반지름을 선 두께의 절반만큼 줄인다. 꼬리는 처음엔 아래로 나오다 가운데로 휜다
  */
-function innerSize(side: BubbleSide) {
-  const inset = side === 'center' ? SLANT_INSET : SLANT_INSET + BUBBLE_LINE;
-  return TAIL - inset / TAIL_SPREAD + TAIL_OVERLAP;
-}
-
-function innerPlace(side: BubbleSide) {
-  const top = -TAIL_OVERLAP;
-  if (side === 'left') return { top, left: BUBBLE_LINE };
-  if (side === 'right') return { top, right: BUBBLE_LINE };
-  return { top, left: TAIL_SPREAD * (TAIL - innerSize(side)) };
+function bubblePath(w: number, h: number, side: BubbleSide) {
+  const half = BUBBLE_LINE / 2;
+  const rx = w / 2 - half;
+  const ry = h / 2 - half;
+  const toward = side === 'left' ? 1 : -1;
+  const at = (deg: number) => {
+    const t = (deg * Math.PI) / 180;
+    return { x: w / 2 + rx * Math.cos(t), y: h / 2 + ry * Math.sin(t) };
+  };
+  const mouth = 90 - toward * TAIL_TURN;
+  const a = at(mouth + TAIL_MOUTH);
+  const b = at(mouth - TAIL_MOUTH);
+  const tip = { x: at(mouth).x + toward * TAIL * 0.9, y: h + TAIL - half };
+  const bend = (p: { x: number; y: number }) => `${p.x + (tip.x - p.x) * 0.2} ${p.y + (tip.y - p.y) * 0.6}`;
+  return [
+    `M ${b.x} ${b.y}`,
+    `A ${rx} ${ry} 0 1 0 ${a.x} ${a.y}`,
+    `Q ${bend(a)} ${tip.x} ${tip.y}`,
+    `Q ${bend(b)} ${b.x} ${b.y}`,
+    'Z',
+  ].join(' ');
 }
 
 const s = StyleSheet.create({
@@ -205,18 +261,6 @@ const s = StyleSheet.create({
   abs: { position: 'absolute' },
   placeholder: { alignItems: 'center', justifyContent: 'center' },
   bubbleRow: { position: 'absolute', top: sp[2], left: sp[2], right: sp[2] },
-  bubble: {
-    maxWidth: '85%',
-    paddingHorizontal: sp[3],
-    paddingVertical: sp[1],
-    borderRadius: r.surface,
-    borderWidth: BUBBLE_LINE,
-    borderColor: c.bg,
-    backgroundColor: c.action,
-  },
-  tail: { marginTop: -BUBBLE_LINE },
-  tailLeft: { marginLeft: sp[4] },
-  tailRight: { marginRight: sp[4] },
-  tri: { width: 0, height: 0, borderLeftColor: 'transparent', borderRightColor: 'transparent' },
-  triInner: { position: 'absolute' },
+  shape: { position: 'absolute', top: 0, left: 0 },
+  bubbleText: { textAlign: 'center' },
 });

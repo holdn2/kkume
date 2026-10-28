@@ -5,7 +5,7 @@
 import { isComicRunning } from '@shared/api/comic';
 import { createHttpComic } from '@shared/api/comicHttp';
 import { createFakeComicApi, fakePanels } from '@features/comic/fake';
-import { bubbleSide, explainCreateError, genderLabel, gridCrop, imageKey, parseGender, stepStates } from '@features/comic/logic';
+import { BUBBLE_LINE, bubbleSide, bubbleSize, explainCreateError, genderLabel, gridCrop, imageKey, parseGender, stepStates, TEXT_SHARE } from '@features/comic/logic';
 
 let failed = 0;
 let total = 0;
@@ -119,9 +119,36 @@ check(
 );
 check(
   'M39',
-  '말풍선은 speaker 쪽, 없거나 모르는 값이면 가운데(이슈 #106)',
-  [bubbleSide('left'), bubbleSide('right'), bubbleSide(null), bubbleSide(undefined), bubbleSide('middle')].join() === 'left,right,center,center,center',
+  '말풍선은 speaker 쪽, 없거나 모르는 값이면 컷 순서로 왼쪽 · 오른쪽 번갈아(이슈 #106 · #161)',
+  [
+    bubbleSide('left', 1),
+    bubbleSide('right', 0),
+    bubbleSide(null, 0),
+    bubbleSide(undefined, 1),
+    bubbleSide('middle', 2),
+    bubbleSide(null, 3),
+  ].join() === 'left,right,left,right,left,right',
 );
+{
+  // 글자 상자 모서리가 타원 선 안쪽에 든다 — 넓은 윗줄 · 아랫줄의 끝 글자가 선에 걸리지 않게(PR #162 리뷰).
+  // 캡션 한 줄 높이 18
+  const inside = [
+    [30, 18],
+    [96, 18],
+    [96, 36],
+    [200, 36],
+    [200, 54],
+  ].every(([w, h]) => {
+    const b = bubbleSize(w, h);
+    const rx = b.w / 2 - BUBBLE_LINE;
+    const ry = b.h / 2 - BUBBLE_LINE;
+    return (w / 2 / rx) ** 2 + (h / 2 / ry) ** 2 <= 1;
+  });
+  check('M39b', '말풍선 타원이 글자 상자를 품는다', inside);
+  // 네 컷 칸(폰 폭 약 177 - 여백 16)에서 글자 폭을 다 쓴 두 줄 대사도 칸 안에 든다
+  const room = 161;
+  check('M39c', '두 줄 대사 말풍선이 칸 폭을 넘지 않는다', bubbleSize(room * TEXT_SHARE, 36).w <= room);
+}
 {
   // 서버는 다시 읽을 때마다 새로 서명한다 — 서명만 다른 두 주소는 같은 그림이어야 한다(이슈 #129, PR #130 독립 리뷰)
   const a = 'https://b.s3.ap-southeast-2.amazonaws.com/comics/c1/grid.png?X-Amz-Date=20261026T070000Z&X-Amz-Signature=aaa';

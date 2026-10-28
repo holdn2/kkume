@@ -1,5 +1,6 @@
 import { isApiError } from '@shared/api/client';
 import type { ComicGender, ComicStatus } from '@shared/api/comic';
+import { sp } from '@theme/token';
 
 /**
  * CM-2 체크리스트(계획서 003 — "막연한 스피너가 아니라 3단계 체크리스트").
@@ -46,13 +47,38 @@ export function gridCrop(index: number, cell: number): { width: number; height: 
 }
 
 /**
- * 말풍선을 둘 쪽. 서버가 준 `speaker` 를 믿되, 없거나 모르는 값이면 가운데 —
- * 엉뚱한 사람을 가리키는 것보다 아래를 가리키는 편이 덜 틀린다
+ * 말풍선을 둘 위쪽 모서리. 서버가 준 `speaker` 를 믿되, 없거나 모르는 값이면 컷 순서로 왼쪽 · 오른쪽을 번갈아 둔다.
+ * 서버는 아직 `speaker` 를 보내지 않는다 — 늘 위 가운데에 떠 있던 것이 어색했다(문서 103 B4, 이슈 #161).
+ * 모서리에 두고 꼬리를 그림 가운데로 향하게 하면 얼굴을 덜 가리고 누구를 가리켜도 크게 틀리지 않는다
  */
-export type BubbleSide = 'left' | 'right' | 'center';
+export type BubbleSide = 'left' | 'right';
 
-export function bubbleSide(speaker: unknown): BubbleSide {
-  return speaker === 'left' || speaker === 'right' ? speaker : 'center';
+export function bubbleSide(speaker: unknown, index: number): BubbleSide {
+  if (speaker === 'left' || speaker === 'right') return speaker;
+  return index % 2 === 0 ? 'left' : 'right';
+}
+
+/** 말풍선 선 두께. 만화처럼 또렷하되 굵지 않게(사용자 — "선 굵기가 너무 굵지는 않았으면", 이슈 #161) */
+export const BUBBLE_LINE = 2;
+/** 글자 위아래와 타원 사이 · 글자 끝 모서리와 타원 사이 */
+const PAD_Y = sp[2];
+const PAD_X = sp[1];
+/**
+ * 대사 글자가 쓸 수 있는 폭의 비율. 타원은 글자 상자보다 넓어서(두 줄이면 약 1.35배, 세 줄이면 약 1.5배)
+ * 이만큼 남겨야 컷 밖으로 나가지 않는다
+ */
+export const TEXT_SHARE = 0.6;
+
+/**
+ * 글자 상자(w × h)를 품는 말풍선 상자. 세로 반지름은 글자 위아래에 `PAD_Y` 를 더해 정하고,
+ * 가로 반지름은 상자 모서리가 타원 안에 들도록 푼다 — (w/2 / rx)² + (h/2 / ry)² = 1 (PR #162 리뷰).
+ * 반지름은 선 안쪽 가장자리 기준이고, 바깥 상자에 선 두께를 더한다
+ */
+export function bubbleSize(w: number, h: number) {
+  const ry = h / 2 + PAD_Y;
+  const k = h / 2 / ry;
+  const rx = w / 2 / Math.sqrt(1 - k * k) + PAD_X;
+  return { w: 2 * (rx + BUBBLE_LINE), h: 2 * (ry + BUBBLE_LINE) };
 }
 
 /** 만화 주인공 고르기(이슈 #117). 빈 값은 정하지 않음 — 꿈에 맡긴다 */
