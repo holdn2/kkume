@@ -119,8 +119,15 @@ check(
 );
 check(
   'M39',
-  '말풍선은 speaker 쪽, 없거나 모르는 값이면 가운데(이슈 #106)',
-  [bubbleSide('left'), bubbleSide('right'), bubbleSide(null), bubbleSide(undefined), bubbleSide('middle')].join() === 'left,right,center,center,center',
+  '말풍선은 speaker 쪽, 없거나 모르는 값이면 컷 순서로 왼쪽 · 오른쪽 번갈아(이슈 #106 · #161)',
+  [
+    bubbleSide('left', 1),
+    bubbleSide('right', 0),
+    bubbleSide(null, 0),
+    bubbleSide(undefined, 1),
+    bubbleSide('middle', 2),
+    bubbleSide(null, 3),
+  ].join() === 'left,right,left,right,left,right',
 );
 {
   // 서버는 다시 읽을 때마다 새로 서명한다 — 서명만 다른 두 주소는 같은 그림이어야 한다(이슈 #129, PR #130 독립 리뷰)

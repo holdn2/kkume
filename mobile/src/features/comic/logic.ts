@@ -46,13 +46,15 @@ export function gridCrop(index: number, cell: number): { width: number; height: 
 }
 
 /**
- * 말풍선을 둘 쪽. 서버가 준 `speaker` 를 믿되, 없거나 모르는 값이면 가운데 —
- * 엉뚱한 사람을 가리키는 것보다 아래를 가리키는 편이 덜 틀린다
+ * 말풍선을 둘 위쪽 모서리. 서버가 준 `speaker` 를 믿되, 없거나 모르는 값이면 컷 순서로 왼쪽 · 오른쪽을 번갈아 둔다.
+ * 서버는 아직 `speaker` 를 보내지 않는다 — 늘 위 가운데에 떠 있던 것이 어색했다(문서 103 B4, 이슈 #161).
+ * 모서리에 두고 꼬리를 그림 가운데로 향하게 하면 얼굴을 덜 가리고 누구를 가리켜도 크게 틀리지 않는다
  */
-export type BubbleSide = 'left' | 'right' | 'center';
+export type BubbleSide = 'left' | 'right';
 
-export function bubbleSide(speaker: unknown): BubbleSide {
-  return speaker === 'left' || speaker === 'right' ? speaker : 'center';
+export function bubbleSide(speaker: unknown, index: number): BubbleSide {
+  if (speaker === 'left' || speaker === 'right') return speaker;
+  return index % 2 === 0 ? 'left' : 'right';
 }
 
 /** 만화 주인공 고르기(이슈 #117). 빈 값은 정하지 않음 — 꿈에 맡긴다 */
