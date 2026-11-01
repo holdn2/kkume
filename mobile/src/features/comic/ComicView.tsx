@@ -8,7 +8,7 @@ import type { ComicLayout, ComicPanel } from '@shared/api/comic';
 import { AppText } from '@shared/ui';
 import { avatarBg, c, press, r, sp } from '@theme/token';
 
-import { BUBBLE_LINE, bubbleSide, bubbleSize, gridCrop, imageKey, TEXT_SHARE, type BubbleSide } from './logic';
+import { BUBBLE_LINE, BUBBLE_STAGE, bubbleSide, bubbleSize, gridCrop, imageKey, TEXT_SHARE, type BubbleSide } from './logic';
 
 type Props = {
   layout: ComicLayout | null;
@@ -142,14 +142,18 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full, on
           </AppText>
         </View>
       )}
+      {/* 말풍선은 기준 칸에서 배치하고 칸 크기로 키운다 — 4컷 전체와 크게 보기에서 그림에 대한 자리가 같게(이슈 #163) */}
       {!!panel?.dialogue && !waiting && (
-        <SpeechBubble
-          text={panel.dialogue}
-          side={bubbleSide(panel.speaker, index)}
-          room={size - 2 * sp[2]}
-          full={full}
-          onDrawn={onDrawn}
-        />
+        <View pointerEvents="none" style={[s.stage, { transform: [{ scale: size / BUBBLE_STAGE }] }]}>
+          <SpeechBubble
+            text={panel.dialogue}
+            side={bubbleSide(panel.speaker, index)}
+            room={BUBBLE_STAGE - 2 * sp[2]}
+            line={(BUBBLE_LINE * BUBBLE_STAGE) / size}
+            full={full}
+            onDrawn={onDrawn}
+          />
+        </View>
       )}
     </View>
   );
@@ -168,6 +172,7 @@ function SpeechBubble({
   text,
   side,
   room,
+  line,
   full,
   onDrawn,
 }: {
@@ -175,6 +180,8 @@ function SpeechBubble({
   side: BubbleSide;
   /** 말풍선이 차지할 수 있는 가로 폭 */
   room: number;
+  /** 선 두께. 배율을 되돌려, 키워도 화면에서는 `BUBBLE_LINE` 으로 보이게 */
+  line: number;
   full?: boolean;
   /** 타원까지 그려졌다 */
   onDrawn?: () => void;
@@ -199,10 +206,10 @@ function SpeechBubble({
         {box && (
           <Svg width={box.w} height={box.h + TAIL} style={s.shape}>
             <Path
-              d={bubblePath(box.w, box.h, side)}
+              d={bubblePath(box.w, box.h, side, line)}
               fill={c.action}
               stroke={c.bg}
-              strokeWidth={BUBBLE_LINE}
+              strokeWidth={line}
               strokeLinejoin="round"
             />
           </Svg>
@@ -232,8 +239,8 @@ const TAIL_MOUTH = 8;
  * 타원 + 꼬리를 한 길로. 꼬리 입구 두 점 사이를 뺀 나머지 타원을 크게 돌아(호) 꼬리 끝을 거쳐 닫는다.
  * 선이 상자 밖으로 잘리지 않게 반지름을 선 두께의 절반만큼 줄인다. 꼬리는 처음엔 아래로 나오다 가운데로 휜다
  */
-function bubblePath(w: number, h: number, side: BubbleSide) {
-  const half = BUBBLE_LINE / 2;
+function bubblePath(w: number, h: number, side: BubbleSide, line: number) {
+  const half = line / 2;
   const rx = w / 2 - half;
   const ry = h / 2 - half;
   const toward = side === 'left' ? 1 : -1;
@@ -261,6 +268,7 @@ const s = StyleSheet.create({
   abs: { position: 'absolute' },
   placeholder: { alignItems: 'center', justifyContent: 'center' },
   bubbleRow: { position: 'absolute', top: sp[2], left: sp[2], right: sp[2] },
+  stage: { position: 'absolute', top: 0, left: 0, width: BUBBLE_STAGE, height: BUBBLE_STAGE, transformOrigin: 'top left' },
   shape: { position: 'absolute', top: 0, left: 0 },
   bubbleText: { textAlign: 'center' },
 });

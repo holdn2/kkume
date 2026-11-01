@@ -5,7 +5,7 @@
 import { isComicRunning } from '@shared/api/comic';
 import { createHttpComic } from '@shared/api/comicHttp';
 import { createFakeComicApi, fakePanels } from '@features/comic/fake';
-import { BUBBLE_LINE, bubbleSide, bubbleSize, explainCreateError, genderLabel, gridCrop, imageKey, parseGender, stepStates, TEXT_SHARE } from '@features/comic/logic';
+import { BUBBLE_LINE, BUBBLE_STAGE, bubbleSide, bubbleSize, explainCreateError, genderLabel, gridCrop, imageKey, parseGender, stepStates, TEXT_SHARE } from '@features/comic/logic';
 
 let failed = 0;
 let total = 0;
@@ -145,8 +145,8 @@ check(
     return (w / 2 / rx) ** 2 + (h / 2 / ry) ** 2 <= 1;
   });
   check('M39b', '말풍선 타원이 글자 상자를 품는다', inside);
-  // 네 컷 칸(폰 폭 약 177 - 여백 16)에서 글자 폭을 다 쓴 두 줄 대사도 칸 안에 든다
-  const room = 161;
+  // 기준 칸(여백 빼고)에서 글자 폭을 다 쓴 두 줄 대사도 칸 안에 든다 — 크게 보기는 이 칸을 키운 것이다(이슈 #163)
+  const room = BUBBLE_STAGE - 16;
   check('M39c', '두 줄 대사 말풍선이 칸 폭을 넘지 않는다', bubbleSize(room * TEXT_SHARE, 36).w <= room);
 }
 {
