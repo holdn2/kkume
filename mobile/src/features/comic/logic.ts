@@ -58,8 +58,17 @@ export function bubbleSide(speaker: unknown, index: number): BubbleSide {
   return index % 2 === 0 ? 'left' : 'right';
 }
 
-/** 말풍선 선 두께. 만화처럼 또렷하되 굵지 않게(사용자 — "선 굵기가 너무 굵지는 않았으면", 이슈 #161) */
-export const BUBBLE_LINE = 2;
+/**
+ * 말풍선 선 두께(화면 픽셀). 2는 기기에서 너무 두꺼웠다(이슈 #163 — "말풍선 굵기 너무 두꺼워").
+ * 칸 크기와 상관없이 이 두께로 보이게 그릴 때 배율로 나눈다(`ComicPanelView`)
+ */
+export const BUBBLE_LINE = 1.25;
+/**
+ * 말풍선을 배치하는 기준 칸의 한 변. 말풍선은 이 칸에서 자리 · 크기를 정한 뒤 실제 칸 크기로 통째로 키우고 줄인다 —
+ * 픽셀로 고정하면 크게 보기(칸이 약 두 배)에서 말풍선이 모서리에 작게 남고 꼬리 끝이 그림의 다른 곳에 닿아,
+ * 꼬리가 가리키는 인물이 4컷 전체와 달라 보였다(이슈 #163). 폰의 네 컷 한 칸 크기쯤으로 둔다
+ */
+export const BUBBLE_STAGE = 176;
 /** 글자 위아래와 타원 사이 · 글자 끝 모서리와 타원 사이 */
 const PAD_Y = sp[2];
 const PAD_X = sp[1];
