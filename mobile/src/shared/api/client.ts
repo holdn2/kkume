@@ -69,9 +69,20 @@ export function isApiError(e: unknown): e is ApiError {
  * `String(e)`는 `Error: …`를 붙이고, 서버 오류 객체는 `[object Object]`가 된다(문서 104 C12)
  */
 export function errorText(e: unknown): string {
-  if (isApiError(e)) return e.message;
-  if (e instanceof Error) return e.message;
-  return String(e);
+  // 빈 문구면 오류 표시(`!!error`)가 통째로 사라진다 — 저장 실패가 묻히지 않게 물러설 문구를 둔다(PR #172 리뷰)
+  if (isApiError(e)) return e.message || '서버와 통신하지 못했어요';
+  if (e instanceof Error) return e.message || e.name || '알 수 없는 오류가 났어요';
+  return String(e) || '알 수 없는 오류가 났어요';
+}
+
+/**
+ * 진단용 오류 문구 — `errorText`에 원인 원문(`detail`)을 붙인다. **진단 화면 · 동기화 보고에만 쓴다.**
+ * 원문이 `message`에서 빠지면서 진단 화면이 ATS · 주소 · TLS를 가르지 못하게 되면 안 된다(PR #172 리뷰, 2026-09-13)
+ */
+export function errorDetail(e: unknown): string {
+  const base = isApiError(e) ? `HTTP ${e.status} · ${e.code} · ${errorText(e)}` : errorText(e);
+  const extra = isApiError(e) ? e.detail : e instanceof Error ? e.name : undefined;
+  return extra ? `${base}\n${extra}` : base;
 }
 
 /**

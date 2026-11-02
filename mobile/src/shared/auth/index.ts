@@ -37,6 +37,13 @@ export function onSignedOut(fn: () => void): () => void {
 }
 const notifySignedOut = () => signedOutListeners.forEach((fn) => fn());
 
+/**
+ * 이 기기에서 로그인했다. `useAuth`는 화면마다 따로 세션을 들고 있어서, 마이 탭에서 로그인 · 로그아웃해도 계속 떠 있는
+ * 꿈 로그는 몰랐다(PR #172 리뷰 — 「동기화 대기」 배지가 다시 켤 때까지 어긋남). 인스턴스들이 이걸로 맞춘다
+ */
+const signedInListeners = new Set<() => void>();
+const notifySignedIn = () => signedInListeners.forEach((fn) => fn());
+
 export const forgetAccount = onceAtATime(() =>
   runSteps(
     [
@@ -169,6 +176,7 @@ export function useAuth(): AuthState {
       await saveSession(s);
       setSession(s);
       setExpired(false);
+      notifySignedIn();
       // 로그인 전에 쌓인 기록을 바로 올린다. 소유자는 서버가 토큰에서 정하므로
       // 로컬 `user_id`를 따로 잇지 않아도 이 사용자 것이 된다.
       // 기다리지 않는다 — 로그인 완료가 동기화에 묶이면 느린 망에서 버튼이 안 풀린다
@@ -305,6 +313,17 @@ export function useAuth(): AuthState {
     setSession(s && !isExpired(s) ? s : null);
     setExpired(!!s && isExpired(s));
   }, []);
+
+  // 다른 화면의 로그인 · 로그아웃을 따라간다 — 이 훅은 화면마다 따로 세션을 든다
+  useEffect(() => {
+    const again = () => void refresh().catch(() => {});
+    signedInListeners.add(again);
+    const offOut = onSignedOut(again);
+    return () => {
+      signedInListeners.delete(again);
+      offOut();
+    };
+  }, [refresh]);
 
   const serverConsent = useCallback(async (current: string) => {
     const s = await loadSession();
