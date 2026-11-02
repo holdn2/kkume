@@ -14,6 +14,9 @@
  */
 
 export const MAX_BATCH = 100;
+/** 서버 #177(문서 109) — 동기화 본문 상한 · 녹음 파일 상한 */
+export const MAX_TEXT = 50_000;
+export const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const MAX_PAGE = 100;
 /**
  * 지금 로그인한 계정. 서버는 토큰에서 소유자를 정하므로, 계정이 바뀌면 같은 주소가
@@ -34,6 +37,8 @@ const state = {
   uploadSlots: 0,
   /** 업로드 자리를 달라며 앱이 보낸 형식. 안 보냈으면 null */
   uploadFormats: [],
+  /** 업로드 자리를 받을 때 보낸 크기(서버 #177) */
+  uploadBytes: [],
   /** GET /stt 를 부른 횟수. pending 인 동안은 부르지 않아야 한다(재현 테스트 H) */
   sttCalls: 0,
 };
@@ -71,6 +76,8 @@ function validate(p) {
   if (!p.recordedAt) return 'missing_recorded_at';
   if (!p.updatedAt) return 'missing_updated_at';
   if (p.title != null && p.title.length > 255) return 'title_too_long';
+  // 서버 #177(문서 109): 본문 50,000자. 서버는 이미 저장된 것보다 늘 때만 거절하지만 가짜 서버는 늘 거절한다
+  if (p.text != null && p.text.length > MAX_TEXT) return 'text_too_long';
   return null;
 }
 
@@ -186,8 +193,12 @@ const issued = new Map();
  */
 const FORMATS = { m4a: 'audio/mp4', wav: 'audio/wav' };
 
-export async function requestUploadSlot(_token, dreamId, format) {
+export async function requestUploadSlot(_token, dreamId, format, bytes) {
   state.uploadFormats.push(format ?? null);
+  state.uploadBytes.push(bytes ?? null);
+  // 서버 #177: 크기를 보내면 그 크기로 서명한다. 25MB 초과 413, 0 이하 400
+  if (bytes != null && bytes > MAX_AUDIO_BYTES) throw apiError(413, 'audio_too_large');
+  if (bytes != null && bytes <= 0) throw apiError(400, 'invalid_size');
   const fmt = format == null || format === '' ? 'm4a' : format;
   if (!FORMATS[fmt]) throw apiError(400, 'unsupported_format');
   const r = state.rows.get(dreamId);
@@ -272,12 +283,16 @@ export const server = {
   get uploadFormats() {
     return state.uploadFormats;
   },
+  get uploadBytes() {
+    return state.uploadBytes;
+  },
   reset() {
     USER = 'u1';
     issued.clear();
     s3.clear();
     state.uploadSlots = 0;
     state.uploadFormats = [];
+    state.uploadBytes = [];
     state.sttCalls = 0;
     state.rows = new Map();
     state.skewMs = 0;

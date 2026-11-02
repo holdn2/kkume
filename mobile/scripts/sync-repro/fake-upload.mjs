@@ -12,12 +12,15 @@ export const uploadControl = {
   putCalls: 0,
   /** 여기 든 경로는 폰에서 사라진 파일이다 — 크기를 못 재고, PUT 은 던진다(expo-file-system 과 같다) */
   missingFiles: new Set(),
+  /** 경로별 파일 크기. 없으면 1024 바이트 */
+  sizes: new Map(),
 };
 
 export function resetUpload() {
   uploadControl.putStatus = 200;
   uploadControl.putCalls = 0;
   uploadControl.missingFiles.clear();
+  uploadControl.sizes.clear();
   s3.clear();
 }
 
@@ -26,7 +29,7 @@ export function uploadBackend() {
 }
 
 export async function fileSize(filePath) {
-  return uploadControl.missingFiles.has(filePath) ? null : 1024;
+  return uploadControl.missingFiles.has(filePath) ? null : (uploadControl.sizes.get(filePath) ?? 1024);
 }
 
 export async function putFile(uploadUrl, filePath, headers) {

@@ -1,5 +1,5 @@
 import { canSync } from '@features/consent/logic';
-import { completeUpload, fetchStt, requestUploadSlot } from '@shared/api/audio';
+import { completeUpload, fetchStt, MAX_AUDIO_BYTES, requestUploadSlot } from '@shared/api/audio';
 import { uploadFormatFor } from '@shared/audio/format';
 import { errorDetail, HAS_API, isApiError } from '@shared/api/client';
 import { MAX_BATCH, pullDreams, pushDreams, type DreamPayload, type DreamView } from '@shared/api/sync';
@@ -198,7 +198,8 @@ export async function syncOnce(token: string): Promise<SyncReport> {
           report.uploadIssues.push({ id: d.id, reason: outcome });
           // 파일이 없는 것은 크기만 재고 끝나 자리를 쓰지 않는다. 그 밖의 실패는 시도한 것이라 센다 —
           // 안 세면 계속 실패하는 파일들이 한 회차에 끝없이 돈다
-          if (outcome !== 'file_missing') attempted += 1;
+          // 서버가 받지 않을 크기(audio_too_large)도 같다 — 서버에 묻기 전에 걸러져 자리를 쓰지 않는다
+          if (outcome !== 'file_missing' && outcome !== 'audio_too_large') attempted += 1;
           // 망이 끊겼으면 이번 회차는 여기까지. 나머지는 다음 회차가 이어받는다
           if (outcome === 'network') break;
         }
@@ -270,11 +271,16 @@ async function uploadOne(repo: Repo, token: string, d: Dream): Promise<string> {
   // 이유가 uploadIssues 에 남는다. 2026-09-21 기기에서 옛 녹음(캐시 폴더) 하나가 사라져 있었는데
   // 그걸 network 로 적고 회차를 멈춰 새 녹음까지 못 올렸다(재현 테스트 H9). 업로드 자리를 받기
   // 전에 보는 이유: 없는 파일로 자리를 받으면 서버에 쓰지 않을 key 가 남는다
-  if ((await fileSize(d.audioPath)) == null) return 'file_missing';
+  const bytes = await fileSize(d.audioPath);
+  if (bytes == null) return 'file_missing';
+  // **서버가 받지 않을 크기는 묻지도 않는다.** 원본은 폰에 남고(「아직 이 폰에만」으로 센다) 회차 몫도 쓰지 않는다 —
+  // 몫을 쓰면 그런 녹음 몇 개가 매 회차 맨 앞에서 새 녹음의 차례를 다 가져간다(PR #180 리뷰, 재현 H12b)
+  if (bytes > MAX_AUDIO_BYTES) return 'audio_too_large';
 
   let slot;
   try {
-    slot = await requestUploadSlot(token, d.id, uploadFormatFor(d.audioPath));
+    // 크기를 함께 보낸다 — 서버가 그 크기로 서명한다(서버 #177, 이슈 #179)
+    slot = await requestUploadSlot(token, d.id, uploadFormatFor(d.audioPath), bytes);
   } catch (e) {
     if (isNetwork(e)) return 'network';
     const code = (e as { code: string }).code;

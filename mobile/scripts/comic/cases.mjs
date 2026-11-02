@@ -163,6 +163,12 @@ const inProgress = explainCreateError({ code: 'comic_in_progress', status: 409, 
 check('M26', '만드는 중 오류는 그 만화로 보낸다', inProgress.kind === 'inProgress' && inProgress.comicId === 'x');
 check('M27', '401 은 로그인 안내', explainCreateError({ code: 'unauthorized', status: 401, message: '' }).kind === 'login');
 check('M28', '모르는 오류는 고정 문구', explainCreateError(new Error('boom')).message.includes('잠시 뒤'));
+check(
+  'M28b',
+  '요청 횟수 초과(429 too_many_requests)는 서버 문구를 그대로(서버 #177)',
+  explainCreateError({ code: 'too_many_requests', message: '요청이 너무 잦아요. 잠시 뒤 다시 해 주세요', status: 429 }).message ===
+    '요청이 너무 잦아요. 잠시 뒤 다시 해 주세요',
+);
 
 // 기본 몫은 2편(서버 PR #109)
 {

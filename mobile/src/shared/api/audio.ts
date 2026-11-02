@@ -35,16 +35,25 @@ export type SttView = {
   updatedAt: string;
 };
 
+/** 서버가 받는 녹음 파일 상한(서버 #177 · 문서 109). 넘으면 `413 audio_too_large` */
+export const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+
 const path = (dreamId: string, tail: string) => `/api/dreams/${encodeURIComponent(dreamId)}${tail}`;
 
 /** 녹음 파일 형식(서버 #52 · PR #53). 고르는 규칙은 `@shared/audio/format` */
 export type AudioFormat = 'wav';
 
-export function requestUploadSlot(token: string, dreamId: string, format?: AudioFormat) {
+/**
+ * `bytes` 는 올릴 파일의 크기다. 서버가 그 크기로 서명해 다른 크기의 PUT 을 S3 가 거절한다 — 큰 파일을 올려 두고
+ * `complete` 를 안 부르는 길을 막는다(서버 #177 · 문서 109). 25MB 를 넘으면 `413 audio_too_large`, 0 이하는
+ * `400 invalid_size`. **`Content-Length` 는 직접 붙이지 않는다** — `uploadAsync` 가 붙인다
+ */
+export function requestUploadSlot(token: string, dreamId: string, format?: AudioFormat, bytes?: number) {
+  const body = { ...(format ? { format } : {}), ...(bytes != null ? { bytes } : {}) };
   return request<UploadSlot>(path(dreamId, '/audio/upload'), {
     method: 'POST',
     token,
-    ...(format ? { body: { format } } : {}),
+    ...(Object.keys(body).length > 0 ? { body } : {}),
   });
 }
 
