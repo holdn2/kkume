@@ -53,4 +53,11 @@ public interface DreamRepository extends JpaRepository<Dream, String> {
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select d from Dream d where d.id = :id")
 	Optional<Dream> findForUpdate(@Param("id") String id);
+
+	/** 이 저장 위치를 가리키는 기록이 있는가. 올리다 만 녹음을 고를 때 쓴다 */
+	boolean existsByAudioUrl(String audioUrl);
+
+	/** 이 사람 기록 본문의 바이트 합계. 한 사람이 DB 볼륨을 채우지 못하게 올릴 때 본다 */
+	@Query(value = "select coalesce(sum(octet_length(text)), 0) from dreams where user_id = :userId", nativeQuery = true)
+	long sumTextBytes(@Param("userId") UUID userId);
 }
