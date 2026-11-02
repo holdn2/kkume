@@ -579,6 +579,45 @@ const scenarios = [
       };
     },
   },
+  {
+    key: 'H12',
+    title: '업로드 자리를 받을 때 파일 크기(bytes)를 보내고, 25MB를 넘는 녹음은 그 건만 못 올린 채 남는다(서버 #177)',
+    async run(repo) {
+      const ok = await voiceDream(repo, { audioPath: 'file:///docs/ExpoAudio/recording_ok.wav' });
+      const big = await voiceDream(repo, { audioPath: 'file:///docs/ExpoAudio/recording_big.wav' });
+      uploadControl.sizes.set('file:///docs/ExpoAudio/recording_big.wav', 30 * 1024 * 1024);
+      const r = await syncOnce(TOKEN);
+      const okRow = await repo.get(ok.id);
+      const bigRow = await repo.get(big.id);
+      const reasons = r.uploadIssues.map((i) => i.reason);
+      return {
+        reproduced: !(
+          r.uploaded === 1 &&
+          okRow.audioUploadedAt != null &&
+          bigRow.audioUploadedAt == null &&
+          server.uploadBytes.includes(1024) &&
+          !server.uploadBytes.includes(null) &&
+          reasons.includes('audio_too_large')
+        ),
+        detail: `올림 ${r.uploaded} · 보낸 크기 ${JSON.stringify(server.uploadBytes)} · 못 올림 ${reasons.join(',') || '없음'}`,
+      };
+    },
+  },
+  {
+    key: 'H13',
+    title: '본문이 50,000자를 넘는 기록은 그 건만 text_too_long 으로 거절되고 나머지는 올라간다(서버 #177)',
+    async run(repo) {
+      const long = await repo.create({ text: '가'.repeat(50_001) });
+      const fine = await repo.create({ text: '짧은 꿈' });
+      const r = await syncOnce(TOKEN);
+      const rej = r.rejected.find((x) => x.id === long.id);
+      const fineRow = await repo.get(fine.id);
+      return {
+        reproduced: !(rej?.reason === 'text_too_long' && fineRow.syncedAt != null),
+        detail: `거절 ${JSON.stringify(r.rejected)} · 짧은 꿈 올라감 ${fineRow.syncedAt != null}`,
+      };
+    },
+  },
   // ---- R: 녹음 경로 정리 (캐시 폴더 → Documents, 바뀐 컨테이너 경로 고치기) ----
   {
     key: 'R1',

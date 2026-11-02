@@ -65,7 +65,7 @@ export async function probeAudioUpload(): Promise<ProbeResult> {
   // 3. 업로드 자리
   let slot;
   try {
-    slot = await requestUploadSlot(token, target.id, uploadFormatFor(target.audioPath));
+    slot = await requestUploadSlot(token, target.id, uploadFormatFor(target.audioPath), bytes ?? undefined);
   } catch (e) {
     return fail(`업로드 자리 · ${describe(e)}`);
   }

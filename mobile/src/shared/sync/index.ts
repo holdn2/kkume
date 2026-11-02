@@ -270,11 +270,13 @@ async function uploadOne(repo: Repo, token: string, d: Dream): Promise<string> {
   // 이유가 uploadIssues 에 남는다. 2026-09-21 기기에서 옛 녹음(캐시 폴더) 하나가 사라져 있었는데
   // 그걸 network 로 적고 회차를 멈춰 새 녹음까지 못 올렸다(재현 테스트 H9). 업로드 자리를 받기
   // 전에 보는 이유: 없는 파일로 자리를 받으면 서버에 쓰지 않을 key 가 남는다
-  if ((await fileSize(d.audioPath)) == null) return 'file_missing';
+  const bytes = await fileSize(d.audioPath);
+  if (bytes == null) return 'file_missing';
 
   let slot;
   try {
-    slot = await requestUploadSlot(token, d.id, uploadFormatFor(d.audioPath));
+    // 크기를 함께 보낸다 — 서버가 그 크기로 서명한다(서버 #177, 이슈 #179)
+    slot = await requestUploadSlot(token, d.id, uploadFormatFor(d.audioPath), bytes);
   } catch (e) {
     if (isNetwork(e)) return 'network';
     const code = (e as { code: string }).code;
