@@ -32,6 +32,12 @@ import com.kkume.server.user.AccountGuard;
 public class AudioService {
 
 	/** 키의 마지막 조각. {@link #prepareUpload}가 만드는 모양이다 */
+	/**
+	 * 한 기록에 올라가 있되 아직 {@code complete}가 안 된 파일의 상한(문서 105 R3). 업로드 자리는 요청마다 새 키라
+	 * 막지 않으면 한 기록으로 파일을 끝없이 쌓을 수 있다. 정상이면 하나다 — {@code complete} 응답을 잃고 다시 올리는 경우까지 셋
+	 */
+	static final int MAX_PENDING_UPLOADS = 3;
+
 	private static final Pattern RANDOM_PART = Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(m4a|wav)");
 
 	private final DreamRepository dreams;
@@ -59,10 +65,21 @@ public class AudioService {
 		this.stt = stt;
 	}
 
-	/** ② 업로드 자리를 준다. {@code format}이 비어 있으면 m4a 다(형식을 보내지 않던 앱) */
-	public UploadTicket prepareUpload(UUID userId, String dreamId, String format) {
+	/**
+	 * ② 업로드 자리를 준다. {@code format}이 비어 있으면 m4a 다(형식을 보내지 않던 앱).
+	 *
+	 * @param bytes 올릴 파일 크기. 있으면 서명에 넣어 그 크기만 받는다(문서 105 R3). 없으면 크기는 {@code complete}에서만 본다 —
+	 *     크기를 보내지 않는 앱이 있어서다
+	 */
+	public UploadTicket prepareUpload(UUID userId, String dreamId, String format, Long bytes) {
 		AudioFormat audioFormat = AudioFormat.of(format)
 			.orElseThrow(() -> new AudioApiException(HttpStatus.BAD_REQUEST, "unsupported_format", "받지 않는 녹음 형식이에요"));
+		if (bytes != null && bytes <= 0) {
+			throw new AudioApiException(HttpStatus.BAD_REQUEST, "invalid_size", "녹음 파일 크기가 맞지 않아요");
+		}
+		if (bytes != null && bytes > this.properties.maxBytes()) {
+			throw new AudioApiException(HttpStatus.CONTENT_TOO_LARGE, "audio_too_large", "파일이 너무 커요");
+		}
 		Dream dream = this.transactions.execute(status -> {
 			// 삭제가 시작된 뒤에는 새 URL 을 내주지 않는다(문서 066)
 			this.accounts.lockActive(userId);
@@ -76,9 +93,13 @@ public class AudioService {
 		if (dream.getAudioUrl() != null) {
 			throw new AudioApiException(HttpStatus.CONFLICT, "audio_exists", "이미 올라간 오디오가 있어요");
 		}
+		if (this.storage.list(prefix(userId, dreamId)).size() >= MAX_PENDING_UPLOADS) {
+			// 오래 남은 것은 AudioSweeper 가 지운다
+			throw new AudioApiException(HttpStatus.TOO_MANY_REQUESTS, "too_many_uploads", "올리다 만 녹음이 많아요. 잠시 뒤 다시 해 주세요");
+		}
 		// 요청마다 새 키를 만든다. 오래된 URL 이 늦게 도착해도 나중 업로드를 덮지 못한다
 		String key = prefix(userId, dreamId) + UUID.randomUUID() + audioFormat.extension();
-		AudioStorage.Ticket ticket = this.storage.presignUpload(key, audioFormat.contentType());
+		AudioStorage.Ticket ticket = this.storage.presignUpload(key, audioFormat.contentType(), bytes);
 		return new UploadTicket(ticket.url(), "PUT", ticket.headers(), key, ticket.expiresAt());
 	}
 

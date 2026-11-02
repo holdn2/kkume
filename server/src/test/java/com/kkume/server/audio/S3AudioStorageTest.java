@@ -33,7 +33,7 @@ class S3AudioStorageTest {
 
 	@Test
 	void 업로드_URL에_Content_Type과_15분이_박힌다() {
-		AudioStorage.Ticket ticket = storage().presignUpload("audio/u1/d1/abc.m4a", "audio/mp4");
+		AudioStorage.Ticket ticket = storage().presignUpload("audio/u1/d1/abc.m4a", "audio/mp4", null);
 		URI url = URI.create(ticket.url());
 
 		assertThat(url.getHost()).isEqualTo("kkume-audio-test.s3.ap-southeast-2.amazonaws.com");
@@ -42,6 +42,13 @@ class S3AudioStorageTest {
 		// 서명에 content-type 이 들어가야 앱이 헤더를 바꿔 보내면 S3 가 거절한다
 		assertThat(url.getQuery()).contains("X-Amz-SignedHeaders=content-type;host");
 		assertThat(ticket.headers()).containsEntry("Content-Type", "audio/mp4");
+	}
+
+	@Test
+	void 크기를_넣으면_서명에_content_length_도_들어간다() {
+		URI url = URI.create(storage().presignUpload("audio/u1/d1/abc.wav", "audio/wav", 1234L).url());
+		// 다른 크기로 올리면 S3 가 서명이 맞지 않는다고 거절한다(문서 105 R3)
+		assertThat(url.getQuery()).contains("X-Amz-SignedHeaders=content-length;content-type;host");
 	}
 
 	@Test

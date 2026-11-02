@@ -1,6 +1,7 @@
 package com.kkume.server.audio;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
 
@@ -12,8 +13,16 @@ import java.util.OptionalLong;
  */
 public interface AudioStorage {
 
-	/** 앱이 파일을 PUT 할 URL. 서명에 {@code headers}가 들어가므로 앱은 그대로 붙여야 한다 */
-	Ticket presignUpload(String key, String contentType);
+	/**
+	 * 앱이 파일을 PUT 할 URL. 서명에 {@code headers}가 들어가므로 앱은 그대로 붙여야 한다.
+	 *
+	 * @param contentLength 있으면 서명에 크기를 넣는다 — 그 크기가 아닌 파일은 S3 가 받지 않는다(문서 105 R3).
+	 *     앱의 업로드 함수가 파일 크기로 {@code Content-Length}를 붙이므로 {@code headers}에는 넣지 않는다
+	 */
+	Ticket presignUpload(String key, String contentType, Long contentLength);
+
+	/** {@code prefix}로 시작하는 파일과 올라간 시각 */
+	List<Stored> list(String prefix);
 
 	/** 올라간 파일의 크기. 없으면 비어 있다 */
 	OptionalLong sizeOf(String key);
@@ -30,5 +39,8 @@ public interface AudioStorage {
 	String location(String key);
 
 	record Ticket(String url, Map<String, String> headers, Instant expiresAt) {
+	}
+
+	record Stored(String key, Instant lastModified) {
 	}
 }
