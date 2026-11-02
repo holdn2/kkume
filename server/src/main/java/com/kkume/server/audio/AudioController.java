@@ -66,7 +66,7 @@ public class AudioController {
 
 	/**
 	 * @param format {@code "m4a"} · {@code "wav"}
-	 * @param bytes 올릴 파일 크기(선택). 보내면 그 크기만 받는 주소를 준다
+	 * @param bytes 올릴 파일 크기(필수). 그 크기만 받는 주소를 준다. 없으면 400 {@code invalid_size}
 	 */
 	public record UploadRequest(String format, Long bytes) {
 	}

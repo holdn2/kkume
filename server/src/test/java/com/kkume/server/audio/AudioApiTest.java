@@ -187,12 +187,13 @@ class AudioApiTest {
 	}
 
 	private ResultActions upload(String token, String id) throws Exception {
-		return this.mockMvc.perform(post("/api/dreams/" + id + "/audio/upload").header("Authorization", "Bearer " + token));
+		return this.mockMvc.perform(post("/api/dreams/" + id + "/audio/upload").header("Authorization", "Bearer " + token)
+			.contentType(MediaType.APPLICATION_JSON).content("{\"bytes\":1000000}"));
 	}
 
 	private ResultActions uploadAs(String token, String id, String format) throws Exception {
 		return this.mockMvc.perform(post("/api/dreams/" + id + "/audio/upload").header("Authorization", "Bearer " + token)
-			.contentType(MediaType.APPLICATION_JSON).content("{\"format\":\"" + format + "\"}"));
+			.contentType(MediaType.APPLICATION_JSON).content("{\"format\":\"" + format + "\",\"bytes\":1000000}"));
 	}
 
 	private ResultActions complete(String token, String id, String key) throws Exception {
@@ -597,9 +598,17 @@ class AudioApiTest {
 		uploadSized(id, 26_214_401).andExpect(status().isContentTooLarge())
 			.andExpect(jsonPath("$.code").value("audio_too_large"));
 		uploadSized(id, 0).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("invalid_size"));
-		// 크기를 보내지 않는 앱은 지금과 같다
-		upload(this.token, id).andExpect(status().isOk());
-		assertThat(this.storage.lastContentLength).isNull();
+	}
+
+	/** 앱이 OTA c8474017 부터 크기를 보내 필수로 바꿨다. 크기 없이는 큰 파일을 얼마든지 올려 둘 수 있다 */
+	@Test
+	void 크기를_보내지_않으면_400_invalid_size_다() throws Exception {
+		String id = pushDream(this.token, 60_000, null);
+		this.mockMvc.perform(post("/api/dreams/" + id + "/audio/upload").header("Authorization", "Bearer " + this.token))
+			.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("invalid_size"));
+		this.mockMvc.perform(post("/api/dreams/" + id + "/audio/upload").header("Authorization", "Bearer " + this.token)
+			.contentType(MediaType.APPLICATION_JSON).content("{\"format\":\"wav\"}"))
+			.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("invalid_size"));
 	}
 
 	@Test
