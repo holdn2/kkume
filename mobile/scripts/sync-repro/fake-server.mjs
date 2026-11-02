@@ -196,9 +196,12 @@ const FORMATS = { m4a: 'audio/mp4', wav: 'audio/wav' };
 export async function requestUploadSlot(_token, dreamId, format, bytes) {
   state.uploadFormats.push(format ?? null);
   state.uploadBytes.push(bytes ?? null);
-  // 서버 #177: 크기를 보내면 그 크기로 서명한다. 25MB 초과 413, 0 이하 400
-  if (bytes != null && bytes > MAX_AUDIO_BYTES) throw apiError(413, 'audio_too_large');
-  if (bytes != null && bytes <= 0) throw apiError(400, 'invalid_size');
+  // 서버 #177 · #181: 크기는 필수이고 그 크기로 서명한다. 없거나 0 이하 400, 25MB 초과 413.
+  // 형식 검사(unsupported_format)가 먼저다 — 아래 형식 확인을 크기보다 앞에 둔다
+  const fmt0 = format == null || format === '' ? 'm4a' : format;
+  if (!FORMATS[fmt0]) throw apiError(400, 'unsupported_format');
+  if (bytes == null || bytes <= 0) throw apiError(400, 'invalid_size');
+  if (bytes > MAX_AUDIO_BYTES) throw apiError(413, 'audio_too_large');
   const fmt = format == null || format === '' ? 'm4a' : format;
   if (!FORMATS[fmt]) throw apiError(400, 'unsupported_format');
   const r = state.rows.get(dreamId);
