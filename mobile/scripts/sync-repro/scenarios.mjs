@@ -595,11 +595,28 @@ const scenarios = [
           r.uploaded === 1 &&
           okRow.audioUploadedAt != null &&
           bigRow.audioUploadedAt == null &&
-          server.uploadBytes.includes(1024) &&
-          !server.uploadBytes.includes(null) &&
+          // 큰 것은 서버에 묻지도 않는다(크기를 보낸 것은 1024 하나)
+          JSON.stringify(server.uploadBytes) === '[1024]' &&
           reasons.includes('audio_too_large')
         ),
         detail: `올림 ${r.uploaded} · 보낸 크기 ${JSON.stringify(server.uploadBytes)} · 못 올림 ${reasons.join(',') || '없음'}`,
+      };
+    },
+  },
+  {
+    key: 'H12b',
+    title: '25MB를 넘는 녹음이 여러 개 앞에 있어도 새 녹음이 같은 회차에 올라간다(회차 몫을 쓰지 않음, PR #180 리뷰)',
+    async run(repo) {
+      for (let i = 0; i < 4; i++) {
+        await voiceDream(repo, { audioPath: `file:///docs/ExpoAudio/big_${i}.wav` });
+        uploadControl.sizes.set(`file:///docs/ExpoAudio/big_${i}.wav`, 30 * 1024 * 1024);
+      }
+      const fresh = await voiceDream(repo, { audioPath: 'file:///docs/ExpoAudio/fresh.wav' });
+      const r = await syncOnce(TOKEN);
+      const row = await repo.get(fresh.id);
+      return {
+        reproduced: !(row.audioUploadedAt != null && r.uploaded === 1),
+        detail: `올림 ${r.uploaded} · 새 녹음 올라감 ${row.audioUploadedAt != null} · 못 올림 ${r.uploadIssues.map((i) => i.reason).join(',')}`,
       };
     },
   },

@@ -35,6 +35,9 @@ export type SttView = {
   updatedAt: string;
 };
 
+/** 서버가 받는 녹음 파일 상한(서버 #177 · 문서 109). 넘으면 `413 audio_too_large` */
+export const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+
 const path = (dreamId: string, tail: string) => `/api/dreams/${encodeURIComponent(dreamId)}${tail}`;
 
 /** 녹음 파일 형식(서버 #52 · PR #53). 고르는 규칙은 `@shared/audio/format` */
