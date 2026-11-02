@@ -21,7 +21,11 @@ export function Card({ onPress, selected, style, children, ...rest }: Props) {
   if (!onPress) return body;
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => (pressed ? { opacity: press } : null)}>
+    // 눌러서 여는 카드라고 화면 읽기에 알린다 — 목록에서 가장 많이 누르는 요소다(문서 104)
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => (pressed ? { opacity: press } : null)}>
       {body}
     </Pressable>
   );

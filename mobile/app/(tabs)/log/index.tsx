@@ -130,6 +130,8 @@ export default function LogScreen() {
             <EmptyCard
               title="아직 남긴 꿈이 없어요."
               hint="아래 마이크 버튼으로 지금 남겨 보세요. 잠금화면 위젯을 올려 두면 새벽에 폰을 집자마자 바로 돼요."
+              // 처음 쓰는 사람이 가장 오래 머무는 화면이라 위젯 설치를 한 번 더 권한다(계획서 003 LOG-1 빈 상태, 문서 104)
+              action={{ label: '잠금화면 위젯 올리는 법', onPress: () => router.push('/onboarding?step=widget') }}
             />
           )
         }

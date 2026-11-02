@@ -83,8 +83,9 @@ export default function ComicNew() {
       scroll
       header={<Header title="만화로 만들기" onBack={back} />}
       footer={
-        me ? (
-          <Button label="만들기" onPress={submit} loading={busy} disabled={!dream || empty || busy} />
+        // 로그인 여부를 읽는 중(undefined)에는 꺼진 「만들기」 — 로그인한 사람에게 로그인 버튼이 잠깐 보이지 않게(문서 104)
+        me !== null ? (
+          <Button label="만들기" onPress={submit} loading={busy} disabled={!me || !dream || empty || busy} />
         ) : (
           <Button label="마이 탭에서 로그인하기" variant="secondary" onPress={() => router.push('/my')} />
         )

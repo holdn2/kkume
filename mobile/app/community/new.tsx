@@ -9,6 +9,7 @@ import {
   Header,
   Input,
   ListSkeleton,
+  Loading,
   MoreLoading,
   Row,
   Screen,
@@ -255,6 +256,9 @@ export default function NewPostScreen() {
           ) : null}
           {picked && <Button label="다른 꿈 고르기" size="sm" variant="ghost" onPress={() => setChoosing(true)} />}
         </Stack>
+
+        {/* 이미 공유했는지 묻는 중 — 느린 망에서 화면이 멈춘 것처럼 보이지 않게(문서 104) */}
+        {picked && sharedPostId === undefined && <Loading />}
 
         {picked && sharedPostId && (
           <Card>
