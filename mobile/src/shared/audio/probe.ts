@@ -54,7 +54,10 @@ export async function probeAudioUpload(): Promise<ProbeResult> {
     return fail('끝난 음성 기록이 없습니다. 녹음을 하나 남긴 뒤 다시 눌러 주세요');
   }
   const bytes = await fileSize(target.audioPath);
-  const size = bytes == null ? '크기 모름' : `${(bytes / 1024 / 1024).toFixed(2)}MB`;
+  // 크기를 못 재면 파일이 폰에 없는 것이다. 서버는 크기가 필수라(서버 #181) 그대로 물으면 `invalid_size`가 떠
+  // 원인이 가려진다 — 묻기 전에 거른다(이슈 #183). 동기화 경로의 `file_missing`과 같은 판정이다
+  if (bytes == null) return fail(`녹음 파일을 찾지 못했어요 · ${target.id}`);
+  const size = `${(bytes / 1024 / 1024).toFixed(2)}MB`;
   lines.push(`대상 ${target.id} · 녹음 ${Math.round((target.durationMs ?? 0) / 1000)}초 · ${size}`);
 
   // 2. 동기화 먼저. **서버에 없는 기록에는 업로드 자리를 주지 않는다**(404 dream_not_found)
@@ -65,7 +68,7 @@ export async function probeAudioUpload(): Promise<ProbeResult> {
   // 3. 업로드 자리
   let slot;
   try {
-    slot = await requestUploadSlot(token, target.id, uploadFormatFor(target.audioPath), bytes ?? undefined);
+    slot = await requestUploadSlot(token, target.id, uploadFormatFor(target.audioPath), bytes);
   } catch (e) {
     return fail(`업로드 자리 · ${describe(e)}`);
   }
