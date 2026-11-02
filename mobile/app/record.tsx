@@ -32,6 +32,8 @@ const IDLE_SAVE_MS = 1200;
  * 정지를 다시 누르면 멈춘 결과(`pendingAudio`)로 저장만 다시 한다(문서 104 S2, 이슈 #167)
  */
 const SAVE_FAILED = '녹음을 기기에 저장하지 못했어요. 정지를 누르면 다시 저장해요.';
+/** 녹음기를 멈추는 것부터 실패했다. 멈춘 결과가 없어 정지가 녹음기를 다시 멈춰 본다 — 저장만 다시 하는 것이 아니다 */
+const STOP_FAILED = '녹음을 마무리하지 못했어요. 정지를 눌러 다시 시도해 주세요.';
 
 /** 받아쓰는 중인 구간은 이 간격까지만 저장한다. 확정 구간은 오는 즉시 저장한다 */
 const INTERIM_SAVE_MS = 1000;
@@ -459,12 +461,14 @@ export default function RecordModal() {
       if (next === 'background' && armed.current && !pendingAudio.current && !closed.current) {
         void (async () => {
           let ok = true;
+          let taken = false;
           try {
             if (engine.current === 'dictation') saveDictated();
             const out = await takeAudio('abort');
+            taken = true;
             await saveTaken(out);
           } catch {
-            // 시작할 때 넣어 둔 행이 있으니 경로까지 잃지는 않는다. 멈춘 결과는 pendingAudio 에 남아 있다
+            // 시작할 때 넣어 둔 행이 있으니 경로까지 잃지는 않는다. 멈추기까지 됐으면 그 결과는 pendingAudio 에 남아 있다
             ok = false;
           }
           if (userClosing.current) return;
@@ -472,7 +476,7 @@ export default function RecordModal() {
           // 더 나쁘다고 보고 성공처럼 보냈는데, 그러면 사라진 기록을 사용자가 알 길이 없다(문서 104 S2).
           // 돌아오면 이 화면에 이유가 떠 있고, 정지를 누르면 같은 결과로 저장만 다시 한다
           if (!ok) {
-            setError(SAVE_FAILED);
+            setError(taken ? SAVE_FAILED : STOP_FAILED);
             return;
           }
           // 마무리가 늦게 끝나 그 사이 이미 돌아와 있으면(파일이 열리기를 기다린 경우) 지금 보낸다 —
@@ -523,6 +527,8 @@ export default function RecordModal() {
           await saveTaken(out);
           closed.current = true;
           pendingAudio.current = null;
+          // 앞서 띄운 저장 실패 문구를 지운다 — 적기 화면에는 정지가 없어 따를 수 없는 지시로 남는다(PR 리뷰)
+          setError(null);
           setResolved('text');
         } else {
           if (text.trim()) {
@@ -600,8 +606,9 @@ export default function RecordModal() {
         userClosing.current = false;
         // 다른 실패는 삼켜도 이건 아니다. 기록 유실은 이 앱에서 유일하게
         // 용납되지 않는 실패라(절대 규칙 1) 화면에 남긴다.
-        // 다만 무엇을 할지 묻지는 않는다 — 그게 새벽의 결정이 된다
-        setError(String(e));
+        // 다만 무엇을 할지 묻지는 않는다 — 그게 새벽의 결정이 된다.
+        // 멈춘 결과가 있으면 저장만 다시 할 수 있다는 같은 안내를 둔다(날것의 오류로 덮지 않게)
+        setError(pendingAudio.current ? SAVE_FAILED : String(e));
       }
     })();
   };

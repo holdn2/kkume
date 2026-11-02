@@ -37,9 +37,11 @@ const GAP = sp[1];
 export function ComicView({ layout, imageUrls, panels, onPressPanel, onReady }: Props) {
   const [width, setWidth] = useState(0);
   const [settled, setSettled] = useState<number[]>([]);
-  const [missing, setMissing] = useState(false);
+  // 못 받은 컷. 나중에 받아지면(서명이 새로 와서 다시 받음) 빠진다 — 한 번 실패로 저장이 영영 막히지 않게
+  const [failed, setFailed] = useState<number[]>([]);
+  const missing = failed.length > 0;
   const settle = (i: number, ok: boolean) => {
-    if (!ok) setMissing(true);
+    setFailed((cur) => (ok ? (cur.includes(i) ? cur.filter((x) => x !== i) : cur) : cur.includes(i) ? cur : [...cur, i]));
     setSettled((cur) => (cur.includes(i) ? cur : [...cur, i]));
   };
   const ready = settled.length === 4;
@@ -104,7 +106,10 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full, on
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [failedKey, setFailedKey] = useState<string | null>(null);
   const waiting = !!key && loadedKey !== key;
-  const onSettled = () => setLoadedKey(key);
+  const onSettled = () => {
+    setFailedKey(null);
+    setLoadedKey(key);
+  };
   const onFailed = () => {
     setFailedKey(key);
     setLoadedKey(key);

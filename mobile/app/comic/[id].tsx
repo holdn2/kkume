@@ -80,10 +80,10 @@ export default function ComicDetail() {
   const markReady = useCallback((ok: boolean) => setShotReady(ok), []);
   // 그림을 다시 받는다. 받은 · 못 받은 표시는 컷마다 들고 있어서, 뷰를 새로 올려야 처음부터 다시 받는다
   const [round, setRound] = useState(0);
+  // 새 서명 주소를 받은 **뒤에** 다시 올린다 — 먼저 올리면 옛 주소로 다시 받다 또 실패한다(PR 리뷰)
   const reloadImages = () => {
     setShotReady(null);
-    setRound((n) => n + 1);
-    void comic.refetch();
+    void comic.refetch().finally(() => setRound((n) => n + 1));
   };
   const save = () => {
     if (saving) return;
