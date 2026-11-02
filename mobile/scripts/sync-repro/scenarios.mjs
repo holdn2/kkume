@@ -737,3 +737,9 @@ for (const r of results) {
   const mark = r.reproduced === null ? '오류    ' : r.observe ? '관찰    ' : r.reproduced ? '재현됨  ' : '재현 안 됨';
   console.log(`${r.key.padEnd(3)} ${r.kind.padEnd(6)} ${mark} ${r.title}\n            ${r.detail}`);
 }
+
+// CI · `npm test`가 볼 수 있게, 고친 버그가 다시 재현되거나 시나리오가 오류로 끝나면 실패 코드로 끝낸다(이슈 #173).
+// 「관찰」은 판정 대상이 아니다 — 지금 동작을 기록해 둘 뿐이다
+const bad = results.filter((r) => r.reproduced === null || (!r.observe && r.reproduced));
+console.log(`\n${results.length}개 중 ${bad.length === 0 ? '재현 · 오류 0개' : `재현 · 오류 ${bad.length}개: ${bad.map((r) => `${r.key}(${r.kind})`).join(', ')}`}`);
+if (bad.length > 0) process.exitCode = 1;

@@ -1,0 +1,83 @@
+# 테스트를 PR마다 돌린다(이슈 #173). 모바일 — tsc · eslint · scripts/ 테스트 11종, 서버 — gradlew test.
+#
+# 바뀐 쪽만 돈다. 모바일은 앱 번들 · 빌드를 하지 않는다(EAS 빌드는 월 15회라 여기서 쓰지 않는다).
+# 서버 테스트는 Testcontainers로 진짜 PostgreSQL을 띄운다 — ubuntu-latest 러너에는 Docker가 있다.
+name: CI
+
+on:
+  pull_request:
+    paths: ["mobile/**", "server/**", ".github/workflows/ci.yml"]
+  push:
+    branches: [main]
+    paths: ["mobile/**", "server/**", ".github/workflows/ci.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      mobile: ${{ steps.filter.outputs.mobile }}
+      server: ${{ steps.filter.outputs.server }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            mobile:
+              - "mobile/**"
+              - ".github/workflows/ci.yml"
+            server:
+              - "server/**"
+              - ".github/workflows/ci.yml"
+
+  mobile:
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      # peer 범위가 맞지 않는 패키지가 있어 로컬과 같은 플래그로 설치한다
+      - run: npm ci --legacy-peer-deps
+      # .rnstorybook/storybook.requires.ts 는 git 에 없다 — EAS 빌드와 같은 방법으로 만든다(tsc 가 읽는다)
+      - run: npm run storybook:generate
+      - name: 타입 검사
+        run: npx tsc --noEmit
+      - name: 린트
+        run: npx eslint app src
+      - name: 테스트(scripts/ 11종)
+        run: node scripts/test-all.mjs
+
+  server:
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: chmod +x gradlew
+      # 운영 키가 있어야 도는 실연동 테스트(CloudflareLiveTest)는 키가 없으면 스스로 건너뛴다
+      - name: 테스트
+        run: ./gradlew test --no-daemon
