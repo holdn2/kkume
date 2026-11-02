@@ -58,8 +58,18 @@ export const forgetAccount = onceAtATime(() =>
   ),
 );
 
-// 모든 요청이 지나는 `request()`가 `account_deleted`를 보면 여기로 온다(계약 064 06장)
-setAccountDeletedHandler(() => void forgetAccount().catch(() => {}));
+// 모든 요청이 지나는 `request()`가 `account_deleted`를 보면 여기로 온다(계약 064 06장).
+// **그 요청의 토큰이 지금 세션의 것일 때만** 정리한다 — 앞 계정의 늦은 응답이 새로 로그인한 계정의
+// 세션 · 동의 · 업로드 표시를 지웠다(문서 104 X2, 이슈 #169). 토큰을 모르는 요청이면 지금처럼 정리한다
+setAccountDeletedHandler((token) => {
+  void (async () => {
+    if (token) {
+      const now = await loadSession();
+      if (now && now.accessToken !== token) return;
+    }
+    await forgetAccount();
+  })().catch(() => {});
+});
 
 export { googleBackend, HAS_NATIVE_GOOGLE } from './google';
 export { appleAvailable, HAS_NATIVE_APPLE } from './apple';
