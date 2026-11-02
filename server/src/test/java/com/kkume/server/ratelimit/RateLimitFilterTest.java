@@ -124,4 +124,21 @@ class RateLimitFilterTest {
 		request.addHeader("X-Forwarded-For", "3.3.3.3, 10.0.0.1");
 		assertThat(RateLimitFilter.clientIp(request)).isEqualTo("3.3.3.3");
 	}
+
+	@Test
+	void 칸이_가득_차면_새_키는_세지_않고_보낸다() throws Exception {
+		for (int i = 0; i < RateLimitFilter.MAX_ENTRIES; i++) {
+			send("GET", "/api/health-like", "10.0." + (i / 256) + "." + (i % 256), null);
+		}
+		// 칸이 가득 찼다. 새 IP 는 몇 번을 보내도 막히지 않는다(메모리를 지킨다)
+		for (int i = 0; i < 20; i++) {
+			assertThat(send("POST", "/api/auth/google", "8.8.8.8", null)).isEqualTo(200);
+		}
+		// 다음 1분이면 지난 칸을 쓸어 내고 다시 센다
+		this.now.set(this.now.get().plusSeconds(60));
+		for (int i = 0; i < 10; i++) {
+			assertThat(send("POST", "/api/auth/google", "8.8.8.8", null)).isEqualTo(200);
+		}
+		assertThat(send("POST", "/api/auth/google", "8.8.8.8", null)).isEqualTo(429);
+	}
 }

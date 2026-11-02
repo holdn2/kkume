@@ -1,4 +1,4 @@
--- 꿈 만화 원가 집계(문서 105 R7) — 읽기만 한다. comic-costs.sh 가 읽기 전용 트랜잭션으로 돌린다.
+-- 꿈 만화 원가 집계(문서 105 R7) — 읽기만 한다. comic-costs.sh 가 트랜잭션으로 감싸 끝에 되돌린다(임시 테이블 하나뿐).
 --
 -- 기간: D 방식(문서 102, PR #158)을 배포한 2026-10-27 10:57Z 뒤만 본다. 그 전의 2×2 한 장(약 170뉴런)과 섞이면 평균이 틀린다.
 -- 방식 컬럼이 없어 시각으로 가른다.
@@ -15,10 +15,10 @@ select k.comic_id,
        sum(k.neurons) as neurons,
        sum(k.usd) as usd,
        count(*) filter (where k.step = 'script') as script_calls,
-       count(*) filter (where k.step = 'script' and not k.ok) as script_retries,
+       count(*) filter (where k.step = 'script' and not k.ok) as script_failed,
        count(*) filter (where k.step = 'image') as image_calls,
-       count(*) filter (where k.step = 'image' and not k.ok) as image_retries,
-       sum(k.neurons) filter (where not k.ok) as retry_neurons,
+       count(*) filter (where k.step = 'image' and not k.ok) as image_failed,
+       sum(k.neurons) filter (where not k.ok) as failed_neurons,
        sum(k.duration_ms) / 1000.0 as model_seconds,
        extract(epoch from c.finished_at - c.created_at) as wall_seconds,
        min(k.created_at) as first_call
@@ -43,14 +43,16 @@ select '전체', count(*), round(avg(neurons), 1),
 from per_comic
 order by 1;
 
-\echo '== 2. 재호출 몫 — 검열(그림 3030 등 실패 호출) · 대본 재호출(계약 위반 · 말투)'
+-- 「실패한 호출」은 결과를 쓰지 못한 호출이다(그림 검열 3030 · 대본 계약 위반 · 말투 · 마지막 실패). 다시 부른 호출은
+-- 성공으로 기록되므로 여기 들지 않는다 — 다시 부르는 데 든 몫을 보려면 실패한 호출 수 × 한 번 값(그림 약 110 · 대본 약 80)
+\echo '== 2. 실패한 호출 몫 — 결과를 못 쓰고 뉴런만 쓴 호출(대부분 다시 부름)'
 select outcome as 결과, count(*) as "N",
        round(avg(script_calls), 2) as 대본_호출_평균,
-       sum(script_retries) as 대본_재호출_합,
+       sum(script_failed) as 대본_실패_호출,
        round(avg(image_calls), 2) as 그림_호출_평균,
-       sum(image_retries) as 그림_재호출_합,
-       round(coalesce(sum(retry_neurons), 0), 1) as 재호출_뉴런_합,
-       round(100 * coalesce(sum(retry_neurons), 0) / nullif(sum(neurons), 0), 1) as 재호출_비율_퍼센트
+       sum(image_failed) as 그림_실패_호출,
+       round(coalesce(sum(failed_neurons), 0), 1) as 실패_호출_뉴런,
+       round(100 * coalesce(sum(failed_neurons), 0) / nullif(sum(neurons), 0), 1) as 실패_호출_비율_퍼센트
 from per_comic group by outcome order by 1;
 
 \echo '== 2-1. 실패한 호출의 이유별 수(꿈 내용은 담지 않는다 — 검사 이름 · 오류 코드뿐)'
@@ -67,9 +69,13 @@ select outcome as 결과, count(wall_seconds) as "N",
        round((percentile_cont(0.5) within group (order by model_seconds))::numeric, 1) as 모델_중앙값
 from per_comic where wall_seconds is not null group by outcome order by 1;
 
+-- 뉴런은 호출 행의 날짜로 센다(서버의 하루 몫과 같은 기준) — 자정을 넘긴 편은 두 날에 나뉜다. 편 수는 첫 호출 날짜로
 \echo '== 4. 날짜별(UTC — 무료 한도가 다시 채워지는 날) 편 수 · 뉴런 합계 · 하루 한도 10,000 대비'
-select (first_call at time zone 'utc')::date as 날짜_utc, count(*) as 편,
-       count(*) filter (where outcome = 'done') as 완성,
-       round(sum(neurons), 1) as 뉴런_합,
-       round(100 * sum(neurons) / 10000, 1) as 한도_대비_퍼센트
-from per_comic group by 1 order by 1;
+select d.날짜_utc, coalesce(p.편, 0) as 편, coalesce(p.완성, 0) as 완성, d.뉴런_합,
+       round(100 * d.뉴런_합 / 10000, 1) as 한도_대비_퍼센트
+from (select (created_at at time zone 'utc')::date as 날짜_utc, round(sum(neurons), 1) as 뉴런_합
+      from comic_costs where created_at >= :'since' group by 1) d
+left join (select (first_call at time zone 'utc')::date as 날짜_utc, count(*) as 편,
+                  count(*) filter (where outcome = 'done') as 완성
+           from per_comic group by 1) p on p.날짜_utc = d.날짜_utc
+order by 1;

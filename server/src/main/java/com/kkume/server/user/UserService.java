@@ -53,8 +53,9 @@ public class UserService {
 		User user = this.users.findByProviderAndProviderId(identity.provider(), identity.providerId())
 			.map(found -> {
 				// 다른 쓰기처럼 줄을 선다(AccountGuard). 읽은 뒤 다른 기기의 탈퇴가 끝났으면 여기서 멈춘다 — 그대로 저장하면
-				// JPA 가 읽어 둔 옛 값(provider_id · 닉네임 · deleted_at)을 통째로 다시 써서 지운 계정이 되살아난다(문서 105 R6)
-				this.accounts.lockActive(found.getId());
+				// JPA 가 읽어 둔 옛 값(provider_id · 닉네임 · deleted_at)을 통째로 다시 써서 지운 계정이 되살아난다(문서 105 R6).
+				// 곧 동의를 고칠 수 있어 FOR UPDATE 다 — 두 기기가 같이 로그인할 때 FOR SHARE 끼리 교착되지 않게
+				this.accounts.lockActiveForUpdate(found.getId());
 				return found;
 			})
 			.orElseGet(() -> {

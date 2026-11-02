@@ -127,13 +127,24 @@ fi
 SG=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=ip-address,Values=$EC2_HOST" \
   --query 'Reservations[0].Instances[0].SecurityGroups[0].GroupId' --output text)
 MYIP=$(curl -s https://checkip.amazonaws.com)
-aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$SG" \
-  --protocol tcp --port 22 --cidr "${MYIP}/32" >/dev/null 2>&1 || true
-trap 'aws ec2 revoke-security-group-ingress --region "$AWS_REGION" --group-id "$SG" --protocol tcp --port 22 --cidr "${MYIP}/32" >/dev/null 2>&1 || true' EXIT
+# 이번에 연 규칙만 닫는다 — 이미 있던 규칙(같은 IP 의 다른 작업)을 닫으면 그쪽 SSH 가 끊긴다.
+# 닫지 못하면 알린다 — 22 를 열어 둔 채 끝나면 안 된다(README 3번)
+opened=0
+if aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$SG" \
+  --protocol tcp --port 22 --cidr "${MYIP}/32" >/dev/null 2>&1; then
+  opened=1
+fi
+close_ssh() {
+  [ "$opened" = 1 ] || return 0
+  aws ec2 revoke-security-group-ingress --region "$AWS_REGION" --group-id "$SG" --protocol tcp --port 22 \
+    --cidr "${MYIP}/32" >/dev/null 2>&1 \
+    || echo "!! SSH 22 규칙을 닫지 못했다. 손으로 닫는다: aws ec2 revoke-security-group-ingress --region $AWS_REGION --group-id $SG --protocol tcp --port 22 --cidr ${MYIP}/32" >&2
+}
+trap close_ssh EXIT
 
 opts="-v ON_ERROR_STOP=1 -P pager=off"
 [ "$expanded" = 1 ] && opts="$opts -x"
 # DB 비밀번호는 명령줄에 싣지 않는다(문서 105 R8) — 표준입력 첫 줄로 보내고, EC2 쪽 셸이 환경변수로만 컨테이너에 넘긴다.
 # 명령줄에 실으면 실행하는 동안 이 PC 와 EC2 의 ps 에 그대로 보인다
 { printf '%s\n' "$DB_PASSWORD"; printf '%s\n' "$sql"; } | ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "$EC2_USER@$EC2_HOST" \
-  "read -r PGPASSWORD && export PGPASSWORD && sudo --preserve-env=PGPASSWORD docker run --rm -i --network kkume-net -e PGPASSWORD postgres:17-alpine psql -h '$DB_HOST' -U '$DB_USER' -d '$DB_NAME' $opts"
+  "IFS= read -r PGPASSWORD && export PGPASSWORD && sudo --preserve-env=PGPASSWORD docker run --rm -i --network kkume-net -e PGPASSWORD postgres:17-alpine psql -h '$DB_HOST' -U '$DB_USER' -d '$DB_NAME' $opts"

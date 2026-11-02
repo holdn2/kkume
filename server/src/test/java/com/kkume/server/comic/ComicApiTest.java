@@ -327,7 +327,7 @@ class ComicApiTest {
 				"select coalesce(sum(neurons), 0) from comic_costs where created_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc'",
 				BigDecimal.class);
 		long inFlight = this.jdbc.queryForObject(
-				"select count(*) from comics where status in ('queued', 'scripting', 'drawing')", Long.class);
+				"select count(*) from comics where status in ('queued', 'scripting', 'drawing') and deleted_at is null", Long.class);
 		BigDecimal fill = BigDecimal.valueOf(1_000_000 - leave - 650 * inFlight).subtract(spent);
 		UUID marker = UUID.randomUUID();
 		this.jdbc.update("""

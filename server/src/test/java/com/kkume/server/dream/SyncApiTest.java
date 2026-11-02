@@ -337,6 +337,25 @@ class SyncApiTest {
 	}
 
 	@Test
+	void 상한_전에_올라간_긴_기록도_제목_고침과_지우기는_받는다() throws Exception {
+		Account account = login();
+		Instant now = Instant.now();
+		String old = newId();
+		push(account, withText(old, now, "본문", now));
+		String longText = "가".repeat(SyncService.MAX_TEXT_LENGTH + 10);
+		this.jdbc.update("update dreams set text = ? where id = ?", longText, old);
+
+		String deleted = push(account, """
+				{"id":"%s","recordedAt":"%s","title":"고친 제목","text":"%s","deletedAt":"%s","updatedAt":"%s"}"""
+			.formatted(old, now, longText, now.plusSeconds(60), now.plusSeconds(60)));
+		assertThat(JsonPath.<String>read(deleted, "$.results[0].status")).isEqualTo("saved");
+		assertThat(this.dreams.findById(old).orElseThrow().isDeleted()).isTrue();
+		// 더 늘리는 것은 막는다
+		String longer = push(account, withText(old, now, longText + "나", now.plusSeconds(120)));
+		assertThat(JsonPath.<String>read(longer, "$.results[0].reason")).isEqualTo("text_too_long");
+	}
+
+	@Test
 	void 한_사람_본문_합계가_상한을_넘으면_새_기록은_storage_full_이고_줄이는_고침은_받는다() throws Exception {
 		Account account = login();
 		Instant now = Instant.now();

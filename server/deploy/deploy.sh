@@ -49,6 +49,11 @@ HTTPS_HOST="${HTTPS_HOST:-${EC2_HOST}.nip.io}"
 REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 DB_URL="jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}"
 
+# 여러 줄인 비밀값은 env 파일(한 줄에 하나)로 넘길 수 없다. 잘린 값으로 뜨기 전에 여기서 멈춘다
+for name in DB_PASSWORD JWT_SECRET APPLE_PRIVATE_KEY CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN; do
+  case "${!name}" in *$'\n'* | *$'\r'*) echo "${name} 에 줄바꿈이 있다 — 한 줄로 바꾼다" >&2; exit 1 ;; esac
+done
+
 echo "== ${EC2_USER}@${EC2_HOST} 로 배포"
 # 스크립트를 파일로 두지 않고 stdin으로 밀어넣는다. EC2에 사본이 쌓이지 않는다.
 # 비밀값은 명령줄 인자로 넘기지 않는다(문서 105 R8) — 인자는 실행하는 동안 이 PC 와 EC2 의 ps 에 그대로 보인다.

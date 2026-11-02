@@ -119,6 +119,11 @@ public class SyncService {
 		if (existing.isPresent() && !existing.get().isOlderThan(payload.updatedAt())) {
 			return SyncResult.skipped(payload.id());
 		}
+		int length = payload.text() == null ? 0 : payload.text().length();
+		if (length > MAX_TEXT_LENGTH && length > existing.map(d -> d.getText() == null ? 0 : d.getText().length()).orElse(0)) {
+			// 이미 상한보다 긴 기록(상한 전에 올라간 것)도 제목 고침 · 지우기는 받는다 — 막으면 지운 것이 서버에 남는다
+			return SyncResult.rejected(payload.id(), "text_too_long");
+		}
 		long grows = bytes(payload.text()) - existing.map(d -> bytes(d.getText())).orElse(0L);
 		if (grows > 0 && this.dreams.sumTextBytes(userId) + grows > MAX_USER_TEXT_BYTES) {
 			// 줄어드는 고침 · 지우기는 막지 않는다
@@ -157,9 +162,6 @@ public class SyncService {
 		if (payload.title() != null && payload.title().length() > MAX_TITLE_LENGTH) {
 			// 잘라서 저장하지 않는다. 사용자가 쓴 것이 조용히 사라진다.
 			return "title_too_long";
-		}
-		if (payload.text() != null && payload.text().length() > MAX_TEXT_LENGTH) {
-			return "text_too_long";
 		}
 		return null;
 	}

@@ -140,6 +140,10 @@ public class AudioService {
 			if (dream.getAudioUrl() != null) {
 				throw new AudioApiException(HttpStatus.CONFLICT, "audio_exists", "이미 올라간 오디오가 있어요");
 			}
+			// 잠금 안에서 한 번 더 본다. 밖에서 본 뒤 정리 작업(AudioSweeper)이 지웠을 수 있다 — 같은 행을 잡으므로 이 뒤로는 못 지운다
+			if (this.storage.sizeOf(key).isEmpty()) {
+				throw new AudioApiException(HttpStatus.UNPROCESSABLE_CONTENT, "upload_missing", "올라간 파일이 없어요");
+			}
 			Instant now = Instant.now();
 			// 둘 다 updated_at 을 올린다 — 받기에 다시 내려가 앱이 audioUrl 이 채워진 것을 안다
 			dream.attachAudio(location, now);

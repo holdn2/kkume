@@ -106,9 +106,13 @@ class ComicStore {
 				new MapSqlParameterSource("since", time(since)), BigDecimal.class);
 	}
 
-	/** 아직 끝나지 않은 만화 수. 이것들이 앞으로 쓸 뉴런을 미리 잡아 둔다 */
+	/**
+	 * 아직 끝나지 않은 만화 수. 이것들이 앞으로 쓸 뉴런을 미리 잡아 둔다. 지운 것은 빼다 — 줄은 지운 대기 만화를 잡지 않고
+	 * 그리던 것은 멈추므로, 세면 그 몫이 풀리지 않는다(PR #178 리뷰)
+	 */
 	long inFlight() {
-		return this.jdbc.queryForObject("select count(*) from comics where status in ('queued', 'scripting', 'drawing')",
+		return this.jdbc.queryForObject(
+				"select count(*) from comics where status in ('queued', 'scripting', 'drawing') and deleted_at is null",
 				new MapSqlParameterSource(), Long.class);
 	}
 

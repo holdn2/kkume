@@ -53,8 +53,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
 			new Rule("comic", "POST", "/api/comics", null, 10),
 			new Rule("all", null, "/api/**", null, 300));
 
-	/** 이보다 많이 쌓이면 지난 칸을 지운다. 넘쳐도 메모리가 끝없이 늘지 않게 */
-	private static final int MAX_ENTRIES = 50_000;
+	/**
+	 * 칸을 이만큼까지만 둔다. 1분 안에 서로 다른 IP 가 이보다 많이 오면 새 키는 세지 않고 보낸다 — 메모리가 끝없이
+	 * 늘어 서버가 죽는 것보다 그 1분 동안 몇몇을 덜 막는 쪽이 낫다(PR #178 리뷰). 지난 칸은 1분에 한 번만 쓸어 낸다
+	 */
+	static final int MAX_ENTRIES = 50_000;
+
+	private volatile long sweptMinute = -1;
 
 	private final AntPathMatcher paths = new AntPathMatcher();
 
@@ -102,8 +107,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
 	}
 
 	private boolean take(String key, long minute, int limit) {
-		if (this.counts.size() > MAX_ENTRIES) {
+		if (this.sweptMinute != minute) {
+			this.sweptMinute = minute;
 			this.counts.values().removeIf(c -> c[0] != minute);
+		}
+		if (this.counts.size() >= MAX_ENTRIES && !this.counts.containsKey(key)) {
+			return true;
 		}
 		int[] slot = this.counts.compute(key, (k, c) -> {
 			if (c == null || c[0] != minute) {
