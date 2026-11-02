@@ -85,7 +85,7 @@ class AudioUploadWithoutSttTest {
 			.andExpect(status().isOk());
 
 		String key = JsonPath.read(this.mockMvc.perform(post("/api/dreams/" + id + "/audio/upload").header("Authorization", auth)
-			.contentType(MediaType.APPLICATION_JSON).content("{\"format\":\"wav\"}"))
+			.contentType(MediaType.APPLICATION_JSON).content("{\"format\":\"wav\",\"bytes\":1920000}"))
 			.andExpect(status().isOk())
 			.andReturn().getResponse().getContentAsString(), "$.key");
 		this.storage.put(key, 1_920_000);

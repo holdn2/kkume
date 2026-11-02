@@ -143,7 +143,7 @@ class AccountDeletionTest {
 
 	/** 녹음을 올린 것처럼 만들고 그 키를 돌려준다 */
 	private String upload(Who who, String dreamId) throws Exception {
-		String key = JsonPath.read(call(who, post("/api/dreams/" + dreamId + "/audio/upload"))
+		String key = JsonPath.read(call(who, post("/api/dreams/" + dreamId + "/audio/upload"), "{\"bytes\":1000000}")
 			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString(), "$.key");
 		this.storage.put(key, 1_000_000);
 		call(who, post("/api/dreams/" + dreamId + "/audio/complete"), "{\"key\":\"" + key + "\"}").andExpect(status().isOk());

@@ -16,7 +16,7 @@ public interface AudioStorage {
 	/**
 	 * 앱이 파일을 PUT 할 URL. 서명에 {@code headers}가 들어가므로 앱은 그대로 붙여야 한다.
 	 *
-	 * @param contentLength 있으면 서명에 크기를 넣는다 — 그 크기가 아닌 파일은 S3 가 받지 않는다(문서 105 R3).
+	 * @param contentLength 서명에 넣는 크기 — 그 크기가 아닌 파일은 S3 가 받지 않는다(문서 105 R3). 서비스는 늘 채운다.
 	 *     앱의 업로드 함수가 파일 크기로 {@code Content-Length}를 붙이므로 {@code headers}에는 넣지 않는다
 	 */
 	Ticket presignUpload(String key, String contentType, Long contentLength);

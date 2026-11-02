@@ -68,16 +68,16 @@ public class AudioService {
 	/**
 	 * ② 업로드 자리를 준다. {@code format}이 비어 있으면 m4a 다(형식을 보내지 않던 앱).
 	 *
-	 * @param bytes 올릴 파일 크기. 있으면 서명에 넣어 그 크기만 받는다(문서 105 R3). 없으면 크기는 {@code complete}에서만 본다 —
-	 *     크기를 보내지 않는 앱이 있어서다
+	 * @param bytes 올릴 파일 크기. <b>있어야 한다</b> — 서명에 넣어 그 크기만 받는다(문서 105 R3). 크기 없이 주면 큰 파일을
+	 *     얼마든지 올려 둘 수 있다. 앱은 OTA c8474017(앱 #179)부터 보낸다
 	 */
 	public UploadTicket prepareUpload(UUID userId, String dreamId, String format, Long bytes) {
 		AudioFormat audioFormat = AudioFormat.of(format)
 			.orElseThrow(() -> new AudioApiException(HttpStatus.BAD_REQUEST, "unsupported_format", "받지 않는 녹음 형식이에요"));
-		if (bytes != null && bytes <= 0) {
+		if (bytes == null || bytes <= 0) {
 			throw new AudioApiException(HttpStatus.BAD_REQUEST, "invalid_size", "녹음 파일 크기가 맞지 않아요");
 		}
-		if (bytes != null && bytes > this.properties.maxBytes()) {
+		if (bytes > this.properties.maxBytes()) {
 			throw new AudioApiException(HttpStatus.CONTENT_TOO_LARGE, "audio_too_large", "파일이 너무 커요");
 		}
 		Dream dream = this.transactions.execute(status -> {
