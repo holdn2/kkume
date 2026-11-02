@@ -216,8 +216,8 @@ function SpeechBubble({
         )}
         <AppText
           onLayout={onLayout}
-          size="caption"
-          weight="semibold"
+          size="comic"
+          weight="medium"
           color={c.actionFg}
           numberOfLines={full ? undefined : 2}
           // 낱말 중간에서 줄이 갈리지 않게(「어/떻게」) — 말풍선 대사는 짧아서 한 낱말이 갈리면 바로 보인다

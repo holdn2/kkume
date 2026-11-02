@@ -102,6 +102,8 @@ export const type = {
   body: { fontSize: 16, lineHeight: 26, letterSpacing: -0.1 },
   label: { fontSize: 15, lineHeight: 22, letterSpacing: -0.1 },
   caption: { fontSize: 13, lineHeight: 18, letterSpacing: 0 },
+  // 만화 말풍선 대사. 말풍선은 기준 칸(176)에서 짜고 칸 크기로 키우므로, 이 크기는 네 컷 한 칸에서의 크기다(이슈 #165)
+  comic: { fontSize: 11, lineHeight: 15, letterSpacing: 0 },
 } as const;
 
 // Pretendard는 굵기별 파일이 따로 있다. fontWeight로 굵기를 지정하면
