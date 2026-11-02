@@ -65,9 +65,13 @@ export function isApiError(e: unknown): e is ApiError {
  * 로그아웃과 같은 정리를 부른다. 정리는 `@shared/auth`가 맡는다 — 이 파일이 그쪽을 import 하면 순환이 생겨
  * 거꾸로 등록받는다. 오류는 그대로 던진다(부른 쪽이 할 일을 멈추게)
  */
-let accountDeletedHandler: (() => void) | null = null;
+/**
+ * 받는 값은 **그 응답을 받은 요청의 토큰**이다. 정리하는 쪽은 지금 세션의 토큰과 같을 때만 정리한다 —
+ * 앞 계정의 늦은 응답이 그 사이 새로 로그인한 계정을 지우면 안 된다(문서 104 X2, 이슈 #169)
+ */
+let accountDeletedHandler: ((token: string | null) => void) | null = null;
 
-export function setAccountDeletedHandler(fn: (() => void) | null) {
+export function setAccountDeletedHandler(fn: ((token: string | null) => void) | null) {
   accountDeletedHandler = fn;
 }
 
@@ -106,7 +110,7 @@ export async function request<T>(
       } catch {
         /* 형식이 아닌 응답. 아래에서 status로만 말한다 */
       }
-      if (body.code === 'account_deleted') accountDeletedHandler?.();
+      if (body.code === 'account_deleted') accountDeletedHandler?.(init.token ?? null);
       throw {
         code: body.code ?? 'http_error',
         message: body.message ?? '서버와 통신하지 못했어요',

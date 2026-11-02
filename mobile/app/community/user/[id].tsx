@@ -17,6 +17,7 @@ import {
   Row,
   Screen,
   SCROLL_TAIL,
+  showToast,
   Stack,
 } from '@components';
 import {
@@ -70,8 +71,12 @@ export default function ProfileScreen() {
   const toggleBlock = () => {
     if (!profile) return;
     setBlocked({ id: profile.id, nickname: profile.nickname }, !isBlocked)
-      .then(() => invalidate())
-      .catch(() => {});
+      .then(() => {
+        void invalidate();
+        showToast(isBlocked ? '차단을 풀었어요.' : '차단했어요. 이 사람의 글과 댓글이 보이지 않아요.', 'neutral');
+      })
+      // 실패를 삼키면 눌러도 아무 일이 없는 버튼이 된다(문서 104 C14)
+      .catch(() => showToast(isBlocked ? '차단을 풀지 못했어요. 다시 시도해 주세요.' : '차단하지 못했어요. 다시 시도해 주세요.'));
   };
 
   const header = (
@@ -107,7 +112,8 @@ export default function ProfileScreen() {
               </AppText>
             </Card>
           )}
-          {!mine && (
+          {/* 차단은 로그인한 사람만 — 로그인 전에는 서버가 401로 거절해 눌러도 아무 일이 없었다(문서 104 C14) */}
+          {!mine && !!me && (
             <Button
               label={isBlocked ? '차단 풀기' : '차단하기'}
               size="sm"

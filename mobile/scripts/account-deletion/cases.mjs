@@ -156,6 +156,23 @@ function harness(callDelete) {
   globalThis.fetch = realFetch;
   setAccountDeletedHandler(null);
 }
+{
+  // 정리하는 쪽이 지금 세션과 대조할 수 있게, 응답을 받은 요청의 토큰을 넘긴다 —
+  // 앞 계정의 늦은 응답이 새로 로그인한 계정을 지우지 않게(문서 104 X2, 이슈 #169)
+  const seen = [];
+  setAccountDeletedHandler((token) => seen.push(token));
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ code: 'account_deleted', message: '삭제된 계정이에요' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  await request('/api/dreams', { token: 'old-token' }).catch(() => {});
+  await request('/api/dreams').catch(() => {});
+  check('D10b', 'account_deleted 를 받은 요청의 토큰을 정리 쪽에 넘긴다(없으면 null)', seen.join() === 'old-token,' && seen[1] === null, JSON.stringify(seen));
+  globalThis.fetch = realFetch;
+  setAccountDeletedHandler(null);
+}
 
 // ---- 정리 단계 하나가 실패해도 나머지와 알림은 돈다(PR #68 리뷰) ----
 {

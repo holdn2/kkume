@@ -127,7 +127,8 @@ export default function PostScreen() {
   /** 쓰기는 로그인해야 한다. 안 했으면 이유를 말하고 멈춘다 */
   const needMe = (): Author | null => {
     if (me) return me;
-    tell('로그인하면 반응하고 댓글을 달 수 있어요. 로그인은 마이 탭에서 해요.');
+    // 로그인 여부를 아직 읽는 중이면 조용히 멈춘다 — 로그인한 사람에게 「로그인하면」이 뜨지 않게(PR #170 리뷰)
+    if (me === null) tell('로그인하면 반응하고 댓글을 달 수 있어요. 로그인은 마이 탭에서 해요.');
     return null;
   };
 
@@ -158,11 +159,13 @@ export default function PostScreen() {
     const body = draft.trim();
     if (!post || !body || sending || !needMe()) return;
     setSending(true);
+    const target = replyTo;
     getCommunityApi()
-      .addComment(post.id, body, replyTo?.id ?? null)
+      .addComment(post.id, body, target?.id ?? null)
       .then(() => {
-        setDraft('');
-        setReplyTo(null);
+        // 보내는 동안 새로 친 글 · 바꾼 답글 대상은 그대로 둔다 — 보낸 그것일 때만 비운다(문서 104 X4, 이슈 #169)
+        setDraft((cur) => (cur.trim() === body ? '' : cur));
+        setReplyTo((cur) => (cur?.id === target?.id ? null : cur));
         void invalidate();
       })
       .catch(fail('댓글을 달지 못했어요'))
@@ -191,6 +194,8 @@ export default function PostScreen() {
 
   const block = (user: Author) => {
     setMenuOpen(false);
+    // 공감 · 신고처럼 로그인부터 안내한다 — 전에는 서버 401 문구로 끝났다(문서 104 C14)
+    if (!needMe()) return;
     setBlocked(user, true)
       .then(() => {
         void invalidate();
@@ -281,7 +286,10 @@ export default function PostScreen() {
       <Row gap={sp[2]} style={s.composer}>
         <View style={{ flex: 1 }}>
           <Input
-            placeholder={replyTo ? '답글을 적어 주세요' : '해몽이나 비슷한 경험을 나눠 주세요'}
+            // 로그인 전이면 다 쓴 뒤에야 막히지 않게 칸에서 먼저 말한다(문서 104 C14)
+            placeholder={
+              me === null ? '로그인하면 댓글을 달 수 있어요' : replyTo ? '답글을 적어 주세요' : '해몽이나 비슷한 경험을 나눠 주세요'
+            }
             value={draft}
             onChangeText={setDraft}
             maxLength={MAX_COMMENT}

@@ -19,6 +19,7 @@ import {
   SCROLL_TAIL,
   Segmented,
   Sheet,
+  showToast,
   Stack,
   Title,
   useBleedBottom,
@@ -87,13 +88,19 @@ export default function CommunityScreen() {
   useRefetchOnFocus(list.refetch, list.isStale);
   const pull = usePullRefresh(list.refetch);
 
-  // 로그인 전이면 위쪽 안내 카드가 이미 떠 있다. 로그인 여부를 읽는 중(undefined)의 탭은 무시한다
+  // 로그인 여부를 읽는 중(undefined)의 탭은 무시한다. 로그인 전이면 이유를 말한다 — 위쪽 안내 카드는
+  // 목록을 내리면 화면 밖이라, 말없이 무시하면 버튼이 고장 난 것처럼 보였다(문서 104 C14)
+  const needLogin = () => showToast('로그인이 필요해요. 마이 탭에서 로그인해 주세요.', 'neutral');
   const guard = (go: () => void) => {
     if (me) go();
+    else if (me === null) needLogin();
   };
 
   const onScope = (next: Scope) => {
-    if (next === 'mine' && !me) return;
+    if (next === 'mine' && !me) {
+      if (me === null) needLogin();
+      return;
+    }
     setScope(next);
   };
 

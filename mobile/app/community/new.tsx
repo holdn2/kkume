@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList } from 'react-native';
 
 import {
@@ -80,8 +80,11 @@ export default function NewPostScreen() {
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /** 마지막으로 고른 차례. 늦게 온 앞 꿈의 답이 지금 꿈의 「이미 공유함」을 덮지 않게(문서 104 X5, 이슈 #169) */
+  const pickSeq = useRef(0);
   /** 꿈을 고르면 그 꿈으로 편집칸을 채우고, 이미 공유했는지 서버에 묻는다 */
   const pick = useCallback((d: Dream) => {
+    const seq = ++pickSeq.current;
     setPicked(d);
     setTitle(d.title ?? '');
     setDreamText(d.text ?? '');
@@ -90,8 +93,8 @@ export default function NewPostScreen() {
     setError(null);
     getCommunityApi()
       .postForDream(d.id)
-      .then(setSharedPostId)
-      .catch(() => setSharedPostId(null));
+      .then((id) => pickSeq.current === seq && setSharedPostId(id))
+      .catch(() => pickSeq.current === seq && setSharedPostId(null));
   }, []);
 
   useEffect(() => {
