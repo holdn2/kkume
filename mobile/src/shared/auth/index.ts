@@ -60,12 +60,13 @@ export const forgetAccount = onceAtATime(() =>
 
 // 모든 요청이 지나는 `request()`가 `account_deleted`를 보면 여기로 온다(계약 064 06장).
 // **그 요청의 토큰이 지금 세션의 것일 때만** 정리한다 — 앞 계정의 늦은 응답이 새로 로그인한 계정의
-// 세션 · 동의 · 업로드 표시를 지웠다(문서 104 X2, 이슈 #169). 토큰을 모르는 요청이면 지금처럼 정리한다
+// 세션 · 동의 · 업로드 표시를 지웠다(문서 104 X2, 이슈 #169). 토큰을 모르는 요청이면 지금처럼 정리한다.
+// 세션이 비어 있으면 이미 정리했거나 새 로그인이 진행 중이다 — 다시 정리하면 막 저장된 새 세션을 지울 수 있다(PR #170 리뷰)
 setAccountDeletedHandler((token) => {
   void (async () => {
     if (token) {
       const now = await loadSession();
-      if (now && now.accessToken !== token) return;
+      if (!now || now.accessToken !== token) return;
     }
     await forgetAccount();
   })().catch(() => {});

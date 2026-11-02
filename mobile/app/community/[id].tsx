@@ -127,7 +127,8 @@ export default function PostScreen() {
   /** 쓰기는 로그인해야 한다. 안 했으면 이유를 말하고 멈춘다 */
   const needMe = (): Author | null => {
     if (me) return me;
-    tell('로그인하면 반응하고 댓글을 달 수 있어요. 로그인은 마이 탭에서 해요.');
+    // 로그인 여부를 아직 읽는 중이면 조용히 멈춘다 — 로그인한 사람에게 「로그인하면」이 뜨지 않게(PR #170 리뷰)
+    if (me === null) tell('로그인하면 반응하고 댓글을 달 수 있어요. 로그인은 마이 탭에서 해요.');
     return null;
   };
 
