@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 
+import { errorText } from '@shared/api/client';
 import { Button, Input, Row, Screen } from '@components';
 import { StorageWarning } from '@features/record/StorageWarning';
 import { Waveform } from '@features/record/Waveform';
@@ -312,7 +313,7 @@ export default function RecordModal() {
       setResolved('text');
       return;
     }
-    setError(String(e));
+    setError(errorText(e));
   }, []);
 
   /**
@@ -545,7 +546,7 @@ export default function RecordModal() {
         swapping.current = false;
         userClosing.current = false;
         setSwapped(false);
-        setError(String(e));
+        setError(errorText(e));
       }
     })();
   };
@@ -581,7 +582,7 @@ export default function RecordModal() {
           setError(null);
           savedFeedback();
         } catch (e) {
-          setError(String(e));
+          setError(errorText(e));
         }
       })();
     }, IDLE_SAVE_MS);
@@ -613,7 +614,7 @@ export default function RecordModal() {
         // 용납되지 않는 실패라(절대 규칙 1) 화면에 남긴다.
         // 다만 무엇을 할지 묻지는 않는다 — 그게 새벽의 결정이 된다.
         // 멈춘 결과가 있으면 저장만 다시 할 수 있다는 같은 안내를 둔다(날것의 오류로 덮지 않게)
-        setError(pendingAudio.current ? SAVE_FAILED : String(e));
+        setError(pendingAudio.current ? SAVE_FAILED : errorText(e));
       }
     })();
   };
@@ -628,7 +629,7 @@ export default function RecordModal() {
         }
         leave();
       } catch (e) {
-        setError(String(e));
+        setError(errorText(e));
       }
     })();
   };

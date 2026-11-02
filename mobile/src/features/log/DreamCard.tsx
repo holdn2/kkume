@@ -12,7 +12,7 @@ import { c, sp } from '@theme/token';
  * 갓 남긴 기록에는 제목이 없다. 그래서 제목 자리에 본문 첫 줄을 대신 놓는다 —
  * 비워 두면 목록이 "제목 없음"으로 가득 찬다.
  */
-export function DreamCard({ dream, onPress }: { dream: Dream; onPress?: () => void }) {
+export function DreamCard({ dream, pending, onPress }: { dream: Dream; pending?: boolean; onPress?: () => void }) {
   const unread = dream.reviewedAt == null;
 
   return (
@@ -24,6 +24,8 @@ export function DreamCard({ dream, onPress }: { dream: Dream; onPress?: () => vo
           </AppText>
           {/* 청록은 "진행 중"에만 쓴다(절대 규칙 5). 아직 확인하지 않은 기록이 여기 해당한다 */}
           {unread && <Badge label="미확인" tone="running" />}
+          {/* 아직 서버에 없다(계획서 001 5.8 · 003 오프라인 상태 — 표시가 없으면 사라졌다고 오해한다, 문서 104 C6) */}
+          {pending && <Badge label="동기화 대기" tone="warning" />}
         </Row>
 
         <Row gap={sp[2]}>

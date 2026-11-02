@@ -4,6 +4,7 @@ import { Bell, FileText, LayoutGrid, Mail, Pencil, Shield, Smile, UserMinus, Use
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 
+import { errorText } from '@shared/api/client';
 import { Button, Card, Chip, ListRow, Radio, Row, Screen, Sheet, showToast, Skeleton, Stack, Title } from '@components';
 import { COMIC_ENABLED, GENDER_OPTIONS, genderLabel, parseGender } from '@features/comic';
 import { NicknameSheet } from '@features/community/NicknameSheet';
@@ -194,19 +195,26 @@ export default function MyScreen() {
    * 막 올라가는 중에 옛 숫자가 남지 않게(PR #149 리뷰). 로그인하거나 나가면 다시 센다
    */
   const [unsynced, setUnsynced] = useState(0);
+  /** 아직 서버에 없는 녹음 원본 수. 행이 다 올라가도 원본은 남을 수 있다(문서 104 C5) */
+  const [audioLeft, setAudioLeft] = useState(0);
   // 화면 밖에서 동기화를 부른 뒤(동의 직후) 다시 세게 올린다(PR #149 재검토)
   const [syncTick, setSyncTick] = useState(0);
   useFocusEffect(
     useCallback(() => {
       if (!signedIn) {
         setUnsynced(0);
+        setAudioLeft(0);
         return;
       }
       let alive = true;
       const count = () =>
         getDreamRepo()
-          .then((repo) => repo.countUnsynced())
-          .then((n) => alive && setUnsynced(n))
+          .then((repo) => Promise.all([repo.countUnsynced(), repo.countUnuploadedAudio()]))
+          .then(([n, a]) => {
+            if (!alive) return;
+            setUnsynced(n);
+            setAudioLeft(a);
+          })
           .catch(() => {});
       void count()
         .then(() => syncIfSignedIn())
@@ -221,8 +229,12 @@ export default function MyScreen() {
     if (!signedIn || syncTick === 0) return;
     let alive = true;
     void getDreamRepo()
-      .then((repo) => repo.countUnsynced())
-      .then((n) => alive && setUnsynced(n))
+      .then((repo) => Promise.all([repo.countUnsynced(), repo.countUnuploadedAudio()]))
+      .then(([n, a]) => {
+        if (!alive) return;
+        setUnsynced(n);
+        setAudioLeft(a);
+      })
       .catch(() => {});
     return () => {
       alive = false;
@@ -304,7 +316,7 @@ export default function MyScreen() {
         if (!ok) await setConsentRecord('').catch(() => {});
       })
       .catch((e) => {
-        setConsentError(`동의를 저장하지 못했어요. 다시 눌러 주세요.\n${String(e)}`);
+        setConsentError(`동의를 저장하지 못했어요. 다시 눌러 주세요.\n${errorText(e)}`);
         showToast('동의를 저장하지 못했어요. 다시 눌러 주세요.');
       });
   };
@@ -343,7 +355,11 @@ export default function MyScreen() {
             {/* 동기화 대기 표시(계획서 001 5.8 — 오프라인 우선이라 필수). 올릴 것이 없으면 평소 문구 */}
             <AppText size="caption" color={c.fgFaint}>
               {/* 「연결되면 올라가요」라고 약속하지 않는다 — 동의 전이거나 서버가 거절한 변경은 연결돼도 남는다(PR #149 리뷰) */}
-              {unsynced > 0 ? `아직 서버에 올라가지 않은 변경이 ${unsynced}건 있어요.` : '기록이 서버에 함께 보관돼요'}
+              {unsynced > 0
+                ? `아직 서버에 올라가지 않은 변경이 ${unsynced}건 있어요.`
+                : audioLeft > 0
+                  ? `기록은 서버에 보관돼요. 녹음 원본 ${audioLeft}개는 아직 이 폰에만 있어요.`
+                  : '기록과 녹음이 서버에 함께 보관돼요'}
             </AppText>
             <Button
               label="로그아웃"
@@ -355,11 +371,14 @@ export default function MyScreen() {
           </Stack>
         ) : (
           <Stack gap={sp[3]}>
+            {/* 만료면 따로 말한다 — 그 사이 백업이 멈췄다는 것을 「로그인 안 함」과 같은 문구로 덮지 않는다(문서 104 C4) */}
             <AppText size="label" weight="semibold">
-              로그인하지 않아도 기록은 돼요
+              {auth.expired ? '로그인이 만료돼 백업이 멈췄어요' : '로그인하지 않아도 기록은 돼요'}
             </AppText>
             <AppText size="caption" color={c.fgFaint}>
-              로그인하면 기기를 바꿔도 기록이 따라와요.
+              {auth.expired
+                ? '기록은 이 폰에 계속 남아요. 다시 로그인하면 그동안의 기록이 올라가요.'
+                : '로그인하면 기기를 바꿔도 기록이 따라와요.'}
             </AppText>
             {canApple && <AppleButton onPress={() => startSignIn('apple')} />}
             <Button

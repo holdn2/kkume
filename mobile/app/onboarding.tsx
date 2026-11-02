@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 
+import { errorText } from '@shared/api/client';
 import { Button, Progress, Screen, Stack } from '@components';
 import { InstallWidget, Rehearsal, Value } from '@features/onboarding/steps';
 import { getDreamRepo, nowIso, SETTINGS } from '@shared/db';
@@ -51,7 +52,7 @@ export default function Onboarding() {
         const repo = await getDreamRepo();
         await repo.setSetting(SETTINGS.onboardedAt, nowIso());
       } catch (e) {
-        setError(String(e));
+        setError(errorText(e));
       }
       router.replace('/log');
     })();

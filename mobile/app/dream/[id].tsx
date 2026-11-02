@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { errorText } from '@shared/api/client';
 import { Badge, Button, DeleteLink, EmptyCard, ErrorCard, Header, Input, Loading, Row, Screen, Sheet, showToast, Stack } from '@components';
 import { COMIC_ENABLED, useComicsForDream } from '@features/comic';
 import { useMe, usePostForDream, useRefetchOnFocus } from '@features/community';
@@ -39,7 +40,7 @@ export default function DreamDetail() {
   const [error, setError] = useState<string | null>(null);
   /** 저장 · 지우기가 실패한 이유는 아래 안내 줄에 적고 토스트로도 띄운다 — 긴 본문을 고치던 중이면 안내 줄이 화면 밖이다(2026-10-08) */
   const fail = (e: unknown) => {
-    setError(String(e));
+    setError(errorText(e));
     // 토스트에는 고정 문구 — 자동 저장이 계속 실패하면 멈출 때마다 같은 오류 원문이 다시 뜬다. 원문은 안내 줄에 남는다(PR #79 리뷰)
     showToast('작업을 완료하지 못했어요. 다시 시도해 주세요.');
   };
@@ -78,7 +79,7 @@ export default function DreamDetail() {
         setSaved({ title: d?.title ?? '', text: d?.text ?? '' });
         setOpenedTextLength((d?.text ?? '').length);
       })
-      .catch((e) => alive && setError(String(e)));
+      .catch((e) => alive && setError(errorText(e)));
     return () => {
       alive = false;
     };

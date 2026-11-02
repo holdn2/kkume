@@ -106,7 +106,8 @@ export type SentVersion = { id: string; updatedAt: string };
 export type SyncState = 'synced' | 'pending';
 
 export function syncStateOf(d: Dream): SyncState {
-  return d.syncedAt ? 'synced' : 'pending';
+  // 올린 뒤 고친 것도 대기다 — `countUnsynced` · `listUnsynced`와 같은 조건(문서 104 C6)
+  return d.syncedAt && d.updatedAt <= d.syncedAt ? 'synced' : 'pending';
 }
 
 export type ListOptions = {
@@ -153,6 +154,11 @@ export interface DreamRepo {
   listUnsynced(limit?: number): Promise<Dream[]>;
   /** `listUnsynced`와 같은 조건의 개수. 마이 탭의 「아직 서버에 없는 변경 n건」 — 행을 읽지 않고 센다 */
   countUnsynced(): Promise<number>;
+  /**
+   * 아직 서버에 올리지 않은 녹음 원본 수(지우지 않은 기록만). 끝나지 않은 녹음 · 파일을 못 찾은 녹음도 든다 —
+   * 그건 올라가지 않으므로 이 폰에만 있다. 행이 다 올라가도 원본은 남을 수 있어 따로 센다(문서 104 C5)
+   */
+  countUnuploadedAudio(): Promise<number>;
 
   /**
    * 올린 것이 받아들여졌다고 표시한다. **보낸 그 버전일 때만** 표시한다.

@@ -90,6 +90,10 @@ export function createMemoryRepo(): DreamRepo {
       return rows.filter((r) => !r.syncedAt || r.updatedAt > r.syncedAt).length;
     },
 
+    async countUnuploadedAudio() {
+      return rows.filter((r) => !r.deletedAt && r.audioPath && !r.audioUploadedAt).length;
+    },
+
     async recordedTimes() {
       return rows.filter((r) => !r.deletedAt).map((r) => r.recordedAt);
     },
