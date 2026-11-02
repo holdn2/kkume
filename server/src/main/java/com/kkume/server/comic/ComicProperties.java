@@ -12,7 +12,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param imageTtl 앱에 주는 presigned GET 의 수명. 앱은 주소를 저장하지 않고 열 때마다 다시 받는다
  * @param userDailyLimit 1인 하루(KST 자정) 몫. 거절 · 실패는 세지 않는다
  * @param userDailyAttempts 1인 하루 시도 수. 거절 · 실패까지 센다 — 거절을 되풀이해 서비스 몫을 혼자 쓰지 못하게
- * @param serviceDailyLimit 서비스 전체 하루(UTC 자정 — Cloudflare 무료 한도가 다시 채워지는 때) 몫. 실패도 센다
+ * @param serviceDailyNeurons 서비스 전체 하루(UTC 자정 — Cloudflare 무료 한도가 다시 채워지는 때) 몫을 뉴런으로.
+ *     {@code comic_costs}의 그날 합계로 본다 — 그 행은 계정을 지워도 남아 탈퇴 · 재가입으로 몫이 되살아나지 않고,
+ *     실패한 호출이 쓴 뉴런도 그대로 들어간다(문서 105 R2)
+ * @param comicNeurons 새 만화 한 편 · 만드는 중인 만화 한 편마다 미리 잡아 두는 뉴런. 그날 합계 + 이것 × (만드는 중 + 1)이
+ *     몫을 넘으면 받지 않는다
  * @param budgetBlock Cloudflare 가 무료 한도 초과로 거절한 뒤 새 요청을 막는 시간. 하루(UTC)를 통째로 막지 않는다 —
  *     한도는 UTC 자정에 곧바로 풀리지 않아(10-12 00:00:40Z 에도 4006) 자정 직후 실패 하나가 하루를 막았다
  * @param workerEnabled 끄면 만화를 받아 두기만 하고 그리지 않는다(테스트)
@@ -22,7 +26,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "kkume.comic")
 public record ComicProperties(String bucket, String region, Duration imageTtl, int userDailyLimit,
-		int userDailyAttempts, int serviceDailyLimit, Duration budgetBlock, boolean workerEnabled, Duration poll, Duration lease, Cloudflare cloudflare) {
+		int userDailyAttempts, int serviceDailyNeurons, int comicNeurons, Duration budgetBlock, boolean workerEnabled, Duration poll, Duration lease, Cloudflare cloudflare) {
 
 	/**
 	 * @param accountId Cloudflare 계정 ID

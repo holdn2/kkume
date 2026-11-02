@@ -1,5 +1,6 @@
 package com.kkume.server.comic;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -129,7 +130,9 @@ public class ComicService {
 		// 한도 초과로 막는 것은 마지막 거절 뒤 잠깐뿐이다. 그 뒤 요청이 또 거절되면 다시 막힌다(거절된 호출은 청구되지 않는다)
 		Instant blockedSince = now.minus(this.properties.budgetBlock());
 		Instant budgetSince = blockedSince.isAfter(utcDay) ? blockedSince : utcDay;
-		if (this.store.budgetExhaustedSince(budgetSince) || this.store.countSince(utcDay) >= this.properties.serviceDailyLimit()) {
+		BigDecimal reserved = BigDecimal.valueOf((long) this.properties.comicNeurons() * (this.store.inFlight() + 1));
+		if (this.store.budgetExhaustedSince(budgetSince)
+				|| this.store.neuronsSince(utcDay).add(reserved).compareTo(BigDecimal.valueOf(this.properties.serviceDailyNeurons())) > 0) {
 			throw ComicApiException.budgetExhausted();
 		}
 
