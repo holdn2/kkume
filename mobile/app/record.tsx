@@ -12,9 +12,10 @@ import {
 } from 'react-native';
 
 import { Button, Input, Row, Screen } from '@components';
+import { StorageWarning } from '@features/record/StorageWarning';
 import { Waveform } from '@features/record/Waveform';
 import { MAX_TEXT_LENGTH } from '@shared/api/sync';
-import { mmss, useRecorder, whenActive } from '@shared/audio';
+import { isMicDenied, mmss, useRecorder, whenActive } from '@shared/audio';
 import { getDreamRepo, type DreamPatch } from '@shared/db';
 import { chooseEngine, useDictator, type DictationEnd, type DictationHandlers } from '@shared/dictation';
 import { savedFeedback, startFeedback } from '@shared/haptics';
@@ -26,6 +27,11 @@ type Mode = 'voice' | 'text';
 
 /** 입력이 이만큼 멈추면 저장한다. 짧으면 타이핑 중에 깜빡이고, 길면 불안해진다 */
 const IDLE_SAVE_MS = 1200;
+/**
+ * 녹음을 멈췄는데 기기에 저장하지 못했다. 성공처럼 꿈 로그로 보내지 않고 이 화면에 남긴다 —
+ * 정지를 다시 누르면 멈춘 결과(`pendingAudio`)로 저장만 다시 한다(문서 104 S2, 이슈 #167)
+ */
+const SAVE_FAILED = '녹음을 기기에 저장하지 못했어요. 정지를 누르면 다시 저장해요.';
 
 /** 받아쓰는 중인 구간은 이 간격까지만 저장한다. 확정 구간은 오는 즉시 저장한다 */
 const INTERIM_SAVE_MS = 1000;
@@ -94,6 +100,8 @@ export default function RecordModal() {
   const [engineOn, setEngineOn] = useState<'audio' | 'dictation'>('audio');
   const active = engineOn === 'dictation' ? dict : rec;
   const [error, setError] = useState<string | null>(null);
+  /** 마이크 권한이 없어 묻지 않고 적기로 열었다. 적기 화면에 이유를 한 줄 남긴다 */
+  const [micOff, setMicOff] = useState(false);
 
   const [text, setText] = useState('');
   /** 적기 화면에서 입력칸 · 안내 줄이 쓸 수 있는 높이. 입력칸이 이보다 커지면 「완료」가 화면 밖으로 밀린다 */
@@ -271,7 +279,8 @@ export default function RecordModal() {
     const uri = await rec.start();
     audioLive.current = true;
     // 경로를 못 받는 구현이면 그냥 넘어간다. 여기서 막으면 녹음 자체가 안 된다
-    if (uri) void persist({ audioPath: uri });
+    // 실패해도 멈출 때 같은 경로를 다시 쓴다(audioPatch) — 여기서 던지면 처리되지 않은 거부로 샌다
+    if (uri) void persist({ audioPath: uri }).catch(() => {});
     // 시작하는 사이에 이미 정지 · 적기 · 백그라운드가 왔으면, 켜진 녹음을 곧바로 멈춰 파일을 마무리한다.
     // 그 요청의 stop()은 녹음기가 켜지기 전에 돌아 아무것도 멈추지 못했다(검증 레인 C 2차 6)
     if (stopRequested.current) {
@@ -283,6 +292,24 @@ export default function RecordModal() {
     }
     startFeedback();
   }, [rec, persist, saveTaken]);
+
+  /**
+   * 녹음을 켜지 못했다. **마이크 권한이 없으면 묻지 않고 적기로 연다** — 빨간 오류를 보고 「적기」로 넘어갈지
+   * 새벽에 판단하게 하면 그게 결정이다(절대 규칙 7, 문서 104 C13). 녹음은 켜진 적이 없어 마무리할 것도 없다.
+   * 되돌리기는 다시 마이크를 부를 뿐이라 숨긴다. 권한은 낮에 설정에서 켠다
+   */
+  const failStart = useCallback((e: unknown) => {
+    if (isMicDenied(e) && !stopRequested.current) {
+      stopRequested.current = true;
+      closed.current = true;
+      swapping.current = true;
+      setSwapped(true);
+      setMicOff(true);
+      setResolved('text');
+      return;
+    }
+    setError(String(e));
+  }, []);
 
   /**
    * 받아쓴 글도 절대 규칙 1이다 — **확정 구간은 오는 즉시, 진행 중 구간은 1초에 한 번까지 저장한다.**
@@ -312,16 +339,24 @@ export default function RecordModal() {
       // 시작 직후 받아쓰기를 못 하는 기기로 드러났다. 같은 기록에 녹음만으로 넘어간다
       onFallback: () => {
         if (stopRequested.current) return;
-        void startAudio().catch((e) => setError(String(e)));
+        void startAudio().catch(failStart);
       },
       // 멈추지 않았는데 세션이 끝났다 — 백그라운드 마무리와 똑같이 저장하고 꿈 로그로(052 06장 B).
       // 기록 하나에 파일 하나라 이어 녹음하지 않는다
       onEnded: (end) => {
         pendingAudio.current = end;
         void saveTaken(end)
-          .catch(() => {})
-          .then(() => {
+          .then(
+            () => true,
+            () => false,
+          )
+          .then((ok) => {
             if (userClosing.current) return;
+            // 저장하지 못했으면 「저장됨」 햅틱도 이동도 없다 — 성공처럼 보이면 사라진 줄 모른다(문서 104 S2)
+            if (!ok) {
+              setError(SAVE_FAILED);
+              return;
+            }
             if (AppState.currentState === 'active') {
               savedFeedback();
               leave();
@@ -331,7 +366,7 @@ export default function RecordModal() {
           });
       },
     }),
-    [saveDictated, startAudio, saveTaken, leave],
+    [saveDictated, startAudio, saveTaken, leave, failStart],
   );
 
   useEffect(() => () => {
@@ -380,7 +415,7 @@ export default function RecordModal() {
             const uri = await dict.start(dictationHandlers());
             // 멈추라는 요청이 있었어도 파일은 생겼다 — 경로는 못 박는다(절대 규칙 2). 시작 햅틱만 건너뛴다
             if (!stopRequested.current) startFeedback();
-            void persist({ audioPath: uri });
+            void persist({ audioPath: uri }).catch(() => {});
             return;
           } catch {
             // 아래에서 녹음기로 넘어간다. 그 사이 멈추라고 했으면 새로 켜지 않는다
@@ -388,9 +423,9 @@ export default function RecordModal() {
           }
         }
         await startAudio();
-      })().catch((e) => setError(String(e)));
+      })().catch(failStart);
     });
-  }, [resolved, dict, dictationHandlers, startAudio, persist]);
+  }, [resolved, dict, dictationHandlers, startAudio, persist, failStart]);
 
   /**
    * **백그라운드로 가면 녹음을 마무리한다.** 시작 시점에 경로를 못 박는 것만으로는
@@ -423,18 +458,25 @@ export default function RecordModal() {
       // 걸면 돌아와도 녹음이 안 켜진 채 꿈 로그로 보내진다. 돌아와 `active`가 되면 그때 켠다(이슈 #125)
       if (next === 'background' && armed.current && !pendingAudio.current && !closed.current) {
         void (async () => {
+          let ok = true;
           try {
             if (engine.current === 'dictation') saveDictated();
             const out = await takeAudio('abort');
             await saveTaken(out);
           } catch {
-            // 여기서는 화면에 남길 수 없다 — 이미 백그라운드다.
-            // 시작할 때 넣어 둔 행이 있으니 경로까지 잃지는 않는다
+            // 시작할 때 넣어 둔 행이 있으니 경로까지 잃지는 않는다. 멈춘 결과는 pendingAudio 에 남아 있다
+            ok = false;
           }
-          // 실패했어도 표시한다. 돌아왔을 때 멈춘 화면에 세워 두는 것이 더 나쁘다.
+          if (userClosing.current) return;
+          // **저장하지 못했으면 「저장됨」 햅틱도 꿈 로그 이동도 하지 않는다.** 전에는 멈춘 화면에 세워 두는 것이
+          // 더 나쁘다고 보고 성공처럼 보냈는데, 그러면 사라진 기록을 사용자가 알 길이 없다(문서 104 S2).
+          // 돌아오면 이 화면에 이유가 떠 있고, 정지를 누르면 같은 결과로 저장만 다시 한다
+          if (!ok) {
+            setError(SAVE_FAILED);
+            return;
+          }
           // 마무리가 늦게 끝나 그 사이 이미 돌아와 있으면(파일이 열리기를 기다린 경우) 지금 보낸다 —
           // 'active' 이벤트는 이미 지나가 다시 오지 않는다(검증 레인 C 3차 4)
-          if (userClosing.current) return;
           if (AppState.currentState === 'active') {
             savedFeedback();
             leave();
@@ -499,6 +541,24 @@ export default function RecordModal() {
       }
     })();
   };
+
+  /**
+   * **적기도 백그라운드로 가는 순간 저장한다.** 멈춘 뒤 1.2초를 기다리는 저장만 있으면, 마지막 문장을 치고 곧바로
+   * 앱을 밀어 끄는 새벽의 흔한 동작에서 그 문장이 — 처음 1.2초 안이면 기록 전체가 — 사라진다(문서 104 C2).
+   * 빠른기록 탭 · 꿈 상세와 같은 규칙이다. 콜백 안에서는 `typed` 로 최신 글을 읽는다
+   */
+  useEffect(() => {
+    if (resolved !== 'text') return;
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'background') return;
+      const now = typed.current;
+      if (!now.trim()) return;
+      void persist({ text: body(now, dictated.current) })
+        .then(() => setSavedText(now))
+        .catch(() => {});
+    });
+    return () => sub.remove();
+  }, [resolved, persist]);
 
   // 텍스트는 멈추면 저장한다. 저장 버튼을 두면 "저장할까 말까"가 생긴다
   useEffect(() => {
@@ -587,6 +647,12 @@ export default function RecordModal() {
               </Pressable>
               )}
             </Row>
+            {micOff && (
+              <AppText size="caption" color={c.fgFaint}>
+                마이크를 쓸 수 없어 적기로 열었어요
+              </AppText>
+            )}
+            <StorageWarning compact />
 
             {/* 입력칸은 남은 높이까지만 자란다 — 글이 길어져도 아래 「완료」를 화면 밖으로 밀어내지 않고 칸 안에서 스크롤된다 */}
             <View style={{ flex: 1, gap: sp[4] }} onLayout={(e) => setRoom(e.nativeEvent.layout.height)}>
@@ -639,6 +705,7 @@ export default function RecordModal() {
         {/* 받아쓰는 글은 여기 보여주지 않는다 — 읽을 것 · 고치고 싶은 것이 생기면 새벽의 결정이 된다
             (2026-09-26 사용자 결정 "안 보여 줌", 문서 052 06장 A). 화면은 녹음만 할 때와 같다 */}
         <Waveform level={active.level} active={active.isRecording} />
+        <StorageWarning compact />
 
         {!!error && (
           <AppText size="caption" color={c.danger} style={{ textAlign: 'center' }}>

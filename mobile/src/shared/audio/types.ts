@@ -1,3 +1,18 @@
+/**
+ * 마이크 권한이 없어 녹음을 못 켰다. 다른 실패와 갈라야 하는 이유가 있다 —
+ * 새벽 화면은 이걸 오류로 띄우지 않고 묻지 않은 채 적기로 넘어간다(절대 규칙 7, 이슈 #167)
+ */
+export class MicDeniedError extends Error {
+  constructor() {
+    super('마이크 권한이 없어요');
+    this.name = 'MicDeniedError';
+  }
+}
+
+export function isMicDenied(e: unknown): boolean {
+  return e instanceof MicDeniedError || (e as { name?: string } | null)?.name === 'MicDeniedError';
+}
+
 export type RecordingResult = {
   /** 저장된 파일 경로. 가짜 구현에서는 null이다 */
   uri: string | null;

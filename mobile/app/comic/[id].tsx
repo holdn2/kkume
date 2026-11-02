@@ -75,8 +75,16 @@ export default function ComicDetail() {
   const shot = useRef<View>(null);
   const [saving, setSaving] = useState(false);
   // 네 컷을 다 받은 뒤에만 찍는다 — 받는 중에 찍으면 말풍선 없는 스켈레톤이 저장된다(이슈 #151 리뷰)
-  const [shotReady, setShotReady] = useState(false);
-  const markReady = useCallback(() => setShotReady(true), []);
+  // null = 받는 중, false = 그림을 하나라도 못 받음 — 그대로 찍으면 그림 빠진 사진이 「저장했어요」로 남는다(문서 104 X3)
+  const [shotReady, setShotReady] = useState<boolean | null>(null);
+  const markReady = useCallback((ok: boolean) => setShotReady(ok), []);
+  // 그림을 다시 받는다. 받은 · 못 받은 표시는 컷마다 들고 있어서, 뷰를 새로 올려야 처음부터 다시 받는다
+  const [round, setRound] = useState(0);
+  const reloadImages = () => {
+    setShotReady(null);
+    setRound((n) => n + 1);
+    void comic.refetch();
+  };
   const save = () => {
     if (saving) return;
     setSaving(true);
@@ -119,6 +127,7 @@ export default function ComicDetail() {
             </AppText>
           )}
           <ComicView
+            key={round}
             layout={data.layout}
             imageUrls={data.imageUrls}
             panels={data.panels}
@@ -128,6 +137,14 @@ export default function ComicDetail() {
         </View>
         <Stack gap={sp[2]}>
           {CAN_SAVE_COMIC && <Button label="사진에 저장" loading={saving} disabled={!shotReady} onPress={save} />}
+          {shotReady === false && (
+            <Stack gap={sp[2]}>
+              <AppText size="caption" color={c.fgMuted}>
+                그림을 다 받지 못했어요. 다시 받으면 사진에 저장할 수 있어요.
+              </AppText>
+              <Button label="그림 다시 받기" size="sm" variant="secondary" onPress={reloadImages} />
+            </Stack>
+          )}
           {/* 공유 = 꿈 나눔 글쓰기로(계획서 003 CM-3) */}
           <Button
             label="꿈 나눔에 올리기"

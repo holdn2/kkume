@@ -1,7 +1,7 @@
 import { Redirect } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-import { getDreamRepo, SETTINGS } from '@shared/db';
+import { getDreamRepo, SETTINGS, storageFailed } from '@shared/db';
 
 /**
  * ON-1. **화면이 아니라 분기다.**
@@ -20,7 +20,9 @@ export default function Index() {
     let alive = true;
     getDreamRepo()
       .then((repo) => repo.getSetting(SETTINGS.onboardedAt))
-      .then((v) => alive && setDone(v != null))
+      // 저장소를 못 열어 메모리로 왔으면 온보딩 기록도 안 보인다 — 온보딩을 다시 띄우면 기록이 다 날아간 줄 알고
+      // 앱을 지운다. 꿈 로그로 보내 거기서 이유를 알린다(문서 104 S1)
+      .then((v) => alive && setDone(v != null || storageFailed()))
       // 저장소를 못 열면 온보딩을 보여준다. 한 번 더 보는 쪽이,
       // 아직 안 본 사람이 그냥 빈 목록으로 떨어지는 쪽보다 낫다
       .catch(() => alive && setDone(false));
