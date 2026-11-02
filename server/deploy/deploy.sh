@@ -51,10 +51,18 @@ DB_URL="jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}"
 
 echo "== ${EC2_USER}@${EC2_HOST} 로 배포"
 # 스크립트를 파일로 두지 않고 stdin으로 밀어넣는다. EC2에 사본이 쌓이지 않는다.
-ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=accept-new \
+# 비밀값은 명령줄 인자로 넘기지 않는다(문서 105 R8) — 인자는 실행하는 동안 이 PC 와 EC2 의 ps 에 그대로 보인다.
+# 스크립트 앞에 변수 대입 줄로 붙여 같은 stdin 으로 보낸다. %q 가 따옴표를 맞춰 값에 무엇이 있어도 한 줄 대입이 된다
+{
+  printf 'DB_PASSWORD=%q\n' "${DB_PASSWORD}"
+  printf 'JWT_SECRET=%q\n' "${JWT_SECRET}"
+  printf 'APPLE_PRIVATE_KEY=%q\n' "${APPLE_PRIVATE_KEY}"
+  printf 'CLOUDFLARE_ACCOUNT_ID=%q\n' "${CLOUDFLARE_ACCOUNT_ID}"
+  printf 'CLOUDFLARE_API_TOKEN=%q\n' "${CLOUDFLARE_API_TOKEN}"
+  cat ec2-run.sh
+} | ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=accept-new \
   "${EC2_USER}@${EC2_HOST}" \
-  "bash -s -- '${REGISTRY}' '${ECR_REPO}' '${HOST_PORT}' '${AWS_REGION}' '${DB_URL}' '${DB_USER}' '${DB_PASSWORD}' '${JWT_SECRET}' '${AUDIO_BUCKET}' '${REPORT_TOPIC_ARN}' '${APPLE_KEY_ID}' '${APPLE_PRIVATE_KEY}' '${CLOUDFLARE_ACCOUNT_ID}' '${CLOUDFLARE_API_TOKEN}'" \
-  < ec2-run.sh
+  "bash -s -- '${REGISTRY}' '${ECR_REPO}' '${HOST_PORT}' '${AWS_REGION}' '${DB_URL}' '${DB_USER}' '${AUDIO_BUCKET}' '${REPORT_TOPIC_ARN}' '${APPLE_KEY_ID}'"
 
 echo "== 바깥에서 확인"
 fail=0
