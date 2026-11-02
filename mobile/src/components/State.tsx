@@ -59,7 +59,16 @@ export function ErrorCard({ message, onRetry }: { message: string; onRetry?: () 
 }
 
 /** 비어 있을 때. 한 줄로 끝내지 않고, 할 수 있는 일이 있으면 `hint`로 하나만 말한다 */
-export function EmptyCard({ title, hint }: { title: string; hint?: string }) {
+export function EmptyCard({
+  title,
+  hint,
+  action,
+}: {
+  title: string;
+  hint?: string;
+  /** 비어 있을 때 할 수 있는 다음 한 가지. 막다른 화면이 되지 않게 */
+  action?: { label: string; onPress: () => void };
+}) {
   return (
     <Card>
       <AppText size="body" color={c.fgMuted}>
@@ -70,6 +79,7 @@ export function EmptyCard({ title, hint }: { title: string; hint?: string }) {
           {hint}
         </AppText>
       )}
+      {!!action && <Button label={action.label} size="sm" variant="secondary" onPress={action.onPress} />}
     </Card>
   );
 }

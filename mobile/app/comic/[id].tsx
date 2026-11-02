@@ -163,6 +163,10 @@ export default function ComicDetail() {
         {data.status === 'failed' && (
           <Button label="다시 만들기" onPress={() => router.replace(`/comic/new?dreamId=${data.dreamId}`)} />
         )}
+        {/* 거절은 꿈 내용 때문이다 — 고칠 곳으로 보낸다. 뒤로 가기만 남기면 막다른 길이다(문서 104) */}
+        {data.status === 'refused' && (
+          <Button label="꿈 기록 고치기" variant="secondary" onPress={() => router.push(`/dream/${data.dreamId}`)} />
+        )}
       </Stack>
     );
   }
