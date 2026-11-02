@@ -40,8 +40,14 @@ class AudioConfig {
 	static class Unavailable implements AudioStorage {
 
 		@Override
-		public Ticket presignUpload(String key, String contentType) {
+		public Ticket presignUpload(String key, String contentType, Long contentLength) {
 			throw unavailable();
+		}
+
+		/** 버킷이 없으면 올라간 것도 없다. 정리 작업이 여기서 멈추지 않게 */
+		@Override
+		public java.util.List<Stored> list(String prefix) {
+			return java.util.List.of();
 		}
 
 		@Override

@@ -71,7 +71,8 @@ AI 작업은 원래 수 초 이상 걸린다.
 | `https.sh` | ssh로 EC2에 HTTPS 입구(Caddy)를 띄우고 바깥에서 확인. **앱은 건드리지 않는다** |
 | `ec2-https.sh` | EC2 안에서 도는 부분. `https.sh`가 stdin으로 밀어넣는다 |
 | `Caddyfile` | HTTPS 입구 설정. EC2의 `/opt/kkume/Caddyfile`로 올라간다 |
-| `moderate.sh` | **운영자 신고 처리**(문서 070 · 072) — `reports` · `show` · `remove` · `dismiss` · `suspend` · `unsuspend`. SSH 를 지금 IP 로 잠깐 열고 닫는다 |
+| `moderate.sh` | **운영자 신고 처리**(문서 070 · 072) — `reports` · `show` · `remove` · `dismiss` · `restore`(가린 것 되돌리기, 문서 105 R5) · `suspend` · `unsuspend`. SSH 를 지금 IP 로 잠깐 열고 닫는다. DB 비밀번호는 표준입력으로 넘긴다 |
+| `comic-costs.sh` | **꿈 만화 원가 집계**(문서 105 R7) — `comic-costs.sql` 을 운영 DB 에 읽기만 하고 되돌린다. D 방식 배포(10-27) 뒤의 편당 뉴런 · USD · 재호출 몫 · 소요 시간 · 날짜별 합계 |
 | `log-retention.sh` | EC2 에 "매달 1일 컨테이너 기록 비우기" 타이머를 설치한다. 몇 번 돌려도 같다 |
 | `ec2-db.sh` | EC2 안에서 Postgres 컨테이너(`kkume-db`)를 띄운다. 처음 한 번, 또는 DB 설정을 바꿀 때만(5-1) |
 | `db-backup.sh` | EC2 에 "매일 DB 백업 → S3" 타이머를 설치한다. 몇 번 돌려도 같다(5-5) |

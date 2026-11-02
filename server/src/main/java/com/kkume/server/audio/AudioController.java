@@ -32,7 +32,8 @@ public class AudioController {
 	@PostMapping("/audio/upload")
 	public AudioService.UploadTicket upload(@AuthenticationPrincipal Jwt jwt, @PathVariable String id,
 			@RequestBody(required = false) UploadRequest request) {
-		return this.audio.prepareUpload(user(jwt), id, request == null ? null : request.format());
+		return this.audio.prepareUpload(user(jwt), id, request == null ? null : request.format(),
+				request == null ? null : request.bytes());
 	}
 
 	/** ④ 다 올렸다. 같은 요청을 두 번 보내도 된다 */
@@ -63,8 +64,11 @@ public class AudioController {
 		return UUID.fromString(jwt.getSubject());
 	}
 
-	/** {@code format}: {@code "m4a"} · {@code "wav"} */
-	public record UploadRequest(String format) {
+	/**
+	 * @param format {@code "m4a"} · {@code "wav"}
+	 * @param bytes 올릴 파일 크기(선택). 보내면 그 크기만 받는 주소를 준다
+	 */
+	public record UploadRequest(String format, Long bytes) {
 	}
 
 	public record CompleteRequest(String key) {

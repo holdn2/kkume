@@ -291,8 +291,17 @@ class CommunityStore {
 			.addValue("now", time(now)));
 	}
 
+	/** 이 사람이 그때 이후 넣은 신고 수 */
+	int countReportsBy(UUID reporterId, Instant since) {
+		Integer count = this.jdbc.queryForObject("select count(*) from reports where reporter_id = :reporter and created_at >= :since",
+				new MapSqlParameterSource("reporter", reporterId).addValue("since", time(since)), Integer.class);
+		return count == null ? 0 : count;
+	}
+
+	/** 아직 처리하지 않은 신고의 신고자 수. 운영자가 처리한 것은 빼고 센다 */
 	int countReporters(String targetType, UUID targetId) {
-		Integer count = this.jdbc.queryForObject("select count(*) from reports where target_type = :type and target_id = :target",
+		Integer count = this.jdbc.queryForObject(
+				"select count(*) from reports where target_type = :type and target_id = :target and reviewed_at is null",
 				new MapSqlParameterSource("type", targetType).addValue("target", targetId), Integer.class);
 		return count == null ? 0 : count;
 	}

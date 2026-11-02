@@ -58,6 +58,18 @@ public class AccountGuard {
 		}
 	}
 
+	/**
+	 * {@link #lockActive}와 같되 {@code FOR UPDATE}로 잡는다. 잠근 뒤 같은 트랜잭션에서 그 행을 고칠 때 쓴다 —
+	 * {@code FOR SHARE}를 둘이 잡고 둘 다 고치려 하면 서로를 기다려 교착된다(PR #178 리뷰, 로그인 동의 갱신)
+	 */
+	public void lockActiveForUpdate(UUID userId) {
+		List<Boolean> deleted = this.jdbc.queryForList(
+				"select deleted_at is not null from users where id = ? for update", Boolean.class, userId);
+		if (deleted.isEmpty() || deleted.get(0)) {
+			throw new AccountDeletedException();
+		}
+	}
+
 	/** 잠그지 않고 본다. 요청마다 토큰의 계정을 확인하는 데 쓴다 — 읽기는 되살릴 것이 없어 잠글 필요가 없다 */
 	public boolean isActive(UUID userId) {
 		List<Boolean> deleted = this.jdbc.queryForList("select deleted_at is not null from users where id = ?",

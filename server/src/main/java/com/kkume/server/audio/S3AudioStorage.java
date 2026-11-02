@@ -1,5 +1,6 @@
 package com.kkume.server.audio;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
@@ -42,11 +43,12 @@ class S3AudioStorage implements AudioStorage {
 	}
 
 	@Override
-	public Ticket presignUpload(String key, String contentType) {
+	public Ticket presignUpload(String key, String contentType, Long contentLength) {
 		PutObjectRequest put = PutObjectRequest.builder()
 			.bucket(this.properties.bucket())
 			.key(key)
 			.contentType(contentType)
+			.contentLength(contentLength)
 			.build();
 		PresignedPutObjectRequest signed = this.presigner.presignPutObject(PutObjectPresignRequest.builder()
 			.signatureDuration(this.properties.uploadTtl())
@@ -55,6 +57,20 @@ class S3AudioStorage implements AudioStorage {
 		// host 는 URL 에 들어 있어 앱이 따로 붙일 필요가 없다. 앱에 넘길 것은 Content-Type 하나다
 		return new Ticket(signed.url().toString(), Map.of("Content-Type", contentType),
 				signed.expiration());
+	}
+
+	@Override
+	public List<Stored> list(String prefix) {
+		List<Stored> found = new ArrayList<>();
+		String token = null;
+		do {
+			ListObjectsV2Response page = this.s3.listObjectsV2(ListObjectsV2Request.builder()
+				.bucket(this.properties.bucket()).prefix(prefix).continuationToken(token).build());
+			page.contents().forEach(o -> found.add(new Stored(o.key(), o.lastModified())));
+			token = Boolean.TRUE.equals(page.isTruncated()) ? page.nextContinuationToken() : null;
+		}
+		while (token != null);
+		return found;
 	}
 
 	@Override

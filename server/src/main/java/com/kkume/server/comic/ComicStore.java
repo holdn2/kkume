@@ -1,5 +1,6 @@
 package com.kkume.server.comic;
 
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -96,10 +97,23 @@ class ComicStore {
 				new MapSqlParameterSource("user", userId).addValue("since", time(since)), Long.class);
 	}
 
-	/** 서비스 전체 하루 몫. 실패도 센다 — 실패한 호출도 무료 한도를 쓴다 */
-	long countSince(Instant since) {
-		return this.jdbc.queryForObject("select count(*) from comics where created_at >= :since",
-				new MapSqlParameterSource("since", time(since)), Long.class);
+	/**
+	 * 그때 이후 실제로 쓴 뉴런. 서비스 전체 하루 몫은 이것으로 본다 — {@code comics} 행은 계정을 지우면 사라져 세면
+	 * 탈퇴 · 재가입으로 몫이 되살아난다(문서 105 R2). {@code comic_costs}는 사용자를 담지 않아 지우지 않는다
+	 */
+	BigDecimal neuronsSince(Instant since) {
+		return this.jdbc.queryForObject("select coalesce(sum(neurons), 0) from comic_costs where created_at >= :since",
+				new MapSqlParameterSource("since", time(since)), BigDecimal.class);
+	}
+
+	/**
+	 * 아직 끝나지 않은 만화 수. 이것들이 앞으로 쓸 뉴런을 미리 잡아 둔다. 지운 것은 빼다 — 줄은 지운 대기 만화를 잡지 않고
+	 * 그리던 것은 멈추므로, 세면 그 몫이 풀리지 않는다(PR #178 리뷰)
+	 */
+	long inFlight() {
+		return this.jdbc.queryForObject(
+				"select count(*) from comics where status in ('queued', 'scripting', 'drawing') and deleted_at is null",
+				new MapSqlParameterSource(), Long.class);
 	}
 
 	/** 그때 이후 Cloudflare 가 무료 한도 초과로 거절한 적이 있는가 */

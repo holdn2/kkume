@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # EC2 안에서 도는 스크립트. deploy.sh 가 ssh로 밀어넣어 실행한다.
-# 인자: <레지스트리> <리포지터리> <호스트포트> <리전> <DB URL> <DB 사용자> <DB 비밀번호> <JWT 서명키> <오디오 버킷> <신고 알림 주제>
-#       [<애플 키 ID> <애플 키(.p8 의 base64 한 줄)>] — 비면 애플 로그인은 되고 계정 삭제 때 애플 토큰 회수만 건너뛴다
-#       [<Cloudflare 계정 ID> <Cloudflare API 토큰>] — 비면 꿈 만화 만들기만 503 comic_unavailable
+# 인자: <레지스트리> <리포지터리> <호스트포트> <리전> <DB URL> <DB 사용자> <오디오 버킷> <신고 알림 주제> [<애플 키 ID>]
 #
-# 비밀번호와 서명키는 인자로 받아 컨테이너 환경변수로만 넘긴다. EC2 디스크에
+# 비밀값(DB 비밀번호 · JWT 서명키 · 애플 키 · Cloudflare 계정과 토큰)은 인자가 아니다(문서 105 R8). deploy.sh 가 이 스크립트
+# 앞에 변수 대입 줄로 붙여 stdin 으로 보낸다 — 인자는 실행하는 동안 ps 에 보인다.
+# 애플 키가 비면 애플 로그인은 되고 계정 삭제 때 애플 토큰 회수만 건너뛴다. Cloudflare 가 비면 꿈 만화 만들기만 503.
+#
+# 컨테이너에는 root 만 읽는(600) 임시 env 파일(/run — 메모리)로 넘기고 곧바로 지운다. EC2 디스크에
 # 파일로 남기지 않는다 — 남기면 지우는 것을 잊는다.
 set -euo pipefail
 
@@ -14,14 +16,13 @@ HOST_PORT="$3"
 REGION="$4"
 DB_URL="$5"
 DB_USER="$6"
-DB_PASSWORD="$7"
-JWT_SECRET="$8"
-AUDIO_BUCKET="$9"
-REPORT_TOPIC_ARN="${10}"
-APPLE_KEY_ID="${11:-}"
-APPLE_PRIVATE_KEY="${12:-}"
-CLOUDFLARE_ACCOUNT_ID="${13:-}"
-CLOUDFLARE_API_TOKEN="${14:-}"
+AUDIO_BUCKET="$7"
+REPORT_TOPIC_ARN="$8"
+APPLE_KEY_ID="${9:-}"
+: "${DB_PASSWORD:?deploy.sh 가 앞에 붙여 보낸다}" "${JWT_SECRET:?deploy.sh 가 앞에 붙여 보낸다}"
+APPLE_PRIVATE_KEY="${APPLE_PRIVATE_KEY:-}"
+CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
+CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-}"
 NAME=kkume-server
 
 echo "== ECR 로그인"
@@ -57,25 +58,35 @@ sudo docker rm -f "${NAME}" 2>/dev/null || true
 #
 # 기록은 컨테이너당 10MB × 3개까지만 둔다. 기본값(json-file)은 크기 제한이 없다.
 # 기간 상한(한 달)은 log-retention.sh 가 설치한 예약 작업이 지킨다(문서 070 04장).
+# 비밀값만 env 파일로 넘긴다. mktemp 가 root 만 읽는 600 으로 만들고, sudo tee 의 인자에는 파일 이름뿐이다
+# (printf 는 셸 내장이라 ps 에 나오지 않는다)
+ENV_FILE=$(sudo mktemp /run/kkume-env.XXXXXX)
+trap 'sudo rm -f "${ENV_FILE}"' EXIT
+printf '%s\n' \
+  "SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}" \
+  "KKUME_JWT_SECRET=${JWT_SECRET}" \
+  "KKUME_APPLE_PRIVATE_KEY=${APPLE_PRIVATE_KEY}" \
+  "KKUME_CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}" \
+  "KKUME_CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}" \
+  | sudo tee "${ENV_FILE}" >/dev/null
+
 sudo docker run -d \
   --name "${NAME}" \
   --restart unless-stopped \
   --memory 640m \
   --network kkume-net \
   --log-opt max-size=10m --log-opt max-file=3 \
+  --env-file "${ENV_FILE}" \
   -e JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70" \
   -e SPRING_DATASOURCE_URL="${DB_URL}" \
   -e SPRING_DATASOURCE_USERNAME="${DB_USER}" \
-  -e SPRING_DATASOURCE_PASSWORD="${DB_PASSWORD}" \
-  -e KKUME_JWT_SECRET="${JWT_SECRET}" \
   -e KKUME_AUDIO_BUCKET="${AUDIO_BUCKET}" \
   -e KKUME_REPORT_TOPIC_ARN="${REPORT_TOPIC_ARN}" \
   -e KKUME_APPLE_KEY_ID="${APPLE_KEY_ID}" \
-  -e KKUME_APPLE_PRIVATE_KEY="${APPLE_PRIVATE_KEY}" \
-  -e KKUME_CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID}" \
-  -e KKUME_CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN}" \
   -p "127.0.0.1:${HOST_PORT}:8080" \
   "${REGISTRY}/${REPO}:latest"
+# 컨테이너를 만들 때 읽었다. 기다리지 않고 지운다
+sudo rm -f "${ENV_FILE}"
 
 echo "== 기동 대기"
 # /health 가 아니라 /health/ready 를 본다. DB 가 붙은 뒤로는 프로세스가 떴다는 것만으로

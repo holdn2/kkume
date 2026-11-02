@@ -1,6 +1,7 @@
 package com.kkume.server.audio;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -18,9 +19,25 @@ public class FakeAudioStorage implements AudioStorage {
 
 	private final Set<String> deleted = ConcurrentHashMap.newKeySet();
 
+	private final Map<String, Instant> uploadedAt = new ConcurrentHashMap<>();
+
+	/** 마지막 서명에 넣은 크기 */
+	public volatile Long lastContentLength;
+
 	/** 앱이 URL 로 파일을 올린 것처럼 만든다 */
 	public void put(String key, long size) {
+		put(key, size, Instant.now());
+	}
+
+	public void put(String key, long size, Instant at) {
 		this.objects.put(key, size);
+		this.uploadedAt.put(key, at);
+	}
+
+	@Override
+	public List<Stored> list(String prefix) {
+		return this.objects.keySet().stream().filter(k -> k.startsWith(prefix)).sorted()
+			.map(k -> new Stored(k, this.uploadedAt.getOrDefault(k, Instant.now()))).toList();
 	}
 
 	public boolean wasDeleted(String key) {
@@ -28,7 +45,8 @@ public class FakeAudioStorage implements AudioStorage {
 	}
 
 	@Override
-	public Ticket presignUpload(String key, String contentType) {
+	public Ticket presignUpload(String key, String contentType, Long contentLength) {
+		this.lastContentLength = contentLength;
 		return new Ticket("https://fake-bucket.example/" + key + "?X-Amz-Signature=fake",
 				Map.of("Content-Type", contentType), Instant.now().plusSeconds(900));
 	}

@@ -47,7 +47,7 @@ import com.kkume.server.user.Provider;
  */
 @Import({ TestcontainersConfiguration.class, ComicApiTest.Fakes.class })
 @SpringBootTest(properties = { "kkume.stt.worker-enabled=false", "kkume.comic.worker-enabled=false",
-		"kkume.comic.bucket=test-bucket", "kkume.comic.service-daily-limit=1000" })
+		"kkume.comic.bucket=test-bucket", "kkume.comic.service-daily-neurons=1000000" })
 @AutoConfigureMockMvc
 class ComicApiTest {
 
@@ -321,24 +321,67 @@ class ComicApiTest {
 		create(this.me, dreamId(), "또 다른 꿈", "soft").andExpect(status().isTooManyRequests());
 	}
 
+	/** 그날(UTC) 쓴 뉴런을 몫 - 남길 만큼으로 채운다. 채운 행을 돌려준다 — 끝나면 지운다 */
+	private UUID fillNeurons(long leave) {
+		BigDecimal spent = this.jdbc.queryForObject(
+				"select coalesce(sum(neurons), 0) from comic_costs where created_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc'",
+				BigDecimal.class);
+		long inFlight = this.jdbc.queryForObject(
+				"select count(*) from comics where status in ('queued', 'scripting', 'drawing') and deleted_at is null", Long.class);
+		BigDecimal fill = BigDecimal.valueOf(1_000_000 - leave - 650 * inFlight).subtract(spent);
+		UUID marker = UUID.randomUUID();
+		this.jdbc.update("""
+				insert into comic_costs (comic_id, step, model, ok, images, neurons, usd, duration_ms, created_at)
+				values (?, 'image', 'filler', true, 1, ?, 0, 0, now())""", marker, fill);
+		return marker;
+	}
+
 	@Test
 	void 서비스_전체_하루_몫을_넘으면_503_comic_budget_exhausted() throws Exception {
-		long today = this.jdbc.queryForObject(
-				"select count(*) from comics where created_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc'",
-				Long.class);
-		Who filler = login();
-		this.jdbc.update("""
-				insert into comics (id, user_id, dream_id, style, status, created_at, updated_at, finished_at)
-				select gen_random_uuid(), ?::uuid, 'filler', 'soft', 'failed', now(), now(), now() from generate_series(1, ?)
-				""", filler.id(), (int) Math.max(0, 1000 - today));
+		// 한 편(650)이 들어갈 자리가 649 뿐이다
+		UUID filler = fillNeurons(649);
 		try {
 			create(this.me, dreamId(), "꿈", "soft").andExpect(status().isServiceUnavailable())
 				.andExpect(jsonPath("$.code").value("comic_budget_exhausted"));
 		}
 		finally {
-			this.jdbc.update("delete from comics where user_id = ?::uuid", filler.id());
+			this.jdbc.update("delete from comic_costs where comic_id = ?", filler);
 		}
 		create(this.me, dreamId(), "꿈", "soft").andExpect(status().isAccepted());
+	}
+
+	@Test
+	void 만드는_중인_만화도_몫을_미리_잡는다() throws Exception {
+		// 두 편 자리가 있다. 하나를 받아 두면(아직 안 그림) 남은 자리는 한 편 — 다른 사람 하나는 받고 그다음은 막는다
+		UUID filler = fillNeurons(1300);
+		try {
+			createId(this.me, dreamId());
+			createId(login(), dreamId());
+			create(login(), dreamId(), "꿈", "soft").andExpect(status().isServiceUnavailable())
+				.andExpect(jsonPath("$.code").value("comic_budget_exhausted"));
+		}
+		finally {
+			this.jdbc.update("delete from comic_costs where comic_id = ?", filler);
+		}
+	}
+
+	@Test
+	void 탈퇴하고_다시_가입해도_서비스_몫은_되살아나지_않는다() throws Exception {
+		// 한 편 자리만 남긴다. 만들고(원가가 남는다) → 탈퇴 → 새 계정은 막혀야 한다(문서 105 R2)
+		UUID filler = fillNeurons(650);
+		Who quitter = login();
+		try {
+			createId(quitter, dreamId());
+			drain();
+			this.deletion.delete(UUID.fromString(quitter.id()));
+			assertThat(this.jdbc.queryForObject("select count(*) from comics where user_id = ?::uuid", Long.class, quitter.id()))
+				.isZero();
+			create(login(), dreamId(), "꿈", "soft").andExpect(status().isServiceUnavailable())
+				.andExpect(jsonPath("$.code").value("comic_budget_exhausted"));
+		}
+		finally {
+			this.jdbc.update("delete from comic_costs where comic_id = ?", filler);
+		}
 	}
 
 	@Test

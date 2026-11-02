@@ -1,5 +1,6 @@
 package com.kkume.server.dream;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +32,18 @@ public class SyncService {
 	private static final int MAX_ID_LENGTH = 64;
 
 	private static final int MAX_TITLE_LENGTH = 255;
+
+	/**
+	 * 본문 한 건의 상한(문서 105 R1). 앱 입력은 5,000자지만 받아쓰기를 이어 붙이면 넘을 수 있어 넉넉하게 둔다 —
+	 * 거절된 기록은 앱이 다시 보내지 않아 영영 못 올라간다.
+	 */
+	public static final int MAX_TEXT_LENGTH = 50_000;
+
+	/**
+	 * 한 사람 본문 합계의 상한(바이트). 한 건 상한만으로는 기록을 여러 건 만들어 DB 볼륨(2GiB)을 채울 수 있다.
+	 * 한글 5,000자 기록 약 680건이다 — 보통 꿈 한 건은 수백 자다.
+	 */
+	public static final long MAX_USER_TEXT_BYTES = 10L * 1024 * 1024;
 
 	private final DreamRepository dreams;
 
@@ -99,21 +112,24 @@ public class SyncService {
 
 		Instant now = Instant.now();
 		Optional<Dream> existing = this.dreams.findById(payload.id());
-		if (existing.isEmpty()) {
-			Dream created = new Dream(payload.id(), userId, payload.recordedAt(), now);
-			apply(created, payload, now);
-			this.dreams.save(created);
-			return SyncResult.saved(payload.id());
-		}
-
-		Dream dream = existing.get();
-		if (!dream.getUserId().equals(userId)) {
+		if (existing.isPresent() && !existing.get().getUserId().equals(userId)) {
 			// 남의 기록이다. 덮어쓰지도, 있다는 사실을 자세히 알려주지도 않는다.
 			return SyncResult.rejected(payload.id(), "not_owned");
 		}
-		if (!dream.isOlderThan(payload.updatedAt())) {
+		if (existing.isPresent() && !existing.get().isOlderThan(payload.updatedAt())) {
 			return SyncResult.skipped(payload.id());
 		}
+		int length = payload.text() == null ? 0 : payload.text().length();
+		if (length > MAX_TEXT_LENGTH && length > existing.map(d -> d.getText() == null ? 0 : d.getText().length()).orElse(0)) {
+			// 이미 상한보다 긴 기록(상한 전에 올라간 것)도 제목 고침 · 지우기는 받는다 — 막으면 지운 것이 서버에 남는다
+			return SyncResult.rejected(payload.id(), "text_too_long");
+		}
+		long grows = bytes(payload.text()) - existing.map(d -> bytes(d.getText())).orElse(0L);
+		if (grows > 0 && this.dreams.sumTextBytes(userId) + grows > MAX_USER_TEXT_BYTES) {
+			// 줄어드는 고침 · 지우기는 막지 않는다
+			return SyncResult.rejected(payload.id(), "storage_full");
+		}
+		Dream dream = existing.orElseGet(() -> new Dream(payload.id(), userId, payload.recordedAt(), now));
 		apply(dream, payload, now);
 		this.dreams.save(dream);
 		return SyncResult.saved(payload.id());
@@ -148,6 +164,10 @@ public class SyncService {
 			return "title_too_long";
 		}
 		return null;
+	}
+
+	private static long bytes(String text) {
+		return text == null ? 0 : text.getBytes(StandardCharsets.UTF_8).length;
 	}
 
 	/**

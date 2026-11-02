@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
@@ -123,6 +124,9 @@ class AudioApiTest {
 
 	@Autowired
 	private SttProperties sttProperties;
+
+	@Autowired
+	private AudioSweeper sweeper;
 
 	@MockitoBean
 	private GoogleTokenVerifier googleVerifier;
@@ -575,5 +579,55 @@ class AudioApiTest {
 
 		ResultActions r = retry(this.token, id).andExpect(status().isConflict());
 		assertThat(JsonPath.<String>read(json(r), "$.code")).isEqualTo("already_done");
+	}
+
+	// ---------------------------------------------------------------- 문서 105 R3 업로드 상한
+
+	private ResultActions uploadSized(String id, long bytes) throws Exception {
+		return this.mockMvc.perform(post("/api/dreams/" + id + "/audio/upload").header("Authorization", "Bearer " + this.token)
+			.contentType(MediaType.APPLICATION_JSON).content("{\"format\":\"wav\",\"bytes\":" + bytes + "}"));
+	}
+
+	@Test
+	void 크기를_알리면_그_크기로_서명하고_상한을_넘으면_413_이다() throws Exception {
+		String id = pushDream(this.token, 60_000, null);
+		uploadSized(id, 1_234_567).andExpect(status().isOk());
+		assertThat(this.storage.lastContentLength).isEqualTo(1_234_567L);
+
+		uploadSized(id, 26_214_401).andExpect(status().isContentTooLarge())
+			.andExpect(jsonPath("$.code").value("audio_too_large"));
+		uploadSized(id, 0).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("invalid_size"));
+		// 크기를 보내지 않는 앱은 지금과 같다
+		upload(this.token, id).andExpect(status().isOk());
+		assertThat(this.storage.lastContentLength).isNull();
+	}
+
+	@Test
+	void 올리다_만_파일이_셋이면_더_주지_않는다() throws Exception {
+		String id = pushDream(this.token, 60_000, null);
+		for (int i = 0; i < AudioService.MAX_PENDING_UPLOADS; i++) {
+			String key = JsonPath.read(json(upload(this.token, id).andExpect(status().isOk())), "$.key");
+			this.storage.put(key, 1000);
+		}
+		upload(this.token, id).andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("too_many_uploads"));
+	}
+
+	@Test
+	void 하루_지난_붙지_않은_파일만_정리한다() throws Exception {
+		String id = pushDream(this.token, 60_000, null);
+		Instant old = Instant.now().minus(AudioSweeper.ORPHAN_AGE).minusSeconds(60);
+		String orphan = JsonPath.read(json(upload(this.token, id).andExpect(status().isOk())), "$.key");
+		this.storage.put(orphan, 1000, old);
+		String fresh = JsonPath.read(json(upload(this.token, id).andExpect(status().isOk())), "$.key");
+		this.storage.put(fresh, 1000);
+		String attached = JsonPath.read(json(upload(this.token, id).andExpect(status().isOk())), "$.key");
+		this.storage.put(attached, 1000, old);
+		complete(this.token, id, attached).andExpect(status().isOk());
+
+		this.sweeper.sweep(Instant.now());
+
+		assertThat(this.storage.has(orphan)).isFalse();
+		assertThat(this.storage.has(fresh)).isTrue();
+		assertThat(this.storage.has(attached)).isTrue();
 	}
 }

@@ -21,6 +21,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -46,6 +47,9 @@ class SyncApiTest {
 
 	@Autowired
 	private DreamRepository dreams;
+
+	@Autowired
+	private JdbcTemplate jdbc;
 
 	@MockitoBean
 	private GoogleTokenVerifier googleVerifier;
@@ -308,5 +312,77 @@ class SyncApiTest {
 		// 여기서 커서를 비우면 다음 요청이 처음부터 다시 받아 온다
 		assertThat(JsonPath.<String>read(second, "$.nextCursor")).isEqualTo(cursor);
 		assertThat(JsonPath.<Boolean>read(second, "$.hasMore")).isFalse();
+	}
+
+	// ---------------------------------------------------------------- 문서 105 R1 본문 상한
+
+	private static String withText(String id, Instant at, String text, Instant updatedAt) {
+		return """
+				{"id":"%s","recordedAt":"%s","title":"t","text":"%s","updatedAt":"%s"}""".formatted(id, at, text, updatedAt);
+	}
+
+	@Test
+	void 본문이_5만_자를_넘으면_text_too_long_으로_거절하고_5만_자는_받는다() throws Exception {
+		Account account = login();
+		Instant now = Instant.now();
+		String ok = newId();
+		String tooLong = newId();
+
+		String result = push(account, withText(ok, now, "가".repeat(SyncService.MAX_TEXT_LENGTH), now),
+				withText(tooLong, now, "가".repeat(SyncService.MAX_TEXT_LENGTH + 1), now));
+
+		assertThat(JsonPath.<String>read(result, "$.results[0].status")).isEqualTo("saved");
+		assertThat(JsonPath.<String>read(result, "$.results[1].reason")).isEqualTo("text_too_long");
+		assertThat(this.dreams.findById(tooLong)).isEmpty();
+	}
+
+	@Test
+	void 상한_전에_올라간_긴_기록도_제목_고침과_지우기는_받는다() throws Exception {
+		Account account = login();
+		Instant now = Instant.now();
+		String old = newId();
+		push(account, withText(old, now, "본문", now));
+		String longText = "가".repeat(SyncService.MAX_TEXT_LENGTH + 10);
+		this.jdbc.update("update dreams set text = ? where id = ?", longText, old);
+
+		String deleted = push(account, """
+				{"id":"%s","recordedAt":"%s","title":"고친 제목","text":"%s","deletedAt":"%s","updatedAt":"%s"}"""
+			.formatted(old, now, longText, now.plusSeconds(60), now.plusSeconds(60)));
+		assertThat(JsonPath.<String>read(deleted, "$.results[0].status")).isEqualTo("saved");
+		assertThat(this.dreams.findById(old).orElseThrow().isDeleted()).isTrue();
+		// 더 늘리는 것은 막는다
+		String longer = push(account, withText(old, now, longText + "나", now.plusSeconds(120)));
+		assertThat(JsonPath.<String>read(longer, "$.results[0].reason")).isEqualTo("text_too_long");
+	}
+
+	@Test
+	void 한_사람_본문_합계가_상한을_넘으면_새_기록은_storage_full_이고_줄이는_고침은_받는다() throws Exception {
+		Account account = login();
+		Instant now = Instant.now();
+		String big = newId();
+		push(account, withText(big, now, "본문", now));
+		this.jdbc.update("update dreams set text = repeat('a', ?) where id = ?", (int) SyncService.MAX_USER_TEXT_BYTES, big);
+
+		String added = push(account, withText(newId(), now, "새 꿈", now));
+		assertThat(JsonPath.<String>read(added, "$.results[0].reason")).isEqualTo("storage_full");
+
+		// 줄이는 고침(지우기 포함)은 막지 않는다 — 막으면 자리를 비울 길이 없다
+		String shrunk = push(account, withText(big, now, "짧게", now.plusSeconds(60)));
+		assertThat(JsonPath.<String>read(shrunk, "$.results[0].status")).isEqualTo("saved");
+		String again = push(account, withText(newId(), now, "이제 들어감", now));
+		assertThat(JsonPath.<String>read(again, "$.results[0].status")).isEqualTo("saved");
+	}
+
+	@Test
+	void 합계_상한은_사람마다_따로다() throws Exception {
+		Account full = login();
+		Account other = login();
+		Instant now = Instant.now();
+		String big = newId();
+		push(full, withText(big, now, "본문", now));
+		this.jdbc.update("update dreams set text = repeat('a', ?) where id = ?", (int) SyncService.MAX_USER_TEXT_BYTES, big);
+
+		String result = push(other, withText(newId(), now, "다른 사람", now));
+		assertThat(JsonPath.<String>read(result, "$.results[0].status")).isEqualTo("saved");
 	}
 }
