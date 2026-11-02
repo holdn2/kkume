@@ -18,9 +18,10 @@ type Props = {
   onPressPanel?: (index: number) => void;
   /**
    * 네 컷이 모두 그림을 받았거나(말풍선까지 얹힘) 받지 못해 걷어 냈을 때 한 번 부른다. 사진에 저장은 그 뒤에만 —
-   * 받는 중에 찍으면 스켈레톤만 담긴다(이슈 #151 리뷰)
+   * 받는 중에 찍으면 스켈레톤만 담긴다(이슈 #151 리뷰). `ok` 는 네 컷 모두 그림을 받았는가 — 하나라도 못 받았으면
+   * 그림 빠진 화면이 「저장했어요」로 저장되므로 저장을 막는다(문서 104 X3)
    */
-  onReady?: () => void;
+  onReady?: (ok: boolean) => void;
 };
 
 const GAP = sp[1];
@@ -36,11 +37,17 @@ const GAP = sp[1];
 export function ComicView({ layout, imageUrls, panels, onPressPanel, onReady }: Props) {
   const [width, setWidth] = useState(0);
   const [settled, setSettled] = useState<number[]>([]);
-  const settle = (i: number) => setSettled((cur) => (cur.includes(i) ? cur : [...cur, i]));
+  // 못 받은 컷. 나중에 받아지면(서명이 새로 와서 다시 받음) 빠진다 — 한 번 실패로 저장이 영영 막히지 않게
+  const [failed, setFailed] = useState<number[]>([]);
+  const missing = failed.length > 0;
+  const settle = (i: number, ok: boolean) => {
+    setFailed((cur) => (ok ? (cur.includes(i) ? cur.filter((x) => x !== i) : cur) : cur.includes(i) ? cur : [...cur, i]));
+    setSettled((cur) => (cur.includes(i) ? cur : [...cur, i]));
+  };
   const ready = settled.length === 4;
   useEffect(() => {
-    if (ready) onReady?.();
-  }, [ready, onReady]);
+    if (ready) onReady?.(!missing);
+  }, [ready, missing, onReady]);
   const cell = width > 0 ? (width - GAP) / 2 : 0;
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
@@ -61,7 +68,7 @@ export function ComicView({ layout, imageUrls, panels, onPressPanel, onReady }: 
               layout={layout}
               imageUrls={imageUrls}
               panel={panels[i]}
-              onSettled={() => settle(i)}
+              onSettled={(ok) => settle(i, ok)}
             />
           </Pressable>
         ))}
@@ -77,8 +84,8 @@ type PanelProps = {
   panel: ComicPanel | undefined;
   /** 크게 볼 때는 대사를 줄이지 않는다 */
   full?: boolean;
-  /** 그림을 받았거나 못 받아 걷어 냈다(그림이 없는 컷은 바로) */
-  onSettled?: () => void;
+  /** 그림을 받았거나 못 받아 걷어 냈다(그림이 없는 컷은 바로). `ok` 는 그림을 받았는가 */
+  onSettled?: (ok: boolean) => void;
 };
 
 /** 컷 하나. 뷰어의 칸과 크게 보기가 함께 쓴다 */
@@ -97,16 +104,24 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full, on
    */
   const key = source ? imageKey(source) : null;
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const [failedKey, setFailedKey] = useState<string | null>(null);
   const waiting = !!key && loadedKey !== key;
-  const onSettled = () => setLoadedKey(key);
+  const onSettled = () => {
+    setFailedKey(null);
+    setLoadedKey(key);
+  };
+  const onFailed = () => {
+    setFailedKey(key);
+    setLoadedKey(key);
+  };
   // 대사가 있으면 말풍선까지 그려진 뒤에 알린다 — 말풍선은 글자를 잰 다음 프레임에 그려져서,
   // 그림만 보고 알리면 그 사이에 누른 사진에 저장에 대사가 빠졌다(PR #162 리뷰)
   const talks = !!panel?.dialogue;
   const [drawn, setDrawn] = useState(false);
   const onDrawn = useCallback(() => setDrawn(true), []);
   useEffect(() => {
-    if (!waiting && (!talks || drawn)) notify?.();
-  }, [waiting, talks, drawn, notify]);
+    if (!waiting && (!talks || drawn)) notify?.(!key || failedKey !== key);
+  }, [waiting, talks, drawn, notify, key, failedKey]);
   const image = source && key ? { uri: source, cacheKey: key } : undefined;
   return (
     <View style={[s.panel, { width: size, height: size }]}>
@@ -123,7 +138,7 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full, on
             contentFit="cover"
             recyclingKey={key}
             onLoad={onSettled}
-            onError={onSettled}
+            onError={onFailed}
           />
         ) : (
           <Image
@@ -132,7 +147,7 @@ export function ComicPanelView({ index, size, layout, imageUrls, panel, full, on
             contentFit="cover"
             recyclingKey={key}
             onLoad={onSettled}
-            onError={onSettled}
+            onError={onFailed}
           />
         )
       ) : (

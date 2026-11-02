@@ -19,6 +19,7 @@ import {
 import { DictationPrompt } from '@features/log/DictationPrompt';
 import { DreamCard } from '@features/log/DreamCard';
 import { useDreamPages } from '@features/log/useDreamPages';
+import { StorageWarning } from '@features/record/StorageWarning';
 import { repairRecordingPaths } from '@shared/audio/paths';
 import { syncIfSignedIn } from '@shared/sync';
 import { sp } from '@theme/token';
@@ -75,6 +76,9 @@ export default function LogScreen() {
   return (
     <Screen bleedBottom>
       <Title sub={sub(counts, searching)}>꿈 로그</Title>
+
+      {/* 기기 저장소를 못 열어 메모리에 저장 중일 때만 뜬다 — 빈 목록을 보고 다 날아간 줄 알지 않게(문서 104 S1) */}
+      <StorageWarning />
 
       {/* 받아쓰기 권한을 낮에 한 번 묻는다. 새벽 녹음 화면은 권한을 조회만 한다(절대 규칙 7) */}
       {from !== 'record' && <DictationPrompt />}

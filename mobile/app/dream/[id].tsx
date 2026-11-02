@@ -263,7 +263,7 @@ export default function DreamDetail() {
         </Stack>
       </Stack>
 
-      {/* 지우는 것은 되돌리기 어렵다. 기록 유실이 이 앱에서 유일하게 용납되지 않는 실패라
+      {/* 지우는 것은 되돌릴 수 없다(되살리는 기능은 없다 — 문서 104 C1). 기록 유실이 이 앱에서 유일하게 용납되지 않는 실패라
           여기만 확인을 한 번 받는다 — 새벽 화면이 아니라 낮 화면이므로 규칙 7에 걸리지 않는다 */}
       {/* 머리는 시트의 title · description — 확인 시트는 모두 같은 모양이다(이슈 #129).
           묻는 말과 그 설명은 붙이고, 답하는 버튼은 떼어 놓는다 */}
@@ -271,7 +271,7 @@ export default function DreamDetail() {
         visible={askDelete}
         onClose={() => setAskDelete(false)}
         title="이 기록을 지울까요"
-        description="목록에서만 사라지고 서버에는 남아요. 나중에 되살릴 수 있어요.">
+        description="지우면 되돌릴 수 없어요.">
         <Stack gap={sp[2]} style={{ paddingTop: sp[4] }}>
           <Button label="지우기" variant="danger" onPress={remove} />
           <Button label="취소" variant="ghost" onPress={() => setAskDelete(false)} />

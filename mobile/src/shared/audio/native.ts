@@ -9,7 +9,7 @@ import {
 } from 'expo-audio';
 import { useCallback, useEffect, useState } from 'react';
 
-import { dbToLevel, type Player, type Recorder, type RecordingResult } from './types';
+import { dbToLevel, MicDeniedError, type Player, type Recorder, type RecordingResult } from './types';
 
 /**
  * **이 파일은 네이티브 모듈이 있을 때만 require된다.** `expo-audio`는 import되는
@@ -46,7 +46,7 @@ export function useNativeRecorder(): Recorder {
 
   const start = useCallback(async () => {
     const perm = await requestRecordingPermissionsAsync();
-    if (!perm.granted) throw new Error('마이크 권한이 없어요');
+    if (!perm.granted) throw new MicDeniedError();
 
     // iOS는 이걸 켜지 않으면 녹음 세션이 열리지 않는다.
     // 무음 스위치가 켜진 채 자는 사람이 많아 playsInSilentMode도 같이 준다
