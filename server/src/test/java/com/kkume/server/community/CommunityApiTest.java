@@ -736,7 +736,8 @@ class CommunityApiTest {
 
 	@Test
 	void F16_닉네임은_2에서_16자이고_줄바꿈은_안_된다() throws Exception {
-		for (String bad : List.of("가", "가".repeat(17), "가\n나", "   ")) {
+		// 폭 없는 공백(U+200B) · 오른쪽에서 왼쪽으로 바꾸기(U+202E) · 폭 없는 이음(U+200D)은 보이지 않는 서식 문자다(문서 105 R8)
+		for (String bad : List.of("가", "가".repeat(17), "가\n나", "   ", "가​나", "‮가나다", "가‍나")) {
 			assertThat(code(call(this.me, patch("/api/me"), "{\"nickname\":%s}".formatted(quote(bad))).andExpect(status().isBadRequest())))
 				.isEqualTo("nickname_invalid");
 		}

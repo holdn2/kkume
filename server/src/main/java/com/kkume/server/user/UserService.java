@@ -51,6 +51,12 @@ public class UserService {
 	@Transactional
 	public User findOrCreate(SocialIdentity identity, String consentVersion) {
 		User user = this.users.findByProviderAndProviderId(identity.provider(), identity.providerId())
+			.map(found -> {
+				// 다른 쓰기처럼 줄을 선다(AccountGuard). 읽은 뒤 다른 기기의 탈퇴가 끝났으면 여기서 멈춘다 — 그대로 저장하면
+				// JPA 가 읽어 둔 옛 값(provider_id · 닉네임 · deleted_at)을 통째로 다시 써서 지운 계정이 되살아난다(문서 105 R6)
+				this.accounts.lockActive(found.getId());
+				return found;
+			})
 			.orElseGet(() -> {
 				if (consentVersion == null) {
 					throw new ConsentRequiredException();
@@ -105,7 +111,7 @@ public class UserService {
 	}
 
 	/**
-	 * 닉네임을 바꾼다(문서 056 04장 4번). 앞뒤 공백을 자르고 2~16자, 줄바꿈 · 제어문자는 안 된다.
+	 * 닉네임을 바꾼다(문서 056 04장 4번). 앞뒤 공백을 자르고 2~16자, 줄바꿈 · 제어문자 · 보이지 않는 서식 문자는 안 된다.
 	 *
 	 * <p>중복을 막지 않는다 — 닉네임은 식별자가 아니다({@link NicknameGenerator}).
 	 * 글에 복사하지 않으므로 지난 글 · 댓글의 작성자 이름도 새 이름으로 보인다.
@@ -114,7 +120,9 @@ public class UserService {
 	public User rename(UUID id, String nickname) {
 		String name = nickname == null ? "" : nickname.strip();
 		int length = name.codePointCount(0, name.length());
-		if (length < 2 || length > 16 || name.codePoints().anyMatch(Character::isISOControl)) {
+		// 폭 없는 공백 · 방향 바꾸는 문자(FORMAT)도 막는다 — 보이지 않게 남의 이름을 흉내 내거나 글을 뒤집어 보인다(문서 105 R8)
+		if (length < 2 || length > 16
+				|| name.codePoints().anyMatch(cp -> Character.isISOControl(cp) || Character.getType(cp) == Character.FORMAT)) {
 			throw new InvalidNicknameException();
 		}
 		// 지운 계정만 이 이름을 쓴다. 띄어 쓴 것도 같은 이름으로 본다(문서 066 02장)
