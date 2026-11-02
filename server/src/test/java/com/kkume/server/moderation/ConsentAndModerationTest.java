@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
@@ -362,6 +363,68 @@ class ConsentAndModerationTest {
 		assertThat(sent).extracting(ReportEvent::autoHidden).containsExactly(false, false, true);
 		assertThat(sent).extracting(ReportEvent::reason).containsExactly("spam", "violence", "other");
 		assertThat(sent.get(0).targetId()).isEqualTo(UUID.fromString(postId));
+	}
+
+	@Test
+	void 한_사람의_신고_메일은_하루_다섯_건까지고_신고는_모두_저장된다() throws Exception {
+		Who author = login();
+		Who reporter = login();
+		List<String> posts = new java.util.ArrayList<>();
+		for (int i = 0; i < 7; i++) {
+			posts.add(share(author));
+		}
+		for (String postId : posts) {
+			report(reporter, "post", postId, "spam").andExpect(status().isNoContent());
+		}
+
+		awaitAlerts(5);
+		Thread.sleep(300);
+		assertThat(this.notifier.sent).hasSize(5);
+		assertThat(this.jdbc.queryForObject("select count(*) from reports where reporter_id = ?", Long.class,
+				UUID.fromString(reporter.id()))).isEqualTo(7);
+	}
+
+	/** 문서 105 R4 — 필터가 보안 뒤에서 돌아 로그인한 사람을 알아보는지. Caddy 처럼 X-Forwarded-For 를 붙인다 */
+	@Test
+	void 요청_횟수_제한은_Caddy_를_거친_요청에_걸리고_로그인한_사람별로_센다() throws Exception {
+		String ip = "203.0.113." + (int) (Math.random() * 200 + 1);
+		Who a = login();
+		Who b = login();
+		for (int i = 0; i < 5; i++) {
+			assertThat(this.mockMvc.perform(post("/api/community/posts").header("X-Forwarded-For", ip)
+				.header("Authorization", "Bearer " + a.token()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+				.andReturn().getResponse().getStatus()).isNotEqualTo(429);
+		}
+		this.mockMvc.perform(post("/api/community/posts").header("X-Forwarded-For", ip)
+			.header("Authorization", "Bearer " + a.token()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+			.andExpect(status().isTooManyRequests())
+			.andExpect(jsonPath("$.code").value("too_many_requests"));
+		assertThat(this.mockMvc.perform(post("/api/community/posts").header("X-Forwarded-For", ip)
+			.header("Authorization", "Bearer " + b.token()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+			.andReturn().getResponse().getStatus()).isNotEqualTo(429);
+	}
+
+	/** 문서 105 R5. 되돌리는 SQL 은 deploy/moderate.sh restore post 와 같다 */
+	@Test
+	void 운영자가_되돌린_글은_다시_보이고_새_신고가_세_명_모여야_다시_가려진다() throws Exception {
+		Who author = login();
+		Who viewer = login();
+		String postId = share(author);
+		for (int i = 0; i < 3; i++) {
+			report(login(), "post", postId, "spam").andExpect(status().isNoContent());
+		}
+		call(viewer, get("/api/community/posts/" + postId)).andExpect(status().isNotFound());
+
+		this.jdbc.update("update posts set hidden_at = null, updated_at = now() where id = ?::uuid and deleted_at is null", postId);
+		this.jdbc.update("update reports set reviewed_at = now() where target_type = 'post' and target_id = ?::uuid and reviewed_at is null",
+				postId);
+		call(viewer, get("/api/community/posts/" + postId)).andExpect(status().isOk());
+
+		report(login(), "post", postId, "spam").andExpect(status().isNoContent());
+		report(login(), "post", postId, "spam").andExpect(status().isNoContent());
+		call(viewer, get("/api/community/posts/" + postId)).andExpect(status().isOk());
+		report(login(), "post", postId, "spam").andExpect(status().isNoContent());
+		call(viewer, get("/api/community/posts/" + postId)).andExpect(status().isNotFound());
 	}
 
 	@Test

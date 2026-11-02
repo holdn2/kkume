@@ -1,5 +1,6 @@
 package com.kkume.server.community;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -315,7 +316,8 @@ public class CommunityService {
 
 	/**
 	 * 같은 사람이 같은 대상을 다시 신고해도 한 번이다. 서로 다른 신고자가 3명이 되는 순간 같은 트랜잭션에서 가린다.
-	 * 가린 뒤에는 풀리지 않는다 — 사람이 보는 관리 화면이 없다.
+	 * 앱에서는 풀 수 없고, 운영자가 {@code deploy/moderate.sh restore}로 되돌린다(문서 105 R5). 셀 때는 아직 처리하지 않은
+	 * 신고만 센다 — 운영자가 문제없다고 본(dismiss · restore) 신고까지 세면 되돌린 뒤 새 신고 한 건에 곧바로 다시 가려진다.
 	 */
 	@Transactional
 	public void report(UUID viewer, String type, String targetId, String reason) {
@@ -337,7 +339,7 @@ public class CommunityService {
 			if (hidden) {
 				this.store.hidePost(post.id(), now);
 			}
-			alert(fresh, "post", post.id(), reason, reporters, hidden, now);
+			alert(viewer, fresh, "post", post.id(), reason, reporters, hidden, now);
 			return;
 		}
 		if ("comment".equals(type)) {
@@ -355,7 +357,7 @@ public class CommunityService {
 				this.store.hideComment(comment.id(), now);
 				this.store.recountComments(comment.postId());
 			}
-			alert(fresh, "comment", comment.id(), reason, reporters, hidden, now);
+			alert(viewer, fresh, "comment", comment.id(), reason, reporters, hidden, now);
 			return;
 		}
 		throw CommunityApiException.badRequest("invalid_report", "신고 대상은 post · comment 중 하나예요");
@@ -364,12 +366,24 @@ public class CommunityService {
 	/**
 	 * 운영자에게 알린다 — 커밋된 뒤에, 요청과 따로(문서 070 03장). 같은 사람이 같은 대상을 다시 신고한 것은
 	 * 한 번으로 세므로 알리지 않는다. 메일에는 이용자가 쓴 글자를 넣지 않는다.
+	 *
+	 * <p>한 사람이 하루(최근 24시간)에 {@value #MAX_REPORT_ALERTS_PER_DAY}건을 넘게 신고하면 그 뒤로는 메일을 보내지 않는다
+	 * (문서 105 R4 — 운영자 메일함을 채우지 못하게). 신고는 그대로 저장되고 세어진다. 자동으로 가린 것은 상한과
+	 * 상관없이 알린다 — 운영자가 되돌릴지 봐야 한다.
 	 */
-	private void alert(boolean fresh, String type, UUID id, String reason, int reporters, boolean hidden, Instant now) {
-		if (fresh) {
-			this.alerts.afterCommit(new ReportEvent(type, id, reason, reporters, hidden, now));
+	private void alert(UUID reporter, boolean fresh, String type, UUID id, String reason, int reporters, boolean hidden,
+			Instant now) {
+		if (!fresh) {
+			return;
 		}
+		if (!hidden && this.store.countReportsBy(reporter, now.minus(Duration.ofDays(1))) > MAX_REPORT_ALERTS_PER_DAY) {
+			return;
+		}
+		this.alerts.afterCommit(new ReportEvent(type, id, reason, reporters, hidden, now));
 	}
+
+	/** 한 사람의 신고가 하루에 이만큼까지 운영자 메일로 간다 */
+	static final int MAX_REPORT_ALERTS_PER_DAY = 5;
 
 	// ------------------------------------------------------------------ 차단
 
