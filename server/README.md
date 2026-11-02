@@ -239,7 +239,7 @@ POST /api/sync/dreams
 
 ```
 ① 기록 행을 동기화로 올린다                   (위의 "동기화")
-② POST /api/dreams/{id}/audio/upload {format?} → { uploadUrl, method, headers, key, expiresAt }
+② POST /api/dreams/{id}/audio/upload {format?, bytes} → { uploadUrl, method, headers, key, expiresAt }   bytes 필수(파일 크기, 서명에 들어감 — 없으면 400 invalid_size · 25MB 초과 413 audio_too_large)
 ③ 앱이 uploadUrl 에 파일을 PUT               (headers 를 그대로 붙인다)
 ④ POST /api/dreams/{id}/audio/complete {key} → { sttStatus: "pending" }
 ⑤ 서버가 변환                                 (끝나면 기록의 updated_at 이 올라 받기에 다시 내려온다)
