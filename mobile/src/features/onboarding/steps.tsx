@@ -159,7 +159,7 @@ export function Rehearsal({ onDone }: { onDone: () => void }) {
           {/* 한 번 거절하면 iOS는 권한 창을 다시 띄우지 않는다 — 「녹음 시작」만 남기면 앱에 들어갈 길이 없었다(문서 104 S3).
               마이크 없이도 적기로 기록할 수 있으니 건너뛸 수 있어야 한다 */}
           <Row gap={sp[2]}>
-            <Button label="설정 열기" size="sm" variant="secondary" onPress={() => void Linking.openSettings()} />
+            <Button label="설정 열기" size="sm" variant="secondary" onPress={() => void Linking.openSettings().catch(() => {})} />
             <Button label="건너뛰기" size="sm" variant="ghost" onPress={onDone} />
           </Row>
         </Card>

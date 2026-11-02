@@ -33,6 +33,8 @@ const IDLE_SAVE_MS = 1200;
  */
 const SAVE_FAILED = '녹음을 기기에 저장하지 못했어요. 정지를 누르면 다시 저장해요.';
 /** 녹음기를 멈추는 것부터 실패했다. 멈춘 결과가 없어 정지가 녹음기를 다시 멈춰 본다 — 저장만 다시 하는 것이 아니다 */
+/** 적기 모드에서 백그라운드로 갈 때 저장하지 못했다. 돌아오면 보인다 — 「완료」가 같은 글로 다시 저장한다 */
+const TEXT_SAVE_FAILED = '적은 내용을 기기에 저장하지 못했어요. 「완료」를 누르면 다시 저장해요.';
 const STOP_FAILED = '녹음을 마무리하지 못했어요. 정지를 눌러 다시 시도해 주세요.';
 
 /** 받아쓰는 중인 구간은 이 간격까지만 저장한다. 확정 구간은 오는 즉시 저장한다 */
@@ -561,7 +563,8 @@ export default function RecordModal() {
       if (!now.trim()) return;
       void persist({ text: body(now, dictated.current) })
         .then(() => setSavedText(now))
-        .catch(() => {});
+        // 실패를 삼키면 저장된 줄 안다. 돌아왔을 때 보이게 남긴다(PR #168 리뷰)
+        .catch(() => setError(TEXT_SAVE_FAILED));
     });
     return () => sub.remove();
   }, [resolved, persist]);
@@ -574,6 +577,8 @@ export default function RecordModal() {
         try {
           await persist({ text: body(text, dictated.current) });
           setSavedText(text);
+          // 앞서 남은 저장 실패 문구를 지운다 — 지금은 저장됐다
+          setError(null);
           savedFeedback();
         } catch (e) {
           setError(String(e));
