@@ -1,5 +1,5 @@
 import { completeUpload, fetchStt, requestUploadSlot } from '@shared/api/audio';
-import { isApiError } from '@shared/api/client';
+import { errorDetail, isApiError } from '@shared/api/client';
 import { pullDreams } from '@shared/api/sync';
 import { isExpired, loadSession } from '@shared/auth/session';
 import { getDreamRepo } from '@shared/db';
@@ -29,7 +29,7 @@ const utc = () => new Date().toISOString();
 const maskUrl = (url: string) => `${url.split('?')[0]}?(서명 가림)`;
 
 function describe(e: unknown): string {
-  if (isApiError(e)) return `HTTP ${e.status} · ${e.code} · ${e.message}`;
+  if (isApiError(e)) return errorDetail(e);
   return e instanceof Error ? `${e.name}: ${e.message}` : String(e);
 }
 

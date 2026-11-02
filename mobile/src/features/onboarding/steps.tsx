@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 
+import { errorText } from '@shared/api/client';
 import { Button, Card, Row, Stack } from '@components';
 import { mmss, useRecorder } from '@shared/audio';
 import { askSpeechPermission, speechPermission } from '@shared/dictation';
@@ -52,7 +53,8 @@ export function Value() {
             </AppText>
           </Row>
           <Row gap={sp[3]} style={s.compare}>
-            <AppText size="caption" color={c.running} style={s.num}>
+            {/* 강조는 무채색으로 — 청록은 「진행 중」에만이고, 그 뜻을 처음 배우는 곳이 온보딩이다(절대 규칙 5, 문서 104 C15) */}
+            <AppText size="caption" weight="semibold" color={c.fg} style={s.num}>
               꾸메
             </AppText>
             <AppText size="label" style={{ flex: 1 }} lineBreakStrategyIOS="hangul-word">
@@ -113,13 +115,13 @@ export function Rehearsal({ onDone }: { onDone: () => void }) {
     })()
       .then(() => start())
       .then(() => setState('recording'))
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => setError(errorText(e)));
   };
 
   const finish = () => {
     void stop()
       .then(() => setState('done'))
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(errorText(e)));
   };
 
   return (
@@ -202,7 +204,7 @@ export function InstallWidget() {
             '꿈 기록을 넣고 완료를 눌러요',
           ].map((line, i) => (
             <Row key={line} gap={sp[3]} style={s.compare}>
-              <AppText size="caption" color={c.running} style={s.num}>
+              <AppText size="caption" weight="semibold" color={c.fg} style={s.num}>
                 {i + 1}
               </AppText>
               <AppText size="label" style={{ flex: 1 }}>

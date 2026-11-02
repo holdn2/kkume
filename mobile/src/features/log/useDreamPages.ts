@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { errorText } from '@shared/api/client';
 import { getDreamRepo, type Dream } from '@shared/db';
 
 import { appendDreams, DREAM_PAGE } from './paging';
@@ -44,7 +45,7 @@ export function useDreamPages(query: string) {
         setCounts(n);
       })
       .catch((e) => {
-        if (my === seq.current) setError(String(e));
+        if (my === seq.current) setError(errorText(e));
       })
       .finally(() => {
         if (my === seq.current) busy.current = false;
@@ -64,7 +65,7 @@ export function useDreamPages(query: string) {
         apply(next.rows, next.hasMore);
       })
       .catch((e) => {
-        if (my === seq.current) setError(String(e));
+        if (my === seq.current) setError(errorText(e));
       })
       .finally(() => {
         if (my === seq.current) busy.current = false;

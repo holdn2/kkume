@@ -53,10 +53,36 @@ export type ApiError = {
    * (서버 계약 056). 전에는 두 필드만 남기고 버려서 화면이 그 글로 안내하지 못했다
    */
   data?: Record<string, unknown>;
+  /**
+   * 원인을 가르는 원문(예: `TypeError: Network request failed`, 서버가 준 HTML 앞부분). **화면에 쓰지 않는다** —
+   * 사용자에게는 `message`만 보이고, 이건 진단할 때 본다. 전에는 `message`에 붙어 그대로 화면에 나왔다(문서 104 C12)
+   */
+  detail?: string;
 };
 
 export function isApiError(e: unknown): e is ApiError {
   return typeof e === 'object' && e !== null && 'code' in e && 'status' in e;
+}
+
+/**
+ * 화면에 보일 오류 문구. 서버 · 네트워크 오류는 사람용 `message`를, 그 밖의 오류는 `Error`의 `message`만 쓴다.
+ * `String(e)`는 `Error: …`를 붙이고, 서버 오류 객체는 `[object Object]`가 된다(문서 104 C12)
+ */
+export function errorText(e: unknown): string {
+  // 빈 문구면 오류 표시(`!!error`)가 통째로 사라진다 — 저장 실패가 묻히지 않게 물러설 문구를 둔다(PR #172 리뷰)
+  if (isApiError(e)) return e.message || '서버와 통신하지 못했어요';
+  if (e instanceof Error) return e.message || e.name || '알 수 없는 오류가 났어요';
+  return String(e) || '알 수 없는 오류가 났어요';
+}
+
+/**
+ * 진단용 오류 문구 — `errorText`에 원인 원문(`detail`)을 붙인다. **진단 화면 · 동기화 보고에만 쓴다.**
+ * 원문이 `message`에서 빠지면서 진단 화면이 ATS · 주소 · TLS를 가르지 못하게 되면 안 된다(PR #172 리뷰, 2026-09-13)
+ */
+export function errorDetail(e: unknown): string {
+  const base = isApiError(e) ? `HTTP ${e.status} · ${e.code} · ${errorText(e)}` : errorText(e);
+  const extra = isApiError(e) ? e.detail : e instanceof Error ? e.name : undefined;
+  return extra ? `${base}\n${extra}` : base;
 }
 
 /**
@@ -129,8 +155,9 @@ export async function request<T>(
       // 응답이 JSON이 아닌 것이다. 원인이 정반대라 한 문구로 묶으면 안 된다
       throw {
         code: 'bad_response',
-        message: `서버 응답을 읽지 못했어요\n${text.slice(0, 120)}`,
+        message: '서버 응답을 읽지 못했어요. 잠시 뒤 다시 시도해 주세요.',
         status: res.status,
+        detail: text.slice(0, 120),
       } as ApiError;
     }
   } catch (e) {
@@ -142,8 +169,10 @@ export async function request<T>(
     const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
     throw {
       code: aborted ? 'timeout' : 'network',
-      message: `${aborted ? '서버 응답이 없어요' : '네트워크에 연결할 수 없어요'}\n${detail}`,
+      message: aborted ? '서버 응답이 없어요. 잠시 뒤 다시 시도해 주세요.' : '인터넷에 연결할 수 없어요. 연결을 확인해 주세요.',
       status: 0,
+      // 원인(ATS · 주소 · TLS)은 여기 남는다 — 화면에는 쓰지 않는다(문서 104 C12)
+      detail,
     } as ApiError;
   } finally {
     clearTimeout(timer);

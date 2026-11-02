@@ -37,6 +37,13 @@ export function onSignedOut(fn: () => void): () => void {
 }
 const notifySignedOut = () => signedOutListeners.forEach((fn) => fn());
 
+/**
+ * 이 기기에서 로그인했다. `useAuth`는 화면마다 따로 세션을 들고 있어서, 마이 탭에서 로그인 · 로그아웃해도 계속 떠 있는
+ * 꿈 로그는 몰랐다(PR #172 리뷰 — 「동기화 대기」 배지가 다시 켤 때까지 어긋남). 인스턴스들이 이걸로 맞춘다
+ */
+const signedInListeners = new Set<() => void>();
+const notifySignedIn = () => signedInListeners.forEach((fn) => fn());
+
 export const forgetAccount = onceAtATime(() =>
   runSteps(
     [
@@ -85,6 +92,11 @@ export type SignInResult = 'ok' | 'consent' | 'failed';
 export type AuthState = {
   /** 아직 저장소를 읽는 중이면 `null`. 화면은 이때 아무것도 결정하지 않는다 */
   session: Session | null;
+  /**
+   * 로그인했었는데 토큰이 만료됐다. `session`은 null이라 「로그인 안 함」과 같아 보이지만, 그 사이 백업이 멈췄다는 것을
+   * 따로 말해야 한다 — 「로그인하지 않아도 기록은 돼요」만 보이면 멈춘 줄 모른다(문서 104 C4)
+   */
+  expired: boolean;
   loading: boolean;
   busy: boolean;
   error: string | null;
@@ -124,6 +136,7 @@ export type AuthState = {
  */
 export function useAuth(): AuthState {
   const [session, setSession] = useState<Session | null>(null);
+  const [expired, setExpired] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +150,7 @@ export function useAuth(): AuthState {
         if (!alive) return;
         // 만료된 것은 없는 것으로 본다. 들고 있어도 401만 받는다
         setSession(s && !isExpired(s) ? s : null);
+        setExpired(!!s && isExpired(s));
         setLoading(false);
       })
       .catch(() => {
@@ -161,6 +175,8 @@ export function useAuth(): AuthState {
       const s = toSession(res, Date.now(), provider);
       await saveSession(s);
       setSession(s);
+      setExpired(false);
+      notifySignedIn();
       // 로그인 전에 쌓인 기록을 바로 올린다. 소유자는 서버가 토큰에서 정하므로
       // 로컬 `user_id`를 따로 잇지 않아도 이 사용자 것이 된다.
       // 기다리지 않는다 — 로그인 완료가 동기화에 묶이면 느린 망에서 버튼이 안 풀린다
@@ -281,6 +297,8 @@ export function useAuth(): AuthState {
     } finally {
       // 토큰은 이미 지웠다 — 앞 단계가 던져도 화면은 로그인 전으로(PR #73 리뷰)
       setSession(null);
+      // 스스로 나갔으면 만료가 아니다
+      setExpired(false);
       setBusy(false);
       notifySignedOut();
     }
@@ -293,7 +311,19 @@ export function useAuth(): AuthState {
   const refresh = useCallback(async () => {
     const s = await loadSession();
     setSession(s && !isExpired(s) ? s : null);
+    setExpired(!!s && isExpired(s));
   }, []);
+
+  // 다른 화면의 로그인 · 로그아웃을 따라간다 — 이 훅은 화면마다 따로 세션을 든다
+  useEffect(() => {
+    const again = () => void refresh().catch(() => {});
+    signedInListeners.add(again);
+    const offOut = onSignedOut(again);
+    return () => {
+      signedInListeners.delete(again);
+      offOut();
+    };
+  }, [refresh]);
 
   const serverConsent = useCallback(async (current: string) => {
     const s = await loadSession();
@@ -321,7 +351,14 @@ export function useAuth(): AuthState {
   }, []);
 
   // 계정이 없어지면(여기서 지웠든, 다른 기기에서 지운 것을 요청이 알아챘든) 로그인 전으로
-  useEffect(() => onAccountGone(() => setSession(null)), []);
+  useEffect(
+    () =>
+      onAccountGone(() => {
+        setSession(null);
+        setExpired(false);
+      }),
+    [],
+  );
 
   const deleteAccount = useCallback(async () => {
     setBusy(true);
@@ -357,6 +394,7 @@ export function useAuth(): AuthState {
 
   return {
     session,
+    expired,
     loading,
     busy,
     error,

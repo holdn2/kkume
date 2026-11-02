@@ -21,6 +21,8 @@ import { DreamCard } from '@features/log/DreamCard';
 import { useDreamPages } from '@features/log/useDreamPages';
 import { StorageWarning } from '@features/record/StorageWarning';
 import { repairRecordingPaths } from '@shared/audio/paths';
+import { useAuth } from '@shared/auth';
+import { syncStateOf } from '@shared/db';
 import { syncIfSignedIn } from '@shared/sync';
 import { sp } from '@theme/token';
 
@@ -35,6 +37,7 @@ import { sp } from '@theme/token';
  */
 export default function LogScreen() {
   const router = useRouter();
+  const signedIn = !!useAuth().session;
   // 목록이 탭바 뒤까지 내려간다(`bleedBottom`) — 끝 여백에 그 높이를 더해 마지막 카드가 탭바 위로 올라오게(이슈 #153)
   const under = useBleedBottom();
   // 새벽 녹음을 마치고 떨어진 것이면 권한 카드를 띄우지 않는다(record.tsx의 leave)
@@ -102,7 +105,12 @@ export default function LogScreen() {
         data={rows ?? []}
         keyExtractor={(d) => d.id}
         renderItem={({ item }) => (
-          <DreamCard dream={item} onPress={() => router.push(`/dream/${item.id}`)} />
+          <DreamCard
+            dream={item}
+            // 로그인했을 때만 — 로그인 안 했으면 모든 카드가 대기라 표시가 소음이 된다(문서 104 C6)
+            pending={signedIn && syncStateOf(item) === 'pending'}
+            onPress={() => router.push(`/dream/${item.id}`)}
+          />
         )}
         // 행 사이 간격이 곧 경계다. 구분선을 긋지 않는 것은 ListRow와 같은 이유다
         ItemSeparatorComponent={() => <View style={{ height: sp[3] }} />}

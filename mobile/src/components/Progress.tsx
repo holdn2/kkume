@@ -53,7 +53,8 @@ export function Progress({ value = 0, indeterminate, label }: Props) {
             ]}
           />
         ) : (
-          <View style={[s.fill, { width: ((pct * 100).toString() + '%') as DimensionValue }]} />
+          // 얼마나 왔는지(온보딩 몇 장째)는 「진행 중」이 아니다 — 청록은 끝을 모르는 생성 중에만(절대 규칙 5, 문서 104 C15)
+          <View style={[s.fill, s.done, { width: ((pct * 100).toString() + '%') as DimensionValue }]} />
         )}
       </View>
     </View>
@@ -64,4 +65,5 @@ const s = StyleSheet.create({
   track: { height: H, borderRadius: r.chip, backgroundColor: c.raised, overflow: 'hidden' },
   fill: { height: H, borderRadius: r.chip, backgroundColor: c.running },
   chunk: { width: '25%' },
+  done: { backgroundColor: c.fg },
 });

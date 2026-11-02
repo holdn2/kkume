@@ -1,7 +1,7 @@
 import { canSync } from '@features/consent/logic';
 import { completeUpload, fetchStt, requestUploadSlot } from '@shared/api/audio';
 import { uploadFormatFor } from '@shared/audio/format';
-import { HAS_API, isApiError } from '@shared/api/client';
+import { errorDetail, HAS_API, isApiError } from '@shared/api/client';
 import { MAX_BATCH, pullDreams, pushDreams, type DreamPayload, type DreamView } from '@shared/api/sync';
 // 배럴(`@shared/audio`)이 아니라 파일을 직접 부른다 — 배럴은 녹음 훅과 네이티브 오디오 모듈을
 // 같이 끌고 와서, 동기화가 그것들에 묶일 이유가 없다. `@shared/auth/session`과 같은 이유다
@@ -206,7 +206,8 @@ export async function syncOnce(token: string): Promise<SyncReport> {
       if (candidates.length === MAX_UPLOAD_CANDIDATES) report.morePending = true;
     }
   } catch (e) {
-    report.error = isApiError(e) ? e.message : '동기화에 실패했어요';
+    // 진단 화면만 읽는다 — 원인 원문까지(ATS · 주소 · TLS를 가를 수 있게)
+    report.error = isApiError(e) ? errorDetail(e) : '동기화에 실패했어요';
   }
 
   return report;
@@ -428,7 +429,7 @@ export async function diagnoseSync(): Promise<SyncDiagnosis> {
       cursor = res.nextCursor;
     }
   } catch (e) {
-    return { note: isApiError(e) ? e.message : '서버 기록을 세지 못했어요', report, local, server: null };
+    return { note: isApiError(e) ? errorDetail(e) : '서버 기록을 세지 못했어요', report, local, server: null };
   }
 
   return {

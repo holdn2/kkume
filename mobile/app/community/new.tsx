@@ -22,7 +22,7 @@ import { COMIC_ATTACH_ENABLED, useComicsForDream } from '@features/comic';
 import { getCommunityApi, shareDream, useInvalidateCommunity, useMe } from '@features/community';
 import { DreamPickEmpty, DreamPickItem, DreamSearch, dreamTitle } from '@features/community/DreamPicker';
 import { useDreamPages } from '@features/log/useDreamPages';
-import { isApiError } from '@shared/api/client';
+import { errorText, isApiError } from '@shared/api/client';
 import { MAX_POST_BODY, MAX_POST_DREAM_TEXT } from '@shared/api/community';
 import { MAX_TITLE_LENGTH } from '@shared/api/sync';
 import { useBack } from '@shared/back';
@@ -110,7 +110,7 @@ export default function NewPostScreen() {
       })
       .catch((e) => {
         if (!alive) return;
-        setError(String(e));
+        setError(errorText(e));
         setReady(true);
       });
     return () => {
