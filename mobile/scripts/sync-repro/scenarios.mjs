@@ -620,6 +620,54 @@ const scenarios = [
       };
     },
   },
+  // ---- U: 꿈 로그 여러 개 지우기의 되돌리기(이슈 #185) ----
+  {
+    key: 'U1',
+    title: '여러 개를 지우고 동기화로 서버에 「지움」이 간 뒤 되돌려도, 다음 동기화에 서버에서도 살아난다',
+    async run(repo) {
+      const a = await repo.create({ text: '되돌릴 꿈' });
+      const b = await repo.create({ text: '지운 채 둘 꿈' });
+      await syncOnce(TOKEN);
+      await repo.softDelete(a.id);
+      await repo.softDelete(b.id);
+      await syncOnce(TOKEN);
+      const goneOnServer = server.rows.get(a.id)?.deletedAt != null;
+      await repo.restore(a.id);
+      const r = await syncOnce(TOKEN);
+      const local = await repo.get(a.id);
+      const serverA = server.rows.get(a.id);
+      const serverB = server.rows.get(b.id);
+      return {
+        reproduced: !(
+          goneOnServer &&
+          local.deletedAt == null &&
+          local.syncedAt != null &&
+          serverA.deletedAt == null &&
+          serverB.deletedAt != null &&
+          r.pushed === 1
+        ),
+        detail: `되돌리기 전 서버 지움 ${goneOnServer} · 되돌린 뒤 서버 ${serverA.deletedAt ?? '살아남'} · 둔 것 ${serverB.deletedAt ? '지움 유지' : '살아남(틀림)'} · 올림 ${r.pushed}`,
+      };
+    },
+  },
+  {
+    key: 'U2',
+    title: '동기화 전에 되돌리면 지운 적이 없는 것처럼 목록에 돌아오고, 지우지 않은 기록에 되돌리기는 아무것도 하지 않는다',
+    async run(repo) {
+      const a = await repo.create({ text: '바로 되돌린 꿈' });
+      const keep = await repo.create({ text: '그대로인 꿈' });
+      const before = (await repo.get(keep.id)).updatedAt;
+      await repo.softDelete(a.id);
+      await repo.restore(a.id);
+      await repo.restore(keep.id);
+      const list = await repo.list({});
+      const after = (await repo.get(keep.id)).updatedAt;
+      return {
+        reproduced: !(list.some((d) => d.id === a.id) && after === before),
+        detail: `목록에 돌아옴 ${list.some((d) => d.id === a.id)} · 안 지운 기록 수정 시각 그대로 ${after === before}`,
+      };
+    },
+  },
   {
     key: 'H13',
     title: '본문이 50,000자를 넘는 기록은 그 건만 text_too_long 으로 거절되고 나머지는 올라간다(서버 #177)',

@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View, type ViewProps } from 'react-native';
 
 import { c, press, r, sp } from '@theme/token';
 
-type Props = ViewProps & { onPress?: () => void; selected?: boolean };
+type Props = ViewProps & { onPress?: () => void; onLongPress?: () => void; selected?: boolean };
 
 /**
  * 카드는 **채움 하나로만** 성립한다.
@@ -11,7 +11,7 @@ type Props = ViewProps & { onPress?: () => void; selected?: boolean };
  * 화면이 평평해진다. 쉬는 상태에는 테두리가 없고, 선택됐을 때만 생긴다 —
  * 그래서 선택이 한눈에 보인다.
  */
-export function Card({ onPress, selected, style, children, ...rest }: Props) {
+export function Card({ onPress, onLongPress, selected, style, children, ...rest }: Props) {
   const body = (
     <View style={[s.card, selected && s.selected, style]} {...rest}>
       {children}
@@ -24,7 +24,9 @@ export function Card({ onPress, selected, style, children, ...rest }: Props) {
     // 눌러서 여는 카드라고 화면 읽기에 알린다 — 목록에서 가장 많이 누르는 요소다(문서 104)
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       accessibilityRole="button"
+      accessibilityState={selected === undefined ? undefined : { selected }}
       style={({ pressed }) => (pressed ? { opacity: press } : null)}>
       {body}
     </Pressable>

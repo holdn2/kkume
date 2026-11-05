@@ -107,6 +107,13 @@ export function createMemoryRepo(): DreamRepo {
       });
     },
 
+    async restore(id: string) {
+      rows = rows.map((r) => {
+        if (r.id !== id || !r.deletedAt) return r;
+        return { ...r, deletedAt: null, updatedAt: afterIso(nowIso(), r.updatedAt, r.syncedAt) };
+      });
+    },
+
     async clear() {
       rows = [];
       settings = {};

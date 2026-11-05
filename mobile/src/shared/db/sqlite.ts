@@ -243,6 +243,13 @@ export function createSqliteRepo(db: Db): DreamRepo {
       await db.runAsync('UPDATE dreams SET deleted_at = ?, updated_at = ? WHERE id = ?', [ts, ts, id]);
     },
 
+    async restore(id: string) {
+      const current = await this.get(id);
+      if (!current?.deletedAt) return;
+      const ts = afterIso(nowIso(), current.updatedAt, current.syncedAt);
+      await db.runAsync('UPDATE dreams SET deleted_at = NULL, updated_at = ? WHERE id = ?', [ts, id]);
+    },
+
     async clear() {
       await db.runAsync('DELETE FROM dreams');
     },

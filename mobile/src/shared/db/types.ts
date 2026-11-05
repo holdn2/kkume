@@ -142,6 +142,12 @@ export interface DreamRepo {
   /** 지운 것을 뺀 모든 기록의 `recordedAt`. 마이 탭 통계(연속 기록일 · 이번 달)가 날짜만 본다 — 본문까지 읽지 않게 */
   recordedTimes(): Promise<string[]>;
   softDelete(id: string): Promise<void>;
+  /**
+   * 지운 표시를 뗀다 — 꿈 로그에서 여러 개를 지운 직후의 「되돌리기」(이슈 #185). 지우기처럼 **더 늦은 수정으로** 남겨
+   * 그 사이 동기화로 서버에 「지움」이 갔어도 다음 동기화에 서버에서도 살아난다(서버는 `deletedAt` 을 받은 그대로 둔다).
+   * 지우지 않은 기록이면 아무것도 하지 않는다
+   */
+  restore(id: string): Promise<void>;
   /** 검수용. 화면에서 부르지 않는다 */
   clear(): Promise<void>;
 
