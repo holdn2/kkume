@@ -18,7 +18,7 @@ export function Card({ onPress, onLongPress, selected, style, children, ...rest 
     </View>
   );
 
-  if (!onPress) return body;
+  if (!onPress && !onLongPress) return body;
 
   return (
     // 눌러서 여는 카드라고 화면 읽기에 알린다 — 목록에서 가장 많이 누르는 요소다(문서 104)

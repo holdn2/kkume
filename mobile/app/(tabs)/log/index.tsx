@@ -1,7 +1,7 @@
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Mic } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { AccessibilityInfo, FlatList, View } from 'react-native';
 
 import {
   Button,
@@ -82,7 +82,9 @@ export default function LogScreen() {
     [],
   );
 
+  // 지우는 중에는 고르기 · 시트를 바꾸지 않는다 — 끝날 때 선택을 비우므로 그 사이 고른 것이 사라진다(PR #186 리뷰)
   const toggle = (id: string) =>
+    !deleting &&
     setPicked((cur) => {
       const next = new Set(cur ?? []);
       if (next.has(id)) next.delete(id);
@@ -96,6 +98,8 @@ export default function LogScreen() {
     if (undoTimer.current) clearTimeout(undoTimer.current);
     setUndo(ids);
     undoTimer.current = setTimeout(() => setUndo(null), UNDO_MS);
+    // 8초 안에 눌러야 하는 줄이라 화면 읽기에도 알린다(토스트와 같게, PR #186 리뷰)
+    AccessibilityInfo.announceForAccessibility(`꿈 ${ids.length}개를 지웠어요. 되돌리기를 누르면 되돌려요.`);
   };
 
   const removePicked = () => {
@@ -108,6 +112,10 @@ export default function LogScreen() {
       try {
         const repo = await getDreamRepo();
         for (const id of ids) {
+          // 그 사이 다른 기기에서 지워져 동기화로 내려온 기록은 건너뛴다 — 되돌리기 목록에 넣으면 남이 지운 기록을
+          // 되살려 서버에 다시 올린다(PR #186 리뷰)
+          const current = await repo.get(id);
+          if (!current || current.deletedAt) continue;
           await repo.softDelete(id);
           done.push(id);
         }
@@ -131,12 +139,26 @@ export default function LogScreen() {
     if (undoTimer.current) clearTimeout(undoTimer.current);
     setUndo(null);
     void (async () => {
+      const done: string[] = [];
       try {
         const repo = await getDreamRepo();
-        for (const id of ids) await repo.restore(id);
+        for (const id of ids) {
+          await repo.restore(id);
+          done.push(id);
+        }
         showToast(`꿈 ${ids.length}개를 되돌렸어요.`, 'neutral');
       } catch {
-        showToast('되돌리지 못했어요. 다시 시도해 주세요.');
+        // 못 되돌린 것은 줄로 다시 띄워 한 번 더 누를 수 있게 한다. 그 사이 새로 지운 것이 줄에 있으면 그것을 덮지 않는다
+        const left = ids.filter((id) => !done.includes(id));
+        showToast('일부를 되돌리지 못했어요. 「되돌리기」를 한 번 더 눌러 주세요.');
+        if (left.length > 0) {
+          setUndo((cur) => {
+            if (cur) return cur;
+            if (undoTimer.current) clearTimeout(undoTimer.current);
+            undoTimer.current = setTimeout(() => setUndo(null), UNDO_MS);
+            return left;
+          });
+        }
       } finally {
         reload();
       }
@@ -177,25 +199,29 @@ export default function LogScreen() {
       <Title sub={sub(counts, searching)}>꿈 로그</Title>
 
       {/* 선택 모드의 머리 줄 — 고른 수 · 모두 선택 · 지우기 · 취소(이슈 #185) */}
+      {/* 글과 버튼을 두 줄로 — 한 줄이면 큰 글씨에서 「취소」가 화면 밖으로 밀렸다(PR #186 리뷰) */}
       {choosing && (
-        <Row gap={sp[2]}>
-          <AppText size="label" weight="semibold" style={{ flex: 1 }}>
+        <Stack gap={sp[2]}>
+          <AppText size="label" weight="semibold">
             {picked.size > 0 ? `${picked.size}개 선택` : '지울 꿈을 골라 주세요'}
           </AppText>
+          <Row gap={sp[2]} style={{ flexWrap: 'wrap' }}>
           <Button
             label={allPicked ? '선택 풀기' : '모두 선택'}
             size="sm"
             variant="ghost"
+            disabled={deleting}
             onPress={() => setPicked(allPicked ? new Set() : new Set(loaded.map((d) => d.id)))}
           />
-          <Button label="지우기" size="sm" variant="danger" disabled={picked.size === 0}
+          <Button label="지우기" size="sm" variant="danger" disabled={picked.size === 0 || deleting}
             onPress={() => {
               setAskCount(picked.size);
               setAskDelete(true);
             }}
           />
-          <Button label="취소" size="sm" variant="ghost" onPress={() => setPicked(null)} />
-        </Row>
+          <Button label="취소" size="sm" variant="ghost" disabled={deleting} onPress={() => setPicked(null)} />
+          </Row>
+        </Stack>
       )}
 
       {/* 방금 여러 개를 지웠다 — 잠깐 되돌릴 수 있다 */}
@@ -242,7 +268,10 @@ export default function LogScreen() {
             // 선택 모드에서는 누르면 고르고 풀고, 아니면 길게 눌러 선택 모드로 들어간다
             selected={choosing ? picked.has(item.id) : undefined}
             onPress={() => (choosing ? toggle(item.id) : router.push(`/dream/${item.id}`))}
-            onLongPress={choosing ? undefined : () => setPicked(new Set([item.id]))}
+            // 선택 중에도 비워 두지 않는다 — 비우면 길게 누른 손을 뗄 때 onPress 가 돌아 방금 고른 카드가 풀린다(PR #186 리뷰)
+            onLongPress={() => {
+              if (!choosing) setPicked(new Set([item.id]));
+            }}
           />
         )}
         // 행 사이 간격이 곧 경계다. 구분선을 긋지 않는 것은 ListRow와 같은 이유다
@@ -276,12 +305,12 @@ export default function LogScreen() {
       {/* 한 건 지우기(꿈 상세)와 같은 모양의 확인. 여러 개라 되돌릴 길을 함께 말한다 */}
       <Sheet
         visible={askDelete}
-        onClose={() => setAskDelete(false)}
+        onClose={() => !deleting && setAskDelete(false)}
         title={`꿈 ${askCount}개를 지울까요`}
         description="지운 직후 잠깐은 「되돌리기」로 되돌릴 수 있어요. 그 뒤로는 되돌릴 수 없어요.">
         <Stack gap={sp[2]} style={{ paddingTop: sp[4] }}>
           <Button label="지우기" variant="danger" loading={deleting} onPress={removePicked} />
-          <Button label="취소" variant="ghost" onPress={() => setAskDelete(false)} />
+          <Button label="취소" variant="ghost" disabled={deleting} onPress={() => setAskDelete(false)} />
         </Stack>
       </Sheet>
     </Screen>

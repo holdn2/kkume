@@ -669,6 +669,27 @@ const scenarios = [
     },
   },
   {
+    key: 'U3',
+    title: '녹음을 올린 기록을 지운 채 계정을 지우고(올림 표시 지움) 되돌리면, 그 녹음이 새 계정으로 다시 올라간다(PR #186 리뷰)',
+    async run(repo) {
+      const d = await voiceDream(repo, { audioPath: 'file:///docs/ExpoAudio/recording_u3.wav' });
+      await syncOnce(TOKEN);
+      const uploadedFirst = (await repo.get(d.id)).audioUploadedAt != null;
+      await repo.softDelete(d.id);
+      await syncOnce(TOKEN);
+      await repo.clearUploadMarks();
+      const markAfterClear = (await repo.get(d.id)).audioUploadedAt;
+      await repo.restore(d.id);
+      server.reset();
+      const r = await syncOnce(TOKEN);
+      const after = await repo.get(d.id);
+      return {
+        reproduced: !(uploadedFirst && markAfterClear == null && after.audioUploadedAt != null && r.uploaded === 1),
+        detail: `처음 올림 ${uploadedFirst} · 계정 삭제 뒤 표시 ${markAfterClear ?? '지워짐'} · 되돌린 뒤 다시 올림 ${r.uploaded}`,
+      };
+    },
+  },
+  {
     key: 'H13',
     title: '본문이 50,000자를 넘는 기록은 그 건만 text_too_long 으로 거절되고 나머지는 올라간다(서버 #177)',
     async run(repo) {
