@@ -107,6 +107,13 @@ export function createMemoryRepo(): DreamRepo {
       });
     },
 
+    async restore(id: string) {
+      rows = rows.map((r) => {
+        if (r.id !== id || !r.deletedAt) return r;
+        return { ...r, deletedAt: null, updatedAt: afterIso(nowIso(), r.updatedAt, r.syncedAt) };
+      });
+    },
+
     async clear() {
       rows = [];
       settings = {};
@@ -188,7 +195,8 @@ export function createMemoryRepo(): DreamRepo {
     },
 
     async clearUploadMarks() {
-      rows = rows.map((r) => (r.deletedAt ? r : { ...r, syncedAt: null, audioUploadedAt: null }));
+      // 지운 기록도 녹음 표시는 지운다 — 되돌리면 새 계정으로 녹음이 올라가야 한다(sqlite 와 같게, PR #186 리뷰)
+      rows = rows.map((r) => (r.deletedAt ? { ...r, audioUploadedAt: null } : { ...r, syncedAt: null, audioUploadedAt: null }));
     },
 
     async setAudioPath(id: string, path: string) {

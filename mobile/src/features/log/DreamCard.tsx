@@ -12,11 +12,24 @@ import { c, sp } from '@theme/token';
  * 갓 남긴 기록에는 제목이 없다. 그래서 제목 자리에 본문 첫 줄을 대신 놓는다 —
  * 비워 두면 목록이 "제목 없음"으로 가득 찬다.
  */
-export function DreamCard({ dream, pending, onPress }: { dream: Dream; pending?: boolean; onPress?: () => void }) {
+export function DreamCard({
+  dream,
+  pending,
+  selected,
+  onPress,
+  onLongPress,
+}: {
+  dream: Dream;
+  pending?: boolean;
+  /** 꿈 로그의 선택 모드에서 골랐는가(이슈 #185). 선택 모드가 아니면 undefined */
+  selected?: boolean;
+  onPress?: () => void;
+  onLongPress?: () => void;
+}) {
   const unread = dream.reviewedAt == null;
 
   return (
-    <Card onPress={onPress}>
+    <Card onPress={onPress} onLongPress={onLongPress} selected={selected}>
       <Stack gap={sp[2]}>
         <Row gap={sp[2]}>
           <AppText size="label" weight="semibold" style={{ flex: 1 }} numberOfLines={2}>

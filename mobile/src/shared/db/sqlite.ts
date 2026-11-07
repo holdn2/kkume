@@ -84,7 +84,8 @@ const FIELD_TO_COL: Record<string, string> = {
 
 type Db = {
   execAsync(sql: string): Promise<unknown>;
-  runAsync(sql: string, params?: unknown[]): Promise<unknown>;
+  // 바뀐 줄 수(`changes`)를 본다 — 읽은 그 모습일 때만 쓰는 고침(`restore`)이 이것으로 다시 할지 정한다
+  runAsync(sql: string, params?: unknown[]): Promise<{ changes?: number } | undefined>;
   getAllAsync<T>(sql: string, params?: unknown[]): Promise<T[]>;
   getFirstAsync<T>(sql: string, params?: unknown[]): Promise<T | null>;
 };
@@ -243,6 +244,22 @@ export function createSqliteRepo(db: Db): DreamRepo {
       await db.runAsync('UPDATE dreams SET deleted_at = ?, updated_at = ? WHERE id = ?', [ts, ts, id]);
     },
 
+    async restore(id: string) {
+      // **읽은 그 모습일 때만 쓴다.** 읽고 쓰는 사이 동기화가 서버의 더 늦은 지움을 덮어 쓰면, 그 위에 우리 시각을 쓰는
+      // 순간 되돌린 행이 「이미 올림」으로 보여 서버는 지움을 그대로 둔다. 바뀌었으면 다시 읽고 다시 한다(PR #186 리뷰)
+      for (let tries = 0; tries < 3; tries++) {
+        const current = await this.get(id);
+        if (!current?.deletedAt) return;
+        const ts = afterIso(nowIso(), current.updatedAt, current.syncedAt);
+        const r = await db.runAsync(
+          'UPDATE dreams SET deleted_at = NULL, updated_at = ? WHERE id = ? AND updated_at = ? AND synced_at IS ?',
+          [ts, id, current.updatedAt, current.syncedAt],
+        );
+        if ((r?.changes ?? 0) > 0) return;
+      }
+      throw new Error('기록이 계속 바뀌어 되돌리지 못했어요');
+    },
+
     async clear() {
       await db.runAsync('DELETE FROM dreams');
     },
@@ -335,6 +352,9 @@ export function createSqliteRepo(db: Db): DreamRepo {
 
     async clearUploadMarks() {
       await db.runAsync('UPDATE dreams SET synced_at = NULL, audio_uploaded_at = NULL WHERE deleted_at IS NULL');
+      // 지운 기록은 지움이 올라가야 해서 syncedAt 은 두지만, 녹음 표시는 지운다 — 되돌리면(`restore`) 새 계정으로
+      // 녹음이 올라가야 한다(PR #186 리뷰)
+      await db.runAsync('UPDATE dreams SET audio_uploaded_at = NULL WHERE deleted_at IS NOT NULL');
     },
 
     async setAudioPath(id: string, path: string) {
