@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Bell, FileText, LayoutGrid, Mail, Pencil, Shield, Smile, UserMinus, UserX } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { AppState, Linking, StyleSheet, View } from 'react-native';
 
 import { errorText } from '@shared/api/client';
 import { Button, Card, Chip, ListRow, Radio, Row, Screen, Sheet, showToast, Skeleton, Stack, Title } from '@components';
@@ -31,6 +31,7 @@ import { appleAvailable, HAS_NATIVE_APPLE, useAuth, type Provider } from '@share
 import { getDreamRepo, SETTINGS } from '@shared/db';
 import { DEV_ROWS_ENABLED, STORYBOOK_ENABLED } from '@shared/storybook';
 import { syncIfSignedIn } from '@shared/sync';
+import { afterForeground } from '@shared/sync/foreground';
 import { openWebPage, PRIVACY_URL, TERMS_URL } from '@shared/web';
 import { AppText } from '@shared/ui';
 import { c, hit, r, sp } from '@theme/token';
@@ -216,12 +217,17 @@ export default function MyScreen() {
             setAudioLeft(a);
           })
           .catch(() => {});
-      void count()
-        .then(() => syncIfSignedIn())
-        .catch(() => null)
-        .then(count);
+      const sync = () =>
+        void count()
+          .then(() => syncIfSignedIn())
+          .catch(() => null)
+          .then(count);
+      sync();
+      // 이 탭을 띄운 채 앱을 내렸다 열면 포커스가 다시 오지 않는다 — 보이는 동안만 복귀를 듣는다(이슈 #187)
+      const stopForeground = afterForeground(AppState, sync);
       return () => {
         alive = false;
+        stopForeground();
       };
     }, [signedIn]),
   );
