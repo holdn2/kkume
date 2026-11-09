@@ -3,7 +3,7 @@
  *
  * 앱 상태와 타이머는 손으로 돌린다. `fire()`는 기다리던 타이머를 지금 끝낸다.
  */
-import { afterForeground, FOREGROUND_WAIT_MS } from '@shared/sync/foreground';
+import { afterForeground } from '@shared/sync/foreground';
 
 function rig(initial = 'active') {
   const listeners = new Set();
@@ -65,7 +65,7 @@ const cases = [
       const before = r.runs();
       const waits = r.waits();
       r.fire();
-      return { got: [before, waits, r.runs()], want: [0, [FOREGROUND_WAIT_MS], 1] };
+      return { got: [before, waits, r.runs()], want: [0, [3000], 1] };
     },
   },
   {
@@ -132,6 +132,43 @@ const cases = [
       const n = r.timers();
       r.fire();
       return { got: [n, r.runs()], want: [1, 1] };
+    },
+  },
+  {
+    key: 'F9',
+    title: '기다림이 끝날 때 앱이 inactive 면(알림 센터) 미뤘다가 다시 active 가 되면 부른다',
+    run: () => {
+      const r = rig('active');
+      r.go('background', 'active', 'inactive');
+      r.fire();
+      const hidden = r.runs();
+      r.go('active');
+      return { got: [hidden, r.runs()], want: [0, 1] };
+    },
+  },
+  {
+    key: 'F10',
+    title: '미뤄 둔 사이 화면을 떠나면 다시 active 가 돼도 부르지 않는다',
+    run: () => {
+      const r = rig('active');
+      r.go('background', 'active', 'inactive');
+      r.fire();
+      r.stop();
+      r.go('active');
+      return { got: [r.runs(), r.listeners()], want: [0, 0] };
+    },
+  },
+  {
+    key: 'F11',
+    title: '미뤄 둔 사이 백그라운드로 가면 미룬 것은 버리고, 다음 복귀에서 다시 기다린다',
+    run: () => {
+      const r = rig('active');
+      r.go('background', 'active', 'inactive');
+      r.fire();
+      r.go('background', 'active');
+      const now = r.runs();
+      r.fire();
+      return { got: [now, r.runs()], want: [0, 1] };
     },
   },
 ];

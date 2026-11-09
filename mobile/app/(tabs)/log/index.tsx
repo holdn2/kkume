@@ -181,9 +181,12 @@ export default function LogScreen() {
       reload();
       // 녹음 경로 정리가 먼저다 — 캐시 폴더의 녹음을 옮긴 뒤라야 업로드가 옮긴 경로로 올린다.
       // 로그인과 상관없이 돈다. 원본을 지키는 일이라 동기화보다 앞선다(절대 규칙 2)
+      // 화면을 떠났으면 경로 정리가 끝난 뒤라도 동기화를 시작하지 않는다 — 복귀 직후 위젯으로 녹음 화면이
+      // 열렸을 수 있다(PR #188 리뷰)
+      let alive = true;
       const sync = () =>
         void repairRecordingPaths()
-          .then(() => syncIfSignedIn())
+          .then(() => (alive ? syncIfSignedIn() : null))
           .then((r) => {
             // 뭔가 바뀌었을 때만 다시 읽는다. 매번 읽으면 목록이 한 번 깜빡인다
             if (r && (r.pulled > 0 || r.pushed > 0)) reload();
@@ -194,6 +197,7 @@ export default function LogScreen() {
       // 화면을 떠나면 `from=record`를 지운다. 탭은 파라미터를 들고 있어서, 안 지우면 앱을 다시 켤 때까지
       // 카드가 안 뜨고 — 이미 온보딩을 지난 폰은 받아쓰기 권한을 물을 곳이 없어진다(검증 레인 C 2차 B-2)
       return () => {
+        alive = false;
         stopForeground();
         if (from) navigation.setParams({ from: undefined });
         // 다른 탭에 갔다 오면 선택 모드는 끝나 있다 — 돌아와서 고른 줄 모르고 지우지 않게

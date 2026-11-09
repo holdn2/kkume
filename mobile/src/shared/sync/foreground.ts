@@ -10,6 +10,8 @@
  * (`log/index.tsx`가 복귀에 걸지 않았던 이유). 30초 간격 · 겹침 막기는 `syncIfSignedIn`이 그대로 한다.
  *
  * `inactive`만 거친 복귀(알림 센터를 내렸다 올림 등)는 앱을 떠난 것이 아니라 세지 않는다.
+ * 기다림이 끝났을 때 앱이 `active`가 아니면(그 사이 알림 센터를 내림) 부르지 않고 미뤘다가, 다시 `active`가
+ * 되면 곧바로 부른다 — 그 사이 화면을 떠나면 돌려준 함수가 같이 끊는다(PR #188 리뷰).
  * RN 의 `AppState`를 모양만 받는 것은 테스트 때문이다(`scripts/foreground`).
  */
 import type { AppStateLike, Timers } from '@shared/audio/whenActive';
@@ -31,6 +33,8 @@ export function afterForeground(
 ): () => void {
   let left = app.currentState === 'background';
   let timer: unknown = null;
+  // 기다림은 끝났는데 앱이 앞이 아니어서 미뤄 둔 것
+  let deferred = false;
   const clear = () => {
     if (timer !== null) timers.clear(timer);
     timer = null;
@@ -38,8 +42,14 @@ export function afterForeground(
   const sub = app.addEventListener('change', (state) => {
     if (state === 'background') {
       left = true;
+      deferred = false;
       // 기다리는 사이 다시 내려가면 취소한다 — 다음 복귀에서 다시 센다
       clear();
+      return;
+    }
+    if (state === 'active' && deferred) {
+      deferred = false;
+      run();
       return;
     }
     if (state !== 'active' || !left) return;
@@ -47,11 +57,16 @@ export function afterForeground(
     clear();
     timer = timers.set(() => {
       timer = null;
+      if (app.currentState !== 'active') {
+        deferred = true;
+        return;
+      }
       run();
     }, waitMs);
   });
   return () => {
     sub.remove();
     clear();
+    deferred = false;
   };
 }
