@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Bell, FileText, LayoutGrid, Mail, Pencil, Shield, Smile, UserMinus, UserX } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { AppState, Linking, StyleSheet, View } from 'react-native';
 
 import { errorText } from '@shared/api/client';
 import { Button, Card, Chip, ListRow, Radio, Row, Screen, Sheet, showToast, Skeleton, Stack, Title } from '@components';
@@ -30,7 +30,9 @@ import type { ComicGender } from '@shared/api/comic';
 import { appleAvailable, HAS_NATIVE_APPLE, useAuth, type Provider } from '@shared/auth';
 import { getDreamRepo, SETTINGS } from '@shared/db';
 import { DEV_ROWS_ENABLED, STORYBOOK_ENABLED } from '@shared/storybook';
+import { repairRecordingPaths } from '@shared/audio/paths';
 import { syncIfSignedIn } from '@shared/sync';
+import { afterForeground } from '@shared/sync/foreground';
 import { openWebPage, PRIVACY_URL, TERMS_URL } from '@shared/web';
 import { AppText } from '@shared/ui';
 import { c, hit, r, sp } from '@theme/token';
@@ -216,12 +218,28 @@ export default function MyScreen() {
             setAudioLeft(a);
           })
           .catch(() => {});
-      void count()
-        .then(() => syncIfSignedIn())
-        .catch(() => null)
-        .then(count);
+      // 꿈 로그와 같은 순서 — 녹음 경로 정리가 먼저여야 옮긴 경로로 올린다. 화면을 떠났으면 시작하지 않는다(PR #188 리뷰)
+      const sync = () =>
+        void count()
+          .then(() => repairRecordingPaths())
+          .then(() => (alive ? syncIfSignedIn() : null))
+          .catch(() => null)
+          .then((r) => {
+            // 다른 기기의 기록을 받아 왔으면 통계도 다시 센다(PR #188 리뷰)
+            if (alive && r && r.pulled > 0) {
+              void getDreamRepo()
+                .then((repo) => repo.recordedTimes())
+                .then((times) => alive && setStats(recordStats(times)))
+                .catch(() => {});
+            }
+            return count();
+          });
+      sync();
+      // 이 탭을 띄운 채 앱을 내렸다 열면 포커스가 다시 오지 않는다 — 보이는 동안만 복귀를 듣는다(이슈 #187)
+      const stopForeground = afterForeground(AppState, sync);
       return () => {
         alive = false;
+        stopForeground();
       };
     }, [signedIn]),
   );

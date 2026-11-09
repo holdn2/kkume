@@ -1,7 +1,7 @@
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Mic } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, FlatList, View } from 'react-native';
+import { AccessibilityInfo, AppState, FlatList, View } from 'react-native';
 
 import {
   Button,
@@ -30,6 +30,7 @@ import { repairRecordingPaths } from '@shared/audio/paths';
 import { useAuth } from '@shared/auth';
 import { getDreamRepo, syncStateOf } from '@shared/db';
 import { syncIfSignedIn } from '@shared/sync';
+import { afterForeground } from '@shared/sync/foreground';
 import { AppText } from '@shared/ui';
 import { sp } from '@theme/token';
 
@@ -168,24 +169,36 @@ export default function LogScreen() {
   // 기록하고 돌아오면 목록에 있어야 한다. 화면에 들어올 때마다 다시 읽는다 —
   // 기록 화면은 저장하고 router.replace로 이 화면에 떨어뜨리므로 마운트가 새로 일어나지 않는다
   //
-  // **동기화도 여기서 부른다.** 앱 시작이나 백그라운드 복귀에 걸지 않은 이유가 있다 —
+  // **동기화도 여기서 부른다.** 앱 시작에 걸지 않은 이유가 있다 —
   // 새벽에 위젯으로 들어온 흐름에 끼어들 수 있고, 그건 절대 규칙 1(로컬에 먼저)이
   // 막으려는 자리다. 목록은 낮에 보는 화면이라 안전하다.
+  // 복귀는 **이 화면이 보이는 동안만** 잠깐 기다렸다가 다시 부른다(`afterForeground`, 이슈 #187) —
+  // 이 화면을 띄운 채 앱을 내렸다 열면 포커스가 다시 오지 않아 동기화가 멈춰 있었다. 위젯으로 들어오면
+  // 그 사이 녹음 화면이 위로 열려 이 화면이 포커스를 잃으므로 기다림이 끊긴다
   // **로컬을 먼저 그리고 동기화는 뒤에 돈다.** 서버를 기다리면 목록이 늦게 뜬다
   useFocusEffect(
     useCallback(() => {
       reload();
       // 녹음 경로 정리가 먼저다 — 캐시 폴더의 녹음을 옮긴 뒤라야 업로드가 옮긴 경로로 올린다.
       // 로그인과 상관없이 돈다. 원본을 지키는 일이라 동기화보다 앞선다(절대 규칙 2)
-      void repairRecordingPaths()
-        .then(() => syncIfSignedIn())
-        .then((r) => {
-        // 뭔가 바뀌었을 때만 다시 읽는다. 매번 읽으면 목록이 한 번 깜빡인다
-        if (r && (r.pulled > 0 || r.pushed > 0)) reload();
-      });
+      // 화면을 떠났으면 경로 정리가 끝난 뒤라도 동기화를 시작하지 않는다 — 복귀 직후 위젯으로 녹음 화면이
+      // 열렸을 수 있다(PR #188 리뷰)
+      let alive = true;
+      const sync = () =>
+        void repairRecordingPaths()
+          .then(() => (alive ? syncIfSignedIn() : null))
+          .then((r) => {
+            // 뭔가 바뀌었을 때만 다시 읽는다. 매번 읽으면 목록이 한 번 깜빡인다
+            if (r && (r.pulled > 0 || r.pushed > 0)) reload();
+          })
+          .catch(() => {});
+      sync();
+      const stopForeground = afterForeground(AppState, sync);
       // 화면을 떠나면 `from=record`를 지운다. 탭은 파라미터를 들고 있어서, 안 지우면 앱을 다시 켤 때까지
       // 카드가 안 뜨고 — 이미 온보딩을 지난 폰은 받아쓰기 권한을 물을 곳이 없어진다(검증 레인 C 2차 B-2)
       return () => {
+        alive = false;
+        stopForeground();
         if (from) navigation.setParams({ from: undefined });
         // 다른 탭에 갔다 오면 선택 모드는 끝나 있다 — 돌아와서 고른 줄 모르고 지우지 않게
         setPicked(null);
